@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FinAnalyzer — AI 재무제표 분석</title>
+<script src="https://js.tosspayments.com/v2/standard"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f5f3;
+    --surface: #ffffff;
+    --surface2: #f9f9f8;
+    --border: #e5e4e0;
+    --border-strong: #d0cfc9;
+    --text: #1a1a18;
+    --text2: #6b6a65;
+    --text3: #9b9a95;
+    --accent: #185FA5;
+    --accent-bg: #EBF2FA;
+    --success: #0F6E56;
+    --success-bg: #E1F5EE;
+    --warn: #854F0B;
+    --warn-bg: #FAEEDA;
+    --danger: #A32D2D;
+    --danger-bg: #FCEBEB;
+    --radius: 10px;
+  }
+
+  body { font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 15px; line-height: 1.6; }
+
+  /* ── 레이아웃 ── */
+  .page { display: none; min-height: 100vh; }
+  .page.active { display: block; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 1.5rem; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  header .logo { font-size: 17px; font-weight: 600; color: var(--text); text-decoration: none; letter-spacing: -0.02em; }
+  header .logo span { color: var(--accent); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .credit-badge { background: var(--accent-bg); color: var(--accent); font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 20px; display: none; }
+  .main { max-width: 760px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  /* ── 카드 ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; margin-bottom: 1rem; }
+  .card-title { font-size: 14px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 1rem; }
+
+  /* ── 버튼 ── */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 20px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s, opacity 0.15s; text-decoration: none; font-family: inherit; }
+  .btn:hover { background: var(--surface2); }
+  .btn-primary { background: var(--text); color: var(--surface); border-color: var(--text); }
+  .btn-primary:hover { opacity: 0.85; background: var(--text); }
+  .btn-full { width: 100%; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── 인풋 ── */
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
+  .field input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 14px; background: var(--surface); color: var(--text); outline: none; font-family: inherit; }
+  .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+
+  /* ── 히어로 (랜딩) ── */
+  .hero { text-align: center; padding: 4rem 1.5rem 3rem; }
+  .hero h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 700; letter-spacing: -0.03em; margin-bottom: 1rem; line-height: 1.2; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p { font-size: 17px; color: var(--text2); max-width: 480px; margin: 0 auto 2rem; }
+  .hero-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; max-width: 760px; margin: 0 auto 3rem; padding: 0 1.5rem; }
+  .feature { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; }
+  .feature-icon { font-size: 22px; margin-bottom: 0.6rem; }
+  .feature h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .feature p { font-size: 13px; color: var(--text2); line-height: 1.5; }
+
+  /* ── 요금제 카드 ── */
+  .packages { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .pkg-card { border: 1.5px solid var(--border); border-radius: 14px; padding: 1.25rem; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; background: var(--surface); }
+  .pkg-card:hover { border-color: var(--accent); }
+  .pkg-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  .pkg-card.recommended { border-color: var(--accent); }
+  .pkg-badge { display: inline-block; background: var(--accent-bg); color: var(--accent); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-bottom: 8px; }
+  .pkg-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .pkg-price { font-size: 22px; font-weight: 700; margin-bottom: 2px; letter-spacing: -0.02em; }
+  .pkg-credits { font-size: 13px; color: var(--text2); }
+
+  /* ── 드롭존 ── */
+  .drop-zone { border: 2px dashed var(--border-strong); border-radius: 14px; padding: 2.5rem 1rem; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; background: var(--surface2); }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-bg); }
+  .drop-zone.has-img { padding: 0; overflow: hidden; border-style: solid; }
+  .drop-zone img { width: 100%; max-height: 280px; object-fit: contain; display: block; }
+  .dz-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+  .dz-text { font-size: 14px; color: var(--text2); }
+  .dz-hint { font-size: 12px; color: var(--text3); margin-top: 4px; }
+
+  /* ── 분석 결과 ── */
+  .extracted-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ext-item { background: var(--surface2); border-radius: 8px; padding: 10px 12px; }
+  .ext-label { font-size: 11px; color: var(--text3); margin-bottom: 3px; }
+  .ext-value { font-size: 14px; font-weight: 500; }
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .metric-card { background: var(--surface2); border-radius: 10px; padding: 1rem; border-left: 3px solid; }
+  .metric-card.safe { border-color: var(--success); }
+  .metric-card.warn { border-color: #BA7517; }
+  .metric-card.danger { border-color: var(--danger); }
+  .mc-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .mc-value { font-size: 22px; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.02em; }
+  .diag-list { display: flex; flex-direction: column; gap: 8px; }
+  .diag-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--surface2); border-radius: 10px; }
+  .di-label { font-size: 14px; font-weight: 500; }
+  .di-sub { font-size: 12px; color: var(--text2); margin-top: 1px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .badge.safe { background: var(--success-bg); color: var(--success); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.danger { background: var(--danger-bg); color: var(--danger); }
+
+  /* ── 상태 바 ── */
+  .status-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--surface2); border-radius: 10px; font-size: 13px; color: var(--text2); margin-bottom: 1rem; }
+  .spinner { width: 16px; height: 16px; border: 2px solid var(--border-strong); border-top-color: var(--text); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+
+  /* ── 토스트 ── */
+  .toast-wrap { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 999; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+  .toast { background: var(--text); color: #fff; padding: 10px 18px; border-radius: 30px; font-size: 13px; animation: fadeup 0.25s ease; pointer-events: none; }
+  @keyframes fadeup { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .note { font-size: 12px; color: var(--text3); margin-top: 10px; line-height: 1.6; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+  .text-center { text-align: center; }
+  .mt1 { margin-top: 1rem; }
+  .error-msg { color: var(--danger); font-size: 13px; margin-top: 6px; display: none; }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────── 랜딩 페이지 ───────────────────────── -->
+<div id="page-landing" class="page active">
+  <header>
+    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <div class="header-right">
+      <a class="btn" href="#" onclick="showPage('login')">로그인</a>
+      <a class="btn btn-primary" href="#" onclick="showPage('register')">시작하기</a>
+    </div>
+  </header>
+  <div class="hero">
+    <h1>재무제표 이미지 한 장으로<br/><em>즉시 재무 진단</em></h1>
+    <p>AI가 이미지에서 수치를 읽고 부채비율·자본잠식·이자보상배수를 자동 계산합니다.</p>
+    <div class="hero-btns">
+      <a class="btn btn-primary" href="#" onclick="showPage('register')">무료로 시작하기</a>
+      <a class="btn" href="#" onclick="showPage('login')">로그인</a>
+    </div>
+  </div>
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">🔍</div>
+      <h3>AI 자동 인식</h3>
+      <p>재무제표 이미지를 업로드하면 Claude AI가 항목을 자동으로 읽어냅니다.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📊</div>
+      <h3>핵심 지표 즉시 계산</h3>
+      <p>부채비율, 자본잠식, 결손, 이자보상배수를 바로 확인할 수 있습니다.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">💳</div>
+      <h3>크레딧 방식</h3>
+      <p>필요한 만큼만 충전해서 사용하세요. 분석 1회당 10크레딧.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 회원가입 ───────────────────────── -->
+<div id="page-register" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+  </header>
+  <div class="main" style="max-width:400px;">
+    <h2 style="font-size:22px;font-weight:700;margin-bottom:1.5rem;letter-spacing:-0.02em;">계정 만들기</h2>
+    <div class="card">
+      <div class="field">
+        <label>이메일</label>
+        <input type="email" id="reg-email" placeholder="name@company.com" />
+      </div>
+      <div class="field">
+        <label>비밀번호</label>
+        <input type="password" id="reg-pw" placeholder="8자 이상" />
+      </div>
+      <div id="reg-error" class="error-msg"></div>
+      <button class="btn btn-primary btn-full mt1" onclick="doRegister()">가입하기</button>
+    </div>
+    <p class="text-center" style="font-size:13px;color:var(--text2);">이미 계정이 있으신가요? <a href="#" onclick="showPage('login')" style="color:var(--accent);">로그인</a></p>
+  </div>
+</div>
+
+<!-- ───────────────────────── 로그인 ───────────────────────── -->
+<div id="page-login" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+  </header>
+  <div class="main" style="max-width:400px;">
+    <h2 style="font-size:22px;font-weight:700;margin-bottom:1.5rem;letter-spacing:-0.02em;">로그인</h2>
+    <div class="card">
+      <div class="field">
+        <label>이메일</label>
+        <input type="email" id="login-email" placeholder="name@company.com" />
+      </div>
+      <div class="field">
+        <label>비밀번호</label>
+        <input type="password" id="login-pw" placeholder="비밀번호 입력" />
+      </div>
+      <div id="login-error" class="error-msg"></div>
+      <button class="btn btn-primary btn-full mt1" onclick="doLogin()">로그인</button>
+    </div>
+    <p class="text-center" style="font-size:13px;color:var(--text2);">계정이 없으신가요? <a href="#" onclick="showPage('register')" style="color:var(--accent);">가입하기</a></p>
+  </div>
+</div>
+
+<!-- ───────────────────────── 대시보드 ───────────────────────── -->
+<div id="page-dashboard" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('dashboard')">Fin<span>Analyzer</span></a>
+    <div class="header-right">
+      <span class="credit-badge" id="header-credits">0 크레딧</span>
+      <button class="btn" onclick="showPage('charge')">충전</button>
+      <button class="btn" onclick="doLogout()">로그아웃</button>
+    </div>
+  </header>
+  <div class="main">
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">재무제표 분석</h2>
+
+    <!-- 이미지 업로드 -->
+    <div class="card">
+      <div class="card-title">재무제표 이미지</div>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="dz-icon">📄</div>
+        <div class="dz-text">이미지를 클릭하거나 드래그해서 업로드</div>
+        <div class="dz-hint">JPG, PNG — 재무상태표 또는 손익계산서</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none" />
+      <button class="btn btn-primary btn-full mt1" id="analyzeBtn" disabled onclick="doAnalyze()">
+        이미지를 먼저 업로드하세요
+      </button>
+      <div id="creditsInfo" style="text-align:center;font-size:12px;color:var(--text3);margin-top:6px;">분석 1회당 10크레딧 차감</div>
+    </div>
+
+    <!-- 상태 바 -->
+    <div class="status-bar hidden" id="statusBar">
+      <div class="spinner"></div>
+      <span id="statusText">AI가 재무제표를 분석하는 중...</span>
+    </div>
+
+    <!-- 결과 영역 -->
+    <div id="results" class="hidden">
+      <div class="card">
+        <div class="card-title">인식된 재무 수치</div>
+        <div class="extracted-grid" id="extractedGrid"></div>
+        <p id="aiComment" style="font-size:13px;color:var(--text2);margin-top:10px;line-height:1.6;"></p>
+      </div>
+      <div class="card">
+        <div class="card-title">핵심 지표</div>
+        <div class="metric-grid" id="metricGrid"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">진단 결과</div>
+        <div class="diag-list" id="diagList"></div>
+      </div>
+      <p class="note">※ AI가 이미지에서 추출한 수치이므로 오인식 가능성이 있습니다. 중요한 의사결정 전에 원문을 반드시 확인하세요.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 크레딧 충전 ───────────────────────── -->
+<div id="page-charge" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('dashboard')">Fin<span>Analyzer</span></a>
+    <div class="header-right">
+      <span class="credit-badge" id="charge-credits">0 크레딧</span>
+      <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
+    </div>
+  </header>
+  <div class="main" style="max-width:560px;">
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">크레딧 충전</h2>
+
+    <div class="card">
+      <div class="card-title">충전 패키지 선택</div>
+      <div class="packages" id="packages">
+        <div class="pkg-card" data-pkg="basic" onclick="selectPkg(this,'basic')">
+          <div class="pkg-name">기본</div>
+          <div class="pkg-price">1,000원</div>
+          <div class="pkg-credits">100크레딧 · 분석 10회</div>
+        </div>
+        <div class="pkg-card recommended" data-pkg="standard" onclick="selectPkg(this,'standard')">
+          <div class="pkg-badge">추천</div>
+          <div class="pkg-name">표준</div>
+          <div class="pkg-price">5,000원</div>
+          <div class="pkg-credits">550크레딧 · 분석 55회</div>
+        </div>
+        <div class="pkg-card" data-pkg="premium" onclick="selectPkg(this,'premium')">
+          <div class="pkg-name">프리미엄</div>
+          <div class="pkg-price">10,000원</div>
+          <div class="pkg-credits">1,200크레딧 · 분석 120회</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="payBtn" disabled onclick="doPayment()">
+      패키지를 선택하세요
+    </button>
+    <p class="note text-center mt1">토스페이먼츠 안전 결제 · 카드/계좌이체/간편결제 지원</p>
+  </div>
+</div>
+
+<!-- 토스트 컨테이너 -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+// ── 설정 ──────────────────────────────────────────────────────
+const API_BASE = "https://YOUR-BACKEND.onrender.com"; // 배포 후 실제 URL로 변경
+const TOSS_CLIENT_KEY = "test_ck_YOUR_TOSS_CLIENT_KEY"; // 토스페이먼츠 클라이언트 키
+
+// ── 상태 ──────────────────────────────────────────────────────
+let token = localStorage.getItem("fa_token") || null;
+let userEmail = localStorage.getItem("fa_email") || null;
+let userCredits = parseInt(localStorage.getItem("fa_credits") || "0");
+let imageBase64 = null;
+let imageMime = "image/jpeg";
+let selectedPkg = null;
+
+// ── 유틸 ──────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.getElementById("page-" + name).classList.add("active");
+  window.scrollTo(0, 0);
+}
+
+function toast(msg) {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = msg;
+  document.getElementById("toastWrap").appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function fmt(n) {
+  if (n === null || n === undefined || isNaN(n)) return "미인식";
+  return new Intl.NumberFormat("ko-KR").format(Math.round(n)) + "원";
+}
+
+function updateCreditBadges() {
+  document.querySelectorAll(".credit-badge").forEach(el => {
+    el.textContent = userCredits.toLocaleString() + " 크레딧";
+    el.style.display = "inline-block";
+  });
+}
+
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { "Content-Type": "application/json" },
+  };
+  if (token) opts.headers["Authorization"] = "Bearer " + token;
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API_BASE + path, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "오류가 발생했습니다.");
+  return data;
+}
+
+// ── 인증 ──────────────────────────────────────────────────────
+async function doRegister() {
+  const email = document.getElementById("reg-email").value.trim();
+  const pw    = document.getElementById("reg-pw").value;
+  const errEl = document.getElementById("reg-error");
+  errEl.style.display = "none";
+  if (!email || !pw) { errEl.textContent = "이메일과 비밀번호를 입력해주세요."; errEl.style.display = "block"; return; }
+  try {
+    const d = await api("POST", "/auth/register", { email, password: pw });
+    token = d.token; userEmail = d.email; userCredits = d.credits;
+    localStorage.setItem("fa_token", token);
+    localStorage.setItem("fa_email", userEmail);
+    localStorage.setItem("fa_credits", userCredits);
+    updateCreditBadges();
+    showPage("dashboard");
+    toast("가입 완료! 환영합니다 🎉");
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; }
+}
+
+async function doLogin() {
+  const email = document.getElementById("login-email").value.trim();
+  const pw    = document.getElementById("login-pw").value;
+  const errEl = document.getElementById("login-error");
+  errEl.style.display = "none";
+  try {
+    const d = await api("POST", "/auth/login", { email, password: pw });
+    token = d.token; userEmail = d.email; userCredits = d.credits;
+    localStorage.setItem("fa_token", token);
+    localStorage.setItem("fa_email", userEmail);
+    localStorage.setItem("fa_credits", userCredits);
+    updateCreditBadges();
+    showPage("dashboard");
+    toast("로그인되었습니다.");
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; }
+}
+
+function doLogout() {
+  token = userEmail = null; userCredits = 0;
+  localStorage.removeItem("fa_token");
+  localStorage.removeItem("fa_email");
+  localStorage.removeItem("fa_credits");
+  showPage("landing");
+}
+
+// ── 이미지 업로드 ──────────────────────────────────────────────
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.remove("dragover"); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener("change", e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  if (!file.type.startsWith("image/")) { toast("이미지 파일만 업로드 가능합니다."); return; }
+  imageMime = file.type;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    imageBase64 = ev.target.result.split(",")[1];
+    dropZone.classList.add("has-img");
+    dropZone.innerHTML = `<img src="${ev.target.result}" alt="재무제표 미리보기" />`;
+    const btn = document.getElementById("analyzeBtn");
+    btn.disabled = false;
+    btn.textContent = "AI로 분석하기";
+    document.getElementById("results").classList.add("hidden");
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── 분석 ──────────────────────────────────────────────────────
+async function doAnalyze() {
+  if (!token) { showPage("login"); return; }
+  if (!imageBase64) return;
+  if (userCredits < 10) { toast("크레딧이 부족합니다. 충전 후 이용해주세요."); showPage("charge"); return; }
+
+  const btn = document.getElementById("analyzeBtn");
+  btn.disabled = true; btn.textContent = "분석 중...";
+  document.getElementById("statusBar").classList.remove("hidden");
+  document.getElementById("results").classList.add("hidden");
+
+  try {
+    const d = await api("POST", "/analyze", { image_base64: imageBase64, image_mime: imageMime });
+    userCredits = d.remaining_credits;
+    localStorage.setItem("fa_credits", userCredits);
+    updateCreditBadges();
+    renderResults(d.data);
+    toast(`분석 완료 · ${d.credits_used}크레딧 차감`);
+  } catch (e) {
+    toast(e.message);
+    if (e.message.includes("부족")) showPage("charge");
+  } finally {
+    document.getElementById("statusBar").classList.add("hidden");
+    btn.disabled = false; btn.textContent = "다시 분석하기";
+  }
+}
+
+function renderResults(d) {
+  const labels = {
+    current_assets: "유동자산", noncurrent_assets: "비유동자산",
+    current_liabilities: "유동부채", noncurrent_liabilities: "비유동부채",
+    capital_stock: "자본금", total_equity: "자본총계",
+    operating_income: "영업이익", interest_expense: "이자비용", net_income: "당기순이익"
+  };
+  document.getElementById("extractedGrid").innerHTML = Object.entries(labels).map(([k, v]) =>
+    `<div class="ext-item"><div class="ext-label">${v}</div><div class="ext-value" style="${d[k]===null?'color:var(--text3)':''}">${fmt(d[k])}</div></div>`
+  ).join("");
+  document.getElementById("aiComment").textContent = d.comment || "";
+
+  const tl = (d.current_liabilities || 0) + (d.noncurrent_liabilities || 0);
+  const dr = d.total_equity ? tl / d.total_equity * 100 : null;
+  const ice = (d.interest_expense > 0 && d.operating_income !== null) ? d.operating_income / d.interest_expense : null;
+
+  const cls = (v, low, high) => v === null ? "warn" : v > high ? "danger" : v > low ? "warn" : "safe";
+  const iceClass = ice === null ? "warn" : ice < 1 ? "danger" : ice < 2 ? "warn" : "safe";
+  const drClass = dr === null ? "warn" : dr > 200 ? "danger" : dr > 100 ? "warn" : "safe";
+
+  document.getElementById("metricGrid").innerHTML = `
+    <div class="metric-card ${drClass}"><div class="mc-label">부채비율</div><div class="mc-value">${dr !== null ? dr.toFixed(1) + "%" : "N/A"}</div><span class="badge ${drClass}">${drClass==="safe"?"양호":drClass==="warn"?"주의":"위험"}</span></div>
+    <div class="metric-card ${iceClass}"><div class="mc-label">이자보상배수</div><div class="mc-value">${ice !== null ? ice.toFixed(2) + "배" : "N/A"}</div><span class="badge ${iceClass}">${iceClass==="safe"?"양호":iceClass==="warn"?"주의":"위험"}</span></div>
+  `;
+
+  let erosionStatus, erosionClass;
+  if (d.total_equity !== null && d.total_equity <= 0) { erosionStatus = "완전자본잠식"; erosionClass = "danger"; }
+  else if (d.capital_stock && d.total_equity < d.capital_stock) {
+    const r = ((d.capital_stock - d.total_equity) / d.capital_stock * 100).toFixed(1);
+    erosionStatus = `부분자본잠식 (${r}%)`; erosionClass = r >= 50 ? "danger" : "warn";
+  } else { erosionStatus = "정상"; erosionClass = "safe"; }
+
+  let defClass = "safe", defText = "";
+  if (d.net_income === null) { defClass = "warn"; defText = "미인식"; }
+  else if (d.net_income < 0) { defClass = "danger"; defText = `당기순손실 ${fmt(-d.net_income)}`; }
+  else { defText = `당기순이익 ${fmt(d.net_income)}`; }
+
+  document.getElementById("diagList").innerHTML = `
+    <div class="diag-item"><div><div class="di-label">자본잠식 여부</div><div class="di-sub">자본금 대비 자본총계</div></div><span class="badge ${erosionClass}">${erosionStatus}</span></div>
+    <div class="diag-item"><div><div class="di-label">결손 여부</div><div class="di-sub">당기순이익/손실 기준</div></div><span class="badge ${defClass}">${defText}</span></div>
+    <div class="diag-item"><div><div class="di-label">부채총계</div><div class="di-sub">유동 + 비유동 합산</div></div><span style="font-size:14px;font-weight:500;">${fmt(tl)}</span></div>
+  `;
+  document.getElementById("results").classList.remove("hidden");
+}
+
+// ── 결제 ──────────────────────────────────────────────────────
+const PKGS = {
+  basic:    { price: 1000,  credits: 100,  label: "기본 100크레딧" },
+  standard: { price: 5000,  credits: 550,  label: "표준 550크레딧" },
+  premium:  { price: 10000, credits: 1200, label: "프리미엄 1200크레딧" },
+};
+
+function selectPkg(el, pkgId) {
+  document.querySelectorAll(".pkg-card").forEach(c => c.classList.remove("selected"));
+  el.classList.add("selected");
+  selectedPkg = pkgId;
+  const pkg = PKGS[pkgId];
+  const btn = document.getElementById("payBtn");
+  btn.disabled = false;
+  btn.textContent = `${pkg.label} — ${pkg.price.toLocaleString()}원 결제하기`;
+}
+
+async function doPayment() {
+  if (!token) { showPage("login"); return; }
+  if (!selectedPkg) return;
+  const pkg = PKGS[selectedPkg];
+  const orderId = "FA-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+
+  const tossPayments = TossPayments(TOSS_CLIENT_KEY);
+  const payment = tossPayments.payment({ customerKey: userEmail || "guest" });
+
+  try {
+    await payment.requestPayment({
+      method: "CARD",
+      amount: { currency: "KRW", value: pkg.price },
+      orderId,
+      orderName: `FinAnalyzer ${pkg.label}`,
+      successUrl: window.location.origin + window.location.pathname + "?payment=success",
+      failUrl:    window.location.origin + window.location.pathname + "?payment=fail",
+    });
+  } catch (e) {
+    if (e.code !== "USER_CANCEL") toast("결제 중 오류: " + e.message);
+  }
+}
+
+// 결제 성공 콜백 처리
+async function handlePaymentCallback() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("payment") === "success") {
+    const paymentKey = params.get("paymentKey");
+    const orderId    = params.get("orderId");
+    const amount     = parseInt(params.get("amount"));
+    // orderId에서 패키지 추정 (실제로는 서버에서 주문 정보 조회)
+    let pkgId = "basic";
+    if (amount === 5000) pkgId = "standard";
+    if (amount === 10000) pkgId = "premium";
+    try {
+      const d = await api("POST", "/payments/confirm", { package_id: pkgId, payment_key: paymentKey, order_id: orderId, amount });
+      userCredits = d.total_credits;
+      localStorage.setItem("fa_credits", userCredits);
+      updateCreditBadges();
+      toast(`충전 완료! +${d.credits_added}크레딧`);
+    } catch (e) { toast("결제 확인 중 오류: " + e.message); }
+    history.replaceState({}, "", window.location.pathname);
+    showPage("dashboard");
+  } else if (params.get("payment") === "fail") {
+    toast("결제가 취소되었습니다.");
+    history.replaceState({}, "", window.location.pathname);
+    showPage("charge");
+  }
+}
+
+// ── 초기화 ──────────────────────────────────────────────────────
+window.addEventListener("DOMContentLoaded", () => {
+  if (token) {
+    updateCreditBadges();
+    handlePaymentCallback();
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("payment")) showPage("dashboard");
+  } else {
+    showPage("landing");
+  }
+});
+</script>
+</body>
+</html>
