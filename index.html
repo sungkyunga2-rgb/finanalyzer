@@ -640,30 +640,20 @@ function doManualAnalyze() {
 }
 
 function renderResults(d) {
-  const labels = {
-    current_assets: "유동자산", noncurrent_assets: "비유동자산",
-    current_liabilities: "유동부채", noncurrent_liabilities: "비유동부채",
-    capital_stock: "자본금", total_equity: "자본총계",
-    operating_income: "영업이익", interest_expense: "이자비용", net_income: "당기순이익"
-  };
-  document.getElementById("extractedGrid").innerHTML = Object.entries(labels).map(([k, v]) =>
-    `<div class="ext-item"><div class="ext-label">${v}</div><div class="ext-value" style="${d[k]===null?'color:var(--text3)':''}">${fmt(d[k])}</div></div>`
-  ).join("");
-  document.getElementById("aiComment").textContent = d.comment || "";
-
-  const tl = (d.current_liabilities || 0) + (d.noncurrent_liabilities || 0);
-  const dr = d.total_equity ? tl / d.total_equity * 100 : null;
+  const tl  = (d.current_liabilities || 0) + (d.noncurrent_liabilities || 0);
+  const ta  = (d.current_assets || 0) + (d.noncurrent_assets || 0);
+  const dr  = d.total_equity ? tl / d.total_equity * 100 : null;
   const ice = (d.interest_expense > 0 && d.operating_income !== null) ? d.operating_income / d.interest_expense : null;
 
-  const cls = (v, low, high) => v === null ? "warn" : v > high ? "danger" : v > low ? "warn" : "safe";
-  const iceClass = ice === null ? "warn" : ice < 1 ? "danger" : ice < 2 ? "warn" : "safe";
-  const drClass = dr === null ? "warn" : dr > 200 ? "danger" : dr > 100 ? "warn" : "safe";
+  const drClass  = dr  === null ? "warn" : dr  > 200 ? "danger" : dr  > 100 ? "warn" : "safe";
+  const iceClass = ice === null ? "warn" : ice < 1   ? "danger" : ice <  2  ? "warn" : "safe";
 
-  document.getElementById("metricGrid").innerHTML = `
-    <div class="metric-card ${drClass}"><div class="mc-label">부채비율</div><div class="mc-value">${dr !== null ? dr.toFixed(1) + "%" : "N/A"}</div><span class="badge ${drClass}">${drClass==="safe"?"양호":drClass==="warn"?"주의":"위험"}</span></div>
-    <div class="metric-card ${iceClass}"><div class="mc-label">이자보상배수</div><div class="mc-value">${ice !== null ? ice.toFixed(2) + "배" : "N/A"}</div><span class="badge ${iceClass}">${iceClass==="safe"?"양호":iceClass==="warn"?"주의":"위험"}</span></div>
-  `;
+  const clsColor = { safe: "#0F6E56", warn: "#854F0B", danger: "#A32D2D" };
+  const clsBg    = { safe: "#E1F5EE", warn: "#FAEEDA", danger: "#FCEBEB" };
+  const clsIcon  = { safe: "✅", warn: "⚠️", danger: "🚨" };
+  const clsLabel = { safe: "양호", warn: "주의", danger: "위험" };
 
+  // 자본잠식
   let erosionStatus, erosionClass;
   if (d.total_equity !== null && d.total_equity <= 0) { erosionStatus = "완전자본잠식"; erosionClass = "danger"; }
   else if (d.capital_stock && d.total_equity < d.capital_stock) {
@@ -671,16 +661,99 @@ function renderResults(d) {
     erosionStatus = `부분자본잠식 (${r}%)`; erosionClass = r >= 50 ? "danger" : "warn";
   } else { erosionStatus = "정상"; erosionClass = "safe"; }
 
+  // 결손
   let defClass = "safe", defText = "";
   if (d.net_income === null) { defClass = "warn"; defText = "미인식"; }
-  else if (d.net_income < 0) { defClass = "danger"; defText = `당기순손실 ${fmt(-d.net_income)}`; }
-  else { defText = `당기순이익 ${fmt(d.net_income)}`; }
+  else if (d.net_income < 0) { defClass = "danger"; defText = `손실 ${fmt(-d.net_income)}`; }
+  else { defText = `이익 ${fmt(d.net_income)}`; }
 
-  document.getElementById("diagList").innerHTML = `
-    <div class="diag-item"><div><div class="di-label">자본잠식 여부</div><div class="di-sub">자본금 대비 자본총계</div></div><span class="badge ${erosionClass}">${erosionStatus}</span></div>
-    <div class="diag-item"><div><div class="di-label">결손 여부</div><div class="di-sub">당기순이익/손실 기준</div></div><span class="badge ${defClass}">${defText}</span></div>
-    <div class="diag-item"><div><div class="di-label">부채총계</div><div class="di-sub">유동 + 비유동 합산</div></div><span style="font-size:14px;font-weight:500;">${fmt(tl)}</span></div>
+  // 부채비율 게이지 (최대 300% 기준)
+  const drPct = dr !== null ? Math.min(dr / 300 * 100, 100) : 0;
+  const drGauge = dr !== null ? `
+    <div style="margin-top:12px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#9b9a95;margin-bottom:4px;">
+        <span>0%</span><span>100%</span><span>200%</span><span>300%+</span>
+      </div>
+      <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;">
+        <div style="height:100%;width:${drPct}%;background:${clsColor[drClass]};border-radius:20px;transition:width 0.8s ease;"></div>
+      </div>
+    </div>` : "";
+
+  // 이자보상배수 게이지 (최대 5배 기준)
+  const icePct = ice !== null ? Math.min(ice / 5 * 100, 100) : 0;
+  const iceGauge = ice !== null ? `
+    <div style="margin-top:12px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#9b9a95;margin-bottom:4px;">
+        <span>0배</span><span>1배</span><span>2배</span><span>5배+</span>
+      </div>
+      <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;">
+        <div style="height:100%;width:${icePct}%;background:${clsColor[iceClass]};border-radius:20px;transition:width 0.8s ease;"></div>
+      </div>
+    </div>` : "";
+
+  // 핵심 지표 카드
+  document.getElementById("metricGrid").innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:1.25rem;border:1px solid #e5e4e0;border-top:4px solid ${clsColor[drClass]};">
+      <div style="font-size:12px;color:#9b9a95;margin-bottom:6px;font-weight:500;">📊 부채비율</div>
+      <div style="font-size:32px;font-weight:700;color:${clsColor[drClass]};letter-spacing:-0.02em;">${dr !== null ? dr.toFixed(1) + "%" : "N/A"}</div>
+      <div style="display:inline-block;background:${clsBg[drClass]};color:${clsColor[drClass]};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:6px;">${clsIcon[drClass]} ${clsLabel[drClass]}</div>
+      ${drGauge}
+      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">200% 초과 시 위험 · 100% 이하 양호</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:1.25rem;border:1px solid #e5e4e0;border-top:4px solid ${clsColor[iceClass]};">
+      <div style="font-size:12px;color:#9b9a95;margin-bottom:6px;font-weight:500;">💰 이자보상배수</div>
+      <div style="font-size:32px;font-weight:700;color:${clsColor[iceClass]};letter-spacing:-0.02em;">${ice !== null ? ice.toFixed(2) + "배" : "N/A"}</div>
+      <div style="display:inline-block;background:${clsBg[iceClass]};color:${clsColor[iceClass]};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:6px;">${clsIcon[iceClass]} ${clsLabel[iceClass]}</div>
+      ${iceGauge}
+      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">1배 미만 위험 · 2배 이상 양호</div>
+    </div>
   `;
+
+  // 진단 결과
+  document.getElementById("diagList").innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div style="background:${clsBg[erosionClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[erosionClass]}33;">
+        <div style="font-size:12px;color:#6b6a65;margin-bottom:4px;font-weight:500;">🏢 자본잠식 여부</div>
+        <div style="font-size:16px;font-weight:700;color:${clsColor[erosionClass]};">${clsIcon[erosionClass]} ${erosionStatus}</div>
+      </div>
+      <div style="background:${clsBg[defClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[defClass]}33;">
+        <div style="font-size:12px;color:#6b6a65;margin-bottom:4px;font-weight:500;">📈 결손 여부</div>
+        <div style="font-size:16px;font-weight:700;color:${clsColor[defClass]};">${clsIcon[defClass]} ${defText}</div>
+      </div>
+    </div>
+    <div style="background:#f9f9f8;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
+        <div>
+          <div style="font-size:11px;color:#9b9a95;margin-bottom:4px;">총자산</div>
+          <div style="font-size:14px;font-weight:600;">${ta > 0 ? fmt(ta) : "N/A"}</div>
+        </div>
+        <div style="border-left:1px solid #e5e4e0;border-right:1px solid #e5e4e0;">
+          <div style="font-size:11px;color:#9b9a95;margin-bottom:4px;">부채총계</div>
+          <div style="font-size:14px;font-weight:600;color:#A32D2D;">${fmt(tl)}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#9b9a95;margin-bottom:4px;">자본총계</div>
+          <div style="font-size:14px;font-weight:600;color:${d.total_equity > 0 ? '#0F6E56' : '#A32D2D'};">${d.total_equity !== null ? fmt(d.total_equity) : "N/A"}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // 인식 수치 그리드
+  const labels = {
+    current_assets: ["유동자산","💵"], noncurrent_assets: ["비유동자산","🏗️"],
+    current_liabilities: ["유동부채","📋"], noncurrent_liabilities: ["비유동부채","🏦"],
+    capital_stock: ["자본금","💼"], total_equity: ["자본총계","📦"],
+    operating_income: ["영업이익","📈"], interest_expense: ["이자비용","💸"], net_income: ["당기순이익","🎯"]
+  };
+  document.getElementById("extractedGrid").innerHTML = Object.entries(labels).map(([k, [v, icon]]) => `
+    <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;border:1px solid ${d[k]!==null?'#e5e4e0':'#f0f0ee'};">
+      <div style="font-size:11px;color:#9b9a95;margin-bottom:3px;">${icon} ${v}</div>
+      <div style="font-size:13px;font-weight:500;color:${d[k]===null?'#c5c4bf':'#1a1a18'};">${d[k]!==null ? fmt(d[k]) : '미인식'}</div>
+    </div>`).join("");
+
+  if (d.comment) document.getElementById("aiComment").textContent = "💬 " + d.comment;
+
   document.getElementById("results").classList.remove("hidden");
 }
 
