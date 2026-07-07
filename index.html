@@ -238,9 +238,9 @@
       <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
         <div class="dz-icon">📄</div>
         <div class="dz-text">이미지를 클릭하거나 드래그해서 업로드</div>
-        <div class="dz-hint">JPG, PNG — 재무상태표 또는 손익계산서</div>
+        <div class="dz-hint">JPG, PNG, PDF — 재무상태표 또는 손익계산서</div>
       </div>
-      <input type="file" id="fileInput" accept="image/*" style="display:none" />
+      <input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none" />
       <button class="btn btn-primary btn-full mt1" id="analyzeBtn" disabled onclick="doAnalyze()">
         이미지를 먼저 업로드하세요
       </button>
@@ -557,19 +557,45 @@ dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.
 fileInput.addEventListener("change", e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
 
 function handleFile(file) {
-  if (!file.type.startsWith("image/")) { toast("이미지 파일만 업로드 가능합니다."); return; }
-  imageMime = file.type;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    imageBase64 = ev.target.result.split(",")[1];
-    dropZone.classList.add("has-img");
-    dropZone.innerHTML = `<img src="${ev.target.result}" alt="재무제표 미리보기" />`;
-    const btn = document.getElementById("analyzeBtn");
-    btn.disabled = false;
-    btn.textContent = "AI로 분석하기";
-    document.getElementById("results").classList.add("hidden");
-  };
-  reader.readAsDataURL(file);
+  if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+    toast("JPG, PNG, PDF 파일만 업로드 가능합니다."); return;
+  }
+
+  if (file.type === "application/pdf") {
+    // PDF는 base64로 변환 후 Gemini에 전달
+    imageMime = "application/pdf";
+    const reader = new FileReader();
+    reader.onload = ev => {
+      imageBase64 = ev.target.result.split(",")[1];
+      dropZone.classList.add("has-img");
+      dropZone.innerHTML = `
+        <div style="padding:2rem;text-align:center;">
+          <div style="font-size:40px;margin-bottom:8px;">📑</div>
+          <div style="font-size:14px;font-weight:500;color:var(--text);">${file.name}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;">PDF 파일 첨부됨 · ${(file.size/1024).toFixed(0)}KB</div>
+          <button onclick="event.stopPropagation();document.getElementById('fileInput').click()" style="margin-top:12px;padding:6px 14px;font-size:12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);cursor:pointer;">다시 선택</button>
+        </div>`;
+      const btn = document.getElementById("analyzeBtn");
+      btn.disabled = false;
+      btn.textContent = "AI로 분석하기";
+      document.getElementById("results").classList.add("hidden");
+    };
+    reader.readAsDataURL(file);
+  } else {
+    // 이미지 처리 (기존)
+    imageMime = file.type;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      imageBase64 = ev.target.result.split(",")[1];
+      dropZone.classList.add("has-img");
+      dropZone.innerHTML = `<img src="${ev.target.result}" alt="재무제표 미리보기" />`;
+      const btn = document.getElementById("analyzeBtn");
+      btn.disabled = false;
+      btn.textContent = "AI로 분석하기";
+      document.getElementById("results").classList.add("hidden");
+    };
+    reader.readAsDataURL(file);
+  }
 }
 
 // ── 분석 ──────────────────────────────────────────────────────
