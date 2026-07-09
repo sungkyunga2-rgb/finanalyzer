@@ -260,10 +260,14 @@
           <input type="number" id="m-debt" placeholder="예: 50000000" />
         </div>
         <div class="field">
+          <label>총 자산 <span style="color:var(--text3);font-size:11px;">선택 (부동산·차량·현금 등)</span></label>
+          <input type="number" id="m-assets" placeholder="예: 200000000" />
+        </div>
+        <div class="field">
           <label>월 이자비용 <span style="color:var(--text3);font-size:11px;">선택</span></label>
           <input type="number" id="m-interest" placeholder="예: 300000" />
         </div>
-        <div class="field">
+        <div class="field" style="grid-column:1/-1;">
           <label>월 순수익 <span style="color:var(--text3);font-size:11px;">선택</span></label>
           <input type="number" id="m-profit" placeholder="예: 5000000" />
         </div>
@@ -631,6 +635,7 @@ function doManualAnalyze() {
 
   const sales    = parseFloat(document.getElementById("m-sales").value);
   const debt     = parseFloat(document.getElementById("m-debt").value);
+  const assets   = parseFloat(document.getElementById("m-assets").value) || null;
   const interest = parseFloat(document.getElementById("m-interest").value) || null;
   const profit   = parseFloat(document.getElementById("m-profit").value) || null;
 
@@ -640,14 +645,13 @@ function doManualAnalyze() {
   }
 
   // 직접 입력값으로 재무 데이터 구성 (연간 환산)
-  const annualInterest = interest ? interest * 12 : null;
-  const annualProfit   = profit   ? profit * 12   : null;
-
-  // 부채비율 계산을 위해 자본총계 추정 (매출 - 부채)
-  const estimatedEquity = sales - debt;
+  const annualInterest  = interest ? interest * 12 : null;
+  const annualProfit    = profit   ? profit * 12   : null;
+  const baseAssets      = assets || sales;
+  const estimatedEquity = baseAssets - debt;
 
   const d = {
-    current_assets: sales,
+    current_assets: baseAssets,
     noncurrent_assets: null,
     current_liabilities: debt,
     noncurrent_liabilities: null,
