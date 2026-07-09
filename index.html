@@ -765,18 +765,39 @@ function renderResults(d) {
     </div>
   `;
 
-  // 인식 수치 그리드
+  // 인식 수치 그리드 (이자비용 월/연 분리)
+  const monthlyInterest = d.interest_expense !== null ? d.interest_expense / 12 : null;
+  const annualInterest  = d.interest_expense;
+
   const labels = {
-    current_assets: ["유동자산","💵"], noncurrent_assets: ["비유동자산","🏗️"],
-    current_liabilities: ["유동부채","📋"], noncurrent_liabilities: ["비유동부채","🏦"],
-    capital_stock: ["자본금","💼"], total_equity: ["자본총계","📦"],
-    operating_income: ["영업이익","📈"], interest_expense: ["이자비용","💸"], net_income: ["당기순이익","🎯"]
+    current_assets:         ["유동자산",    "💵"],
+    noncurrent_assets:      ["비유동자산",  "🏗️"],
+    current_liabilities:    ["유동부채",    "📋"],
+    noncurrent_liabilities: ["비유동부채",  "🏦"],
+    capital_stock:          ["자본금",      "💼"],
+    total_equity:           ["자본총계",    "📦"],
+    operating_income:       ["영업이익",    "📈"],
+    net_income:             ["당기순이익",  "🎯"],
   };
-  document.getElementById("extractedGrid").innerHTML = Object.entries(labels).map(([k, [v, icon]]) => `
+
+  let gridHTML = Object.entries(labels).map(([k, [v, icon]]) => `
     <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;border:1px solid ${d[k]!==null?'#e5e4e0':'#f0f0ee'};">
       <div style="font-size:11px;color:#9b9a95;margin-bottom:3px;">${icon} ${v}</div>
       <div style="font-size:13px;font-weight:500;color:${d[k]===null?'#c5c4bf':'#1a1a18'};">${d[k]!==null ? fmt(d[k]) : '미인식'}</div>
     </div>`).join("");
+
+  // 이자비용 월/연 카드 추가
+  gridHTML += `
+    <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;border:1px solid ${annualInterest!==null?'#e5e4e0':'#f0f0ee'};">
+      <div style="font-size:11px;color:#9b9a95;margin-bottom:3px;">💸 이자비용 (연)</div>
+      <div style="font-size:13px;font-weight:500;color:${annualInterest===null?'#c5c4bf':'#1a1a18'};">${annualInterest!==null ? fmt(annualInterest) : '미인식'}</div>
+    </div>
+    <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;border:1px solid ${monthlyInterest!==null?'#e5e4e0':'#f0f0ee'};">
+      <div style="font-size:11px;color:#9b9a95;margin-bottom:3px;">💸 이자비용 (월)</div>
+      <div style="font-size:13px;font-weight:500;color:${monthlyInterest===null?'#c5c4bf':'#1a1a18'};">${monthlyInterest!==null ? fmt(Math.round(monthlyInterest)) : '미인식'}</div>
+    </div>`;
+
+  document.getElementById("extractedGrid").innerHTML = gridHTML;
 
   if (d.comment) document.getElementById("aiComment").textContent = "💬 " + d.comment;
 
@@ -897,7 +918,6 @@ function downloadResult() {
     <div class="report-sub">Financial Health Diagnostic Report</div>
     <div class="header-meta">
       <div class="meta-item"><strong>분석일자</strong>${dateStr}</div>
-      <div class="meta-item"><strong>분석방법</strong>AI 자동 분석 (Gemini Vision)</div>
       <div class="meta-item"><strong>발행기관</strong>씨앤지파트너스</div>
     </div>
   </div>
@@ -977,12 +997,13 @@ function downloadResult() {
   const cats = {
     '유동자산':'재무상태표','비유동자산':'재무상태표','유동부채':'재무상태표',
     '비유동부채':'재무상태표','자본금':'재무상태표','자본총계':'재무상태표',
-    '영업이익':'손익계산서','이자비용':'손익계산서','당기순이익':'손익계산서'
+    '영업이익':'손익계산서','이자비용 (연)':'손익계산서','이자비용 (월)':'손익계산서','당기순이익':'손익계산서'
   };
   let rows = '';
   items.forEach(item => {
     const label = item.querySelector('div:first-child')?.innerText?.replace(/[💵🏗️📋🏦💼📦📈💸🎯]/g,'').trim() || '';
     const value = item.querySelector('div:last-child')?.innerText?.trim() || '';
+    if (!label || label === '이자비용') return; // 기존 이자비용 단일 항목 제외
     const isEmpty = value === '미인식';
     rows += \`<tr>
       <td>\${label}</td>
