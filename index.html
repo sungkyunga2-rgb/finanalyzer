@@ -581,7 +581,7 @@ function handleFile(file) {
         </div>`;
       const btn = document.getElementById("analyzeBtn");
       btn.disabled = false;
-      btn.textContent = "AI로 분석하기";
+      btn.textContent = "분석하기";
       document.getElementById("results").classList.add("hidden");
     };
     reader.readAsDataURL(file);
@@ -595,7 +595,7 @@ function handleFile(file) {
       dropZone.innerHTML = `<img src="${ev.target.result}" alt="재무제표 미리보기" />`;
       const btn = document.getElementById("analyzeBtn");
       btn.disabled = false;
-      btn.textContent = "AI로 분석하기";
+      btn.textContent = "분석하기";
       document.getElementById("results").classList.add("hidden");
     };
     reader.readAsDataURL(file);
@@ -740,6 +740,38 @@ function renderResults(d) {
   `;
 
   // 진단 결과
+  // 자동 분석 코멘트 생성
+  const comments = [];
+
+  // 부채비율 코멘트
+  if (dr !== null) {
+    if (dr > 200) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 위험 수준입니다. 부채가 자본의 2배를 초과하여 적극적인 부채 관리가 필요합니다.`);
+    else if (dr > 100) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 주의 수준입니다. 부채 규모를 점진적으로 축소하는 것이 바람직합니다.`);
+    else comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 양호한 수준입니다. 안정적인 재무구조를 유지하고 있습니다.`);
+  }
+
+  // 이자보상배수 코멘트
+  if (ice !== null) {
+    if (ice < 1) comments.push(`📌 이자보상배수가 ${ice.toFixed(2)}배로 위험 수준입니다. 영업이익이 이자비용을 충당하지 못하고 있어 즉각적인 대응이 필요합니다.`);
+    else if (ice < 2) comments.push(`📌 이자보상배수가 ${ice.toFixed(2)}배로 주의 수준입니다. 이자 부담이 상대적으로 높아 수익성 개선이 필요합니다.`);
+    else comments.push(`📌 이자보상배수가 ${ice.toFixed(2)}배로 양호합니다. 영업이익이 이자비용을 충분히 커버하고 있어 재무안정성이 높은 편입니다.`);
+  }
+
+  // 자본잠식 코멘트
+  if (erosionClass === "danger") comments.push(`📌 자본잠식 상태입니다. 조속한 자본 확충 또는 부채 축소가 필요합니다.`);
+  else if (erosionClass === "warn") comments.push(`📌 부분 자본잠식 상태입니다. 지속적인 수익 창출을 통해 자본을 회복해야 합니다.`);
+
+  // 결손 코멘트
+  if (defClass === "danger") comments.push(`📌 당기순손실이 발생했습니다. 비용 구조 개선 및 수익성 제고 방안 마련이 시급합니다.`);
+  else if (defClass === "safe" && d.net_income > 0) comments.push(`📌 당기순이익이 발생하여 수익성은 양호한 상태입니다.`);
+
+  const commentHTML = comments.length > 0 ? `
+    <div style="background:#f0f4f8;border-radius:12px;padding:1rem 1.25rem;border-left:4px solid #185FA5;margin-top:10px;">
+      <div style="font-size:12px;font-weight:700;color:#0d3b7c;margin-bottom:8px;">🔍 종합 분석 의견</div>
+      ${comments.map(c => `<div style="font-size:13px;color:#2d3748;line-height:1.8;margin-bottom:4px;">${c}</div>`).join("")}
+      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">※ 본 의견은 입력된 재무수치를 기반으로 자동 생성된 참고용 분석입니다.</div>
+    </div>` : "";
+
   document.getElementById("diagList").innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
       <div style="background:${clsBg[erosionClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[erosionClass]}33;">
@@ -767,6 +799,7 @@ function renderResults(d) {
         </div>
       </div>
     </div>
+    ${commentHTML}
   `;
 
   // 인식 수치 그리드 (이자비용 월/연 분리)
