@@ -251,6 +251,10 @@
       <div class="card-title" style="margin-bottom:.5rem;">직접 입력</div>
       <p style="font-size:13px;color:var(--text3);margin-bottom:1rem;">재무제표가 없으신가요?</p>
       <div class="fs-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="field" style="grid-column:1/-1;">
+          <label>회사이름 <span style="color:var(--danger);font-size:11px;">필수</span></label>
+          <input type="text" id="m-company" placeholder="예: (주)씨앤지파트너스" />
+        </div>
         <div class="field">
           <label>매출금액 <span style="color:var(--danger);font-size:11px;">필수</span></label>
           <input type="number" id="m-sales" placeholder="예: 120000000" />
@@ -284,6 +288,7 @@
 
     <!-- 결과 영역 -->
     <div id="results" class="hidden">
+      <div id="companyNameHeader" style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:.75rem;"></div>
       <div class="card">
         <div class="card-title">인식된 재무 수치</div>
         <div class="extracted-grid" id="extractedGrid"></div>
@@ -296,6 +301,10 @@
       <div class="card">
         <div class="card-title">진단 결과</div>
         <div class="diag-list" id="diagList"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">종합 분석 의견</div>
+        <div id="opinionBox"></div>
       </div>
       <p class="note">※ AI가 이미지에서 추출한 수치이므로 오인식 가능성이 있습니다. 중요한 의사결정 전에 원문을 반드시 확인하세요.</p>
       <button class="btn btn-primary btn-full mt1" onclick="downloadResult()" style="display:flex;align-items:center;justify-content:center;gap:8px;">
@@ -633,14 +642,15 @@ async function doAnalyze() {
 function doManualAnalyze() {
   if (!token) { showPage("login"); return; }
 
+  const companyName = document.getElementById("m-company").value.trim();
   const sales    = parseFloat(document.getElementById("m-sales").value);
   const debt     = parseFloat(document.getElementById("m-debt").value);
   const assets   = parseFloat(document.getElementById("m-assets").value) || null;
   const interest = parseFloat(document.getElementById("m-interest").value) || null;
   const profit   = parseFloat(document.getElementById("m-profit").value) || null;
 
-  if (isNaN(sales) || isNaN(debt) || !assets) {
-    toast("매출금액, 부채금액, 총 자산은 필수 입력 항목입니다.");
+  if (!companyName || isNaN(sales) || isNaN(debt) || !assets) {
+    toast("회사이름, 매출금액, 부채금액, 총 자산은 필수 입력 항목입니다.");
     return;
   }
 
@@ -651,6 +661,7 @@ function doManualAnalyze() {
   const estimatedEquity = baseAssets - debt;
 
   const d = {
+    company_name: companyName,
     current_assets: baseAssets,
     noncurrent_assets: null,
     current_liabilities: debt,
@@ -670,6 +681,9 @@ function doManualAnalyze() {
 }
 
 function renderResults(d) {
+  window.lastCompanyName = d.company_name || "";
+  document.getElementById("companyNameHeader").textContent = d.company_name ? `🏢 ${d.company_name}` : "";
+
   const tl  = (d.current_liabilities || 0) + (d.noncurrent_liabilities || 0);
   const ta  = (d.current_assets || 0) + (d.noncurrent_assets || 0);
   const dr  = d.total_equity ? tl / d.total_equity * 100 : null;
@@ -827,8 +841,7 @@ function renderResults(d) {
     </div>`;
 
   const commentHTML = comments.length > 0 ? `
-    <div style="background:#f0f4f8;border-radius:12px;padding:1rem 1.25rem;border-left:4px solid #185FA5;margin-top:10px;page-break-before:always;">
-      <div style="font-size:12px;font-weight:700;color:#0d3b7c;margin-bottom:8px;">🔍 종합 분석 의견</div>
+    <div style="background:#f0f4f8;border-radius:12px;padding:1rem 1.25rem;border-left:4px solid #185FA5;">
       ${comments.map(c => `<div style="font-size:13px;color:#2d3748;line-height:1.8;margin-bottom:4px;">${c}</div>`).join("")}
       <div style="font-size:11px;color:#9b9a95;margin-top:8px;">※ 본 의견은 입력된 재무수치를 기반으로 자동 생성된 참고용 분석입니다.</div>
     </div>` : "";
@@ -861,8 +874,9 @@ function renderResults(d) {
       </div>
     </div>
     ${stabilityHTML}
-    ${commentHTML}
   `;
+
+  document.getElementById("opinionBox").innerHTML = commentHTML;
 
   // 인식 수치 그리드 (이자비용 월/연 분리)
   const monthlyInterest = d.interest_expense !== null ? d.interest_expense / 12 : null;
@@ -913,6 +927,7 @@ function downloadResult() {
   const extractedHTML = document.getElementById("extractedGrid").innerHTML;
   const metricsHTML   = document.getElementById("metricGrid").innerHTML;
   const diagHTML      = document.getElementById("diagList").innerHTML;
+  const opinionHTML   = document.getElementById("opinionBox").innerHTML;
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="ko">
@@ -1040,6 +1055,7 @@ function downloadResult() {
   <div class="rh-title">재무상태 진단 결과</div>
   <div class="rh-sub">Financial Health Diagnostic Report</div>
   <div class="rh-meta">
+    ${window.lastCompanyName ? `<div class="rh-meta-item"><strong>분석대상</strong>${window.lastCompanyName}</div>` : ""}
     <div class="rh-meta-item"><strong>분석일자</strong>${dateStr}</div>
     <div class="rh-meta-item"><strong>발행기관</strong>씨앤지파트너스</div>
   </div>
@@ -1115,7 +1131,6 @@ function downloadResult() {
   metricsEl.innerHTML = ${JSON.stringify(metricsHTML)};
   const extractedEl = document.createElement('div');
   extractedEl.innerHTML = ${JSON.stringify(extractedHTML)};
-
   // ── KPI 카드 ──────────────────────────────────────────
   const kpiCards = metricsEl.querySelectorAll('[style*="border-top:4px solid"]');
   let kpiHTML = '';
@@ -1147,15 +1162,17 @@ function downloadResult() {
   // ── 진단 섹션 — 기존 화면 스타일 그대로 출력 ────────
   document.getElementById('diag-section').innerHTML = diagEl.innerHTML;
 
-  // ── 종합 분석 의견 ────────────────────────────────────
-  const allOpinions = diagEl.querySelectorAll('[style*="color:#2d3748"]');
+  // ── 종합 분석 의견 (화면의 opinionBox 내용 그대로 사용) ──
+  const opinionEl = document.createElement('div');
+  opinionEl.innerHTML = ${JSON.stringify(opinionHTML)};
+  const opItems = opinionEl.querySelectorAll('[style*="color:#2d3748"]');
   let opHTML = '<div class="opinion-title">🔍 재무 종합 분석 의견</div>';
-  allOpinions.forEach(op => {
+  opItems.forEach(op => {
     if (op.innerText.trim()) opHTML += \`<div class="opinion-item">\${op.innerText}</div>\`;
   });
-  const opNote = diagEl.querySelector('[style*="font-size:11px"][style*="color:#9b9a95"]')?.innerText || '';
+  const opNote = opinionEl.querySelector('[style*="font-size:11px"][style*="color:#9b9a95"]')?.innerText || '';
   if (opNote) opHTML += \`<div class="opinion-note">\${opNote}</div>\`;
-  document.getElementById('opinion-section').innerHTML = opHTML;
+  document.getElementById('opinion-section').innerHTML = opItems.length > 0 ? opHTML : '';
 
   // ── 재무건전성 체크리스트 ────────────────────────────
   const checkItems = [

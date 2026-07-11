@@ -174,14 +174,14 @@ async def analyze(
     if user.credits < COST_PER_ANALYSIS:
         raise HTTPException(status_code=402, detail=f"크레딧이 부족합니다. 현재 {user.credits}크레딧 (필요: {COST_PER_ANALYSIS}크레딧)")
 
-    prompt = """이 문서는 한국 기업의 재무제표입니다(이미지 또는 PDF). 아래 항목들을 찾아 숫자(원 단위 정수)로 추출하세요.
+    prompt = """이 문서는 한국 기업의 재무제표입니다(이미지 또는 PDF). 아래 항목들을 찾아 추출하세요.
 
-추출 항목: current_assets(유동자산), noncurrent_assets(비유동자산), current_liabilities(유동부채),
+추출 항목: company_name(회사명, 문자열), current_assets(유동자산), noncurrent_assets(비유동자산), current_liabilities(유동부채),
 noncurrent_liabilities(비유동부채), capital_stock(자본금), total_equity(자본총계),
 operating_income(영업이익), interest_expense(이자비용), net_income(당기순이익)
 
 아래 JSON 형식으로만 응답하세요. 없는 항목은 null:
-{"current_assets":숫자또는null,"noncurrent_assets":숫자또는null,"current_liabilities":숫자또는null,
+{"company_name":문자열또는null,"current_assets":숫자또는null,"noncurrent_assets":숫자또는null,"current_liabilities":숫자또는null,
 "noncurrent_liabilities":숫자또는null,"capital_stock":숫자또는null,"total_equity":숫자또는null,
 "operating_income":숫자또는null,"interest_expense":숫자또는null,"net_income":숫자또는null,
 "comment":"인식 관련 메모 1~2문장"}"""
