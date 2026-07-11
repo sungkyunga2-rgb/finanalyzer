@@ -440,7 +440,7 @@
       <strong>씨앤지파트너스</strong><br/>
       대표자 : 정성경 &nbsp;|&nbsp; 사업자등록번호 : 743-42-01047<br/>
       사업장 주소 : 경기도 고양시 향동동 469 DMC스타비즈4st, 1316호<br/>
-      대표전화 : 1555-3830 &nbsp;|&nbsp; 이메일 : cngpartners123@gmail.com
+      이메일 : cngpartners123@gmail.com
     </div>
     <div class="footer-links">
       <a href="#" onclick="showPage('terms')">이용약관</a>
@@ -765,8 +765,69 @@ function renderResults(d) {
   if (defClass === "danger") comments.push(`📌 당기순손실이 발생했습니다. 비용 구조 개선 및 수익성 제고 방안 마련이 시급합니다.`);
   else if (defClass === "safe" && d.net_income > 0) comments.push(`📌 당기순이익이 발생하여 수익성은 양호한 상태입니다.`);
 
+  // ── 사업 안정성 종합점수 계산 ──────────────────────────────
+  let scoreTotal = 0, scoreCnt = 0;
+  const scoreItems = [];
+
+  // 부채비율 점수 (30점)
+  if (dr !== null) {
+    const s = dr <= 100 ? 30 : dr <= 150 ? 24 : dr <= 200 ? 16 : dr <= 300 ? 8 : 2;
+    scoreTotal += s; scoreCnt++;
+    scoreItems.push({ label: "부채비율", score: s, max: 30, comment: dr <= 100 ? "우수" : dr <= 200 ? "보통" : "위험" });
+  }
+  // 이자보상배수 점수 (25점)
+  if (ice !== null) {
+    const s = ice >= 3 ? 25 : ice >= 2 ? 20 : ice >= 1 ? 12 : 3;
+    scoreTotal += s; scoreCnt++;
+    scoreItems.push({ label: "이자보상배수", score: s, max: 25, comment: ice >= 2 ? "우수" : ice >= 1 ? "보통" : "위험" });
+  }
+  // 자본잠식 점수 (20점)
+  { const s = erosionClass === "safe" ? 20 : erosionClass === "warn" ? 10 : 0;
+    scoreTotal += s; scoreCnt++;
+    scoreItems.push({ label: "자본건전성", score: s, max: 20, comment: erosionClass === "safe" ? "우수" : erosionClass === "warn" ? "주의" : "위험" }); }
+  // 수익성 점수 (25점)
+  if (d.net_income !== null) {
+    const s = d.net_income > 0 ? 25 : 0;
+    scoreTotal += s; scoreCnt++;
+    scoreItems.push({ label: "수익성", score: s, max: 25, comment: d.net_income > 0 ? "우수" : "위험" });
+  }
+
+  const maxScore = scoreItems.reduce((a, b) => a + b.max, 0) || 100;
+  const scorePct = maxScore > 0 ? Math.round(scoreTotal / maxScore * 100) : 0;
+  const scoreGrade = scorePct >= 80 ? { label: "A (우수)", color: "#0F6E56", bg: "#E1F5EE" }
+                   : scorePct >= 60 ? { label: "B (양호)", color: "#185FA5", bg: "#EBF2FA" }
+                   : scorePct >= 40 ? { label: "C (주의)", color: "#854F0B", bg: "#FAEEDA" }
+                   : { label: "D (위험)", color: "#A32D2D", bg: "#FCEBEB" };
+
+  const stabilityHTML = `
+    <div style="background:#fff;border-radius:14px;padding:1.25rem;border:1px solid #e5e4e0;border-top:4px solid ${scoreGrade.color};margin-top:10px;">
+      <div style="font-size:12px;color:#9b9a95;font-weight:600;margin-bottom:10px;">🏆 사업 안정성 종합점수</div>
+      <div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:12px;">
+        <div style="font-size:42px;font-weight:700;color:${scoreGrade.color};letter-spacing:-0.03em;line-height:1;">${scoreTotal}<span style="font-size:18px;">/${maxScore}</span></div>
+        <div>
+          <div style="background:${scoreGrade.bg};color:${scoreGrade.color};font-size:14px;font-weight:700;padding:4px 14px;border-radius:20px;display:inline-block;">${scoreGrade.label}</div>
+          <div style="font-size:11px;color:#9b9a95;margin-top:4px;">100점 만점 기준</div>
+        </div>
+      </div>
+      <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;margin-bottom:14px;">
+        <div style="height:100%;width:${scorePct}%;background:${scoreGrade.color};border-radius:20px;transition:width 1s ease;"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(${scoreItems.length},1fr);gap:8px;">
+        ${scoreItems.map(item => {
+          const pct = Math.round(item.score / item.max * 100);
+          const c = item.comment === "우수" ? "#0F6E56" : item.comment === "보통" || item.comment === "주의" ? "#854F0B" : "#A32D2D";
+          const bg = item.comment === "우수" ? "#E1F5EE" : item.comment === "보통" || item.comment === "주의" ? "#FAEEDA" : "#FCEBEB";
+          return `<div style="background:#f9f9f8;border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-size:10px;color:#9b9a95;margin-bottom:4px;">${item.label}</div>
+            <div style="font-size:16px;font-weight:700;color:${c};">${item.score}<span style="font-size:10px;color:#9b9a95;">/${item.max}</span></div>
+            <div style="background:${bg};color:${c};font-size:10px;font-weight:600;padding:2px 6px;border-radius:10px;margin-top:4px;display:inline-block;">${item.comment}</div>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`;
+
   const commentHTML = comments.length > 0 ? `
-    <div style="background:#f0f4f8;border-radius:12px;padding:1rem 1.25rem;border-left:4px solid #185FA5;margin-top:10px;">
+    <div style="background:#f0f4f8;border-radius:12px;padding:1rem 1.25rem;border-left:4px solid #185FA5;margin-top:10px;page-break-before:always;">
       <div style="font-size:12px;font-weight:700;color:#0d3b7c;margin-bottom:8px;">🔍 종합 분석 의견</div>
       ${comments.map(c => `<div style="font-size:13px;color:#2d3748;line-height:1.8;margin-bottom:4px;">${c}</div>`).join("")}
       <div style="font-size:11px;color:#9b9a95;margin-top:8px;">※ 본 의견은 입력된 재무수치를 기반으로 자동 생성된 참고용 분석입니다.</div>
@@ -783,7 +844,7 @@ function renderResults(d) {
         <div style="font-size:16px;font-weight:700;color:${clsColor[defClass]};">${clsIcon[defClass]} ${defText}</div>
       </div>
     </div>
-    <div style="background:#f9f9f8;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;">
+    <div style="background:#f9f9f8;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;margin-bottom:10px;">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
         <div>
           <div style="font-size:11px;color:#9b9a95;margin-bottom:4px;">총자산</div>
@@ -799,6 +860,7 @@ function renderResults(d) {
         </div>
       </div>
     </div>
+    ${stabilityHTML}
     ${commentHTML}
   `;
 
@@ -1000,7 +1062,7 @@ function downloadResult() {
   <!-- 푸터 -->
   <div class="report-footer">
     <strong>씨앤지파트너스 (C&G Partners)</strong> &nbsp;|&nbsp; 대표 정성경 &nbsp;|&nbsp; 사업자번호 743-42-01047<br/>
-    경기도 고양시 향동동 469 DMC스타비즈4st, 1316호 &nbsp;|&nbsp; Tel. 1555-3830 &nbsp;|&nbsp; cngpartners123@gmail.com
+    경기도 고양시 향동동 469 DMC스타비즈4st, 1316호 &nbsp;|&nbsp; cngpartners123@gmail.com
     <div class="disclaimer">
       ※ 본 리포트는 AI가 재무제표 이미지에서 추출한 수치를 기반으로 자동 계산된 참고자료입니다. 실제 의사결정 전에 공인 회계사 또는 재무 전문가의 검토를 받으시기 바랍니다.<br/>
       ※ 분석된 재무제표는 결제일로부터 3개월간 보관됩니다.
