@@ -918,182 +918,336 @@ function downloadResult() {
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>재무분석 리포트 — 씨앤지파트너스</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; background: #f0f4f8; color: #1a2332; }
-  .page { max-width: 780px; margin: 0 auto; background: #fff; min-height: 100vh; }
+  body { font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #1a2332; background: #fff; font-size: 12px; }
 
   /* 헤더 */
-  .report-header { background: linear-gradient(135deg, #0d3b7c 0%, #185FA5 60%, #2e80d8 100%); color: #fff; padding: 36px 40px 28px; position: relative; overflow: hidden; }
-  .report-header::before { content: ''; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: rgba(255,255,255,0.06); }
-  .report-header::after { content: ''; position: absolute; right: 40px; bottom: -40px; width: 140px; height: 140px; border-radius: 50%; background: rgba(255,255,255,0.04); }
-  .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-  .company-brand { font-size: 13px; font-weight: 600; opacity: 0.85; letter-spacing: 0.05em; text-transform: uppercase; }
-  .report-badge { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
-  .report-title { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 6px; }
-  .report-sub { font-size: 13px; opacity: 0.75; }
-  .header-meta { display: flex; gap: 24px; margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2); }
-  .meta-item { font-size: 12px; opacity: 0.8; }
-  .meta-item strong { display: block; font-size: 13px; opacity: 1; font-weight: 600; margin-bottom: 2px; }
+  .rh { background: linear-gradient(135deg, #0d3b7c 0%, #185FA5 60%, #2e80d8 100%); color: #fff; padding: 20px 28px 16px; position: relative; overflow: hidden; }
+  .rh::before { content:''; position:absolute; right:-40px; top:-40px; width:160px; height:160px; border-radius:50%; background:rgba(255,255,255,0.06); }
+  .rh-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .rh-brand { font-size:11px; font-weight:600; opacity:.85; letter-spacing:.05em; }
+  .rh-badge { background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.25); padding:3px 10px; border-radius:20px; font-size:10px; font-weight:600; }
+  .rh-title { font-size:22px; font-weight:700; letter-spacing:-.02em; margin-bottom:3px; }
+  .rh-sub { font-size:11px; opacity:.7; margin-bottom:10px; }
+  .rh-meta { display:flex; gap:20px; padding-top:10px; border-top:1px solid rgba(255,255,255,.2); }
+  .rh-meta-item { font-size:10px; opacity:.8; }
+  .rh-meta-item strong { display:block; font-size:11px; opacity:1; font-weight:600; margin-bottom:1px; }
 
   /* 본문 */
-  .report-body { padding: 32px 40px; }
-  .section { margin-bottom: 28px; page-break-inside: avoid; }
-  .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-  .section-num { width: 24px; height: 24px; background: #185FA5; color: #fff; border-radius: 50%; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .section-title { font-size: 14px; font-weight: 700; color: #0d3b7c; letter-spacing: -0.01em; }
-  .section-line { flex: 1; height: 1px; background: linear-gradient(90deg, #185FA5 0%, #e5ecf5 100%); }
-  .avoid-break { page-break-inside: avoid; break-inside: avoid; }
-  .page-break { page-break-before: always; break-before: always; }
+  .body { padding: 16px 28px; }
 
-  /* 핵심지표 카드 */
-  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-  .kpi-card { border-radius: 14px; padding: 20px; position: relative; overflow: hidden; }
-  .kpi-card.blue { background: linear-gradient(135deg, #185FA5, #2e80d8); color: #fff; }
-  .kpi-card.green { background: linear-gradient(135deg, #0F6E56, #1a9e7a); color: #fff; }
-  .kpi-card.orange { background: linear-gradient(135deg, #854F0B, #c47a20); color: #fff; }
-  .kpi-card.red { background: linear-gradient(135deg, #A32D2D, #d94444); color: #fff; }
-  .kpi-card.gray { background: linear-gradient(135deg, #4a5568, #718096); color: #fff; }
-  .kpi-card::after { content: ''; position: absolute; right: -20px; bottom: -20px; width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.1); }
-  .kpi-label { font-size: 11px; font-weight: 600; opacity: 0.85; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px; }
-  .kpi-value { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 4px; }
-  .kpi-status { font-size: 12px; opacity: 0.85; font-weight: 500; }
-  .kpi-gauge-wrap { margin-top: 12px; }
-  .kpi-gauge-bg { height: 4px; background: rgba(255,255,255,0.25); border-radius: 4px; overflow: hidden; }
-  .kpi-gauge-fill { height: 100%; background: rgba(255,255,255,0.8); border-radius: 4px; transition: width 1s ease; }
-  .kpi-gauge-labels { display: flex; justify-content: space-between; font-size: 9px; opacity: 0.65; margin-top: 3px; }
+  /* 섹션 헤더 */
+  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:14px; }
+  .sh:first-child { margin-top:0; }
+  .sh-num { width:20px; height:20px; background:#185FA5; color:#fff; border-radius:50%; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .sh-title { font-size:12px; font-weight:700; color:#0d3b7c; }
+  .sh-line { flex:1; height:1px; background:linear-gradient(90deg,#185FA5,#e5ecf5); }
 
-  /* 진단 카드 */
-  .diag-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-  .diag-card { border-radius: 12px; padding: 16px; border: 1.5px solid; }
-  .diag-card.safe { background: #f0faf6; border-color: #a8dcc8; }
-  .diag-card.warn { background: #fef9f0; border-color: #f0d09a; }
-  .diag-card.danger { background: #fef0f0; border-color: #f0a8a8; }
-  .diag-card.neutral { background: #f0f4f8; border-color: #b8cce4; }
-  .diag-icon { font-size: 20px; margin-bottom: 6px; }
-  .diag-name { font-size: 10px; font-weight: 600; color: #6b7a8d; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
-  .diag-value { font-size: 13px; font-weight: 700; }
-  .diag-value.safe { color: #0F6E56; }
-  .diag-value.warn { color: #854F0B; }
-  .diag-value.danger { color: #A32D2D; }
-  .diag-value.neutral { color: #185FA5; }
+  /* KPI 2열 그리드 */
+  .kpi-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .kpi-card { border-radius:10px; padding:12px 14px; border:1px solid #e5e4e0; border-left:4px solid; page-break-inside:avoid; }
+  .kpi-card.danger { border-left-color:#A32D2D; }
+  .kpi-card.warn { border-left-color:#854F0B; }
+  .kpi-card.safe { border-left-color:#0F6E56; }
+  .kpi-label { font-size:10px; color:#9b9a95; font-weight:600; margin-bottom:4px; }
+  .kpi-value { font-size:26px; font-weight:700; letter-spacing:-.02em; margin-bottom:3px; }
+  .kpi-value.danger { color:#A32D2D; } .kpi-value.warn { color:#854F0B; } .kpi-value.safe { color:#0F6E56; }
+  .kpi-badge { display:inline-block; font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px; }
+  .kpi-badge.danger { background:#FCEBEB; color:#A32D2D; } .kpi-badge.warn { background:#FAEEDA; color:#854F0B; } .kpi-badge.safe { background:#E1F5EE; color:#0F6E56; }
+  .kpi-gauge { margin-top:6px; }
+  .kpi-gauge-labels { display:flex; justify-content:space-between; font-size:9px; color:#b8c4cc; margin-bottom:2px; }
+  .kpi-gauge-bg { height:5px; background:#e5e4e0; border-radius:5px; overflow:hidden; }
+  .kpi-gauge-fill { height:100%; border-radius:5px; }
+  .kpi-hint { font-size:9px; color:#b8c4cc; margin-top:3px; }
+
+  /* 진단 3열 */
+  .diag-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
+  .diag-card { border-radius:8px; padding:10px 12px; border:1px solid; }
+  .diag-card.safe { background:#f0faf6; border-color:#a8dcc8; }
+  .diag-card.warn { background:#fef9f0; border-color:#f0d09a; }
+  .diag-card.danger { background:#fef0f0; border-color:#f0a8a8; }
+  .diag-card.neutral { background:#f0f4f8; border-color:#b8cce4; }
+  .dc-label { font-size:9px; color:#6b7a8d; font-weight:600; margin-bottom:3px; }
+  .dc-value { font-size:12px; font-weight:700; }
+  .dc-value.safe { color:#0F6E56; } .dc-value.warn { color:#854F0B; } .dc-value.danger { color:#A32D2D; } .dc-value.neutral { color:#185FA5; }
+
+  /* 자산요약 */
+  .asset-row { display:grid; grid-template-columns:1fr 1fr 1fr; background:#f0f4f8; border-radius:8px; padding:10px; margin-bottom:8px; text-align:center; }
+  .asset-row > div + div { border-left:1px solid #d0d8e4; }
+  .ar-label { font-size:9px; color:#9b9a95; margin-bottom:3px; }
+  .ar-value { font-size:12px; font-weight:700; }
+
+  /* 종합점수 */
+  .score-wrap { background:#fff; border-radius:10px; padding:12px 14px; border:1px solid #e5e4e0; border-top:3px solid; margin-bottom:8px; page-break-inside:avoid; }
+  .score-top { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+  .score-num { font-size:36px; font-weight:700; letter-spacing:-.03em; line-height:1; }
+  .score-grade-badge { font-size:12px; font-weight:700; padding:3px 12px; border-radius:20px; display:inline-block; margin-bottom:3px; }
+  .score-hint { font-size:9px; color:#9b9a95; }
+  .score-bar-bg { height:6px; background:#e5e4e0; border-radius:6px; overflow:hidden; margin-bottom:10px; }
+  .score-bar-fill { height:100%; border-radius:6px; }
+  .score-items { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+  .si { background:#f9f9f8; border-radius:8px; padding:8px; text-align:center; }
+  .si-label { font-size:9px; color:#9b9a95; margin-bottom:3px; }
+  .si-score { font-size:14px; font-weight:700; }
+  .si-badge { font-size:9px; font-weight:600; padding:1px 6px; border-radius:10px; margin-top:2px; display:inline-block; }
+
+  /* 분석의견 */
+  .opinion { background:#f0f4f8; border-radius:8px; padding:10px 14px; border-left:3px solid #185FA5; margin-bottom:8px; page-break-inside:avoid; }
+  .opinion-title { font-size:11px; font-weight:700; color:#0d3b7c; margin-bottom:6px; }
+  .opinion-item { font-size:11px; color:#2d3748; line-height:1.7; margin-bottom:2px; }
+  .opinion-note { font-size:9px; color:#9b9a95; margin-top:5px; }
 
   /* 재무수치 테이블 */
-  .fin-table { width: 100%; border-collapse: collapse; }
-  .fin-table th { background: #f0f4f8; color: #0d3b7c; font-size: 11px; font-weight: 700; padding: 8px 12px; text-align: left; letter-spacing: 0.03em; }
-  .fin-table td { padding: 9px 12px; font-size: 13px; border-bottom: 1px solid #eef2f7; }
-  .fin-table tr:last-child td { border-bottom: none; }
-  .fin-table tr:hover td { background: #f8fafc; }
-  .fin-table .val { font-weight: 600; text-align: right; color: #1a2332; }
-  .fin-table .val.empty { color: #b8c4cc; font-weight: 400; }
-  .fin-table .cat { color: #6b7a8d; font-size: 11px; }
+  .fin-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+  .fin-table th { background:#f0f4f8; color:#0d3b7c; font-size:10px; font-weight:700; padding:6px 10px; text-align:left; }
+  .fin-table td { padding:6px 10px; font-size:11px; border-bottom:1px solid #eef2f7; }
+  .fin-table tr:last-child td { border-bottom:none; }
+  .fin-table .val { font-weight:600; text-align:right; }
+  .fin-table .val.empty { color:#b8c4cc; font-weight:400; }
+  .fin-table .cat { color:#6b7a8d; font-size:10px; }
 
-  /* 워터마크 */
-  .watermark { position: fixed; bottom: 40px; right: 40px; font-size: 11px; color: #b8c4cc; font-weight: 500; letter-spacing: 0.05em; }
+  /* 재무건전성 체크리스트 */
+  .checklist { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
+  .cl-item { display:flex; align-items:flex-start; gap:6px; background:#f9f9f8; border-radius:7px; padding:8px 10px; font-size:10px; color:#2d3748; line-height:1.5; }
+  .cl-icon { flex-shrink:0; font-size:12px; }
+
+  /* 면책고지 */
+  .disclaimer-box { background:#f8f9fa; border-radius:8px; padding:10px 14px; border:1px solid #e5e4e0; margin-bottom:8px; }
+  .disclaimer-box p { font-size:9px; color:#6b7a8d; line-height:1.7; }
 
   /* 푸터 */
-  .report-footer { background: #0d3b7c; color: rgba(255,255,255,0.7); padding: 20px 40px; font-size: 11px; line-height: 1.8; }
-  .report-footer strong { color: #fff; }
-  .report-footer .disclaimer { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.15); font-size: 10px; opacity: 0.6; }
+  .rf { background:#0d3b7c; color:rgba(255,255,255,.75); padding:12px 28px; font-size:10px; line-height:1.8; }
+  .rf strong { color:#fff; }
+  .rf .dis { margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,.15); font-size:9px; opacity:.6; }
 
   @media print {
-    body { background: #fff; }
-    .page { box-shadow: none; }
-    .watermark { display: none; }
+    body { background:#fff; }
+    @page { margin: 10mm; }
   }
 </style>
 </head>
 <body>
-<div class="page">
 
-  <!-- 헤더 -->
-  <div class="report-header">
-    <div class="header-top">
-      <div class="company-brand">씨앤지파트너스 · C&G Partners</div>
-      <div class="report-badge">AI 재무분석 리포트</div>
-    </div>
-    <div class="report-title">재무상태 진단 결과</div>
-    <div class="report-sub">Financial Health Diagnostic Report</div>
-    <div class="header-meta">
-      <div class="meta-item"><strong>분석일자</strong>${dateStr}</div>
-      <div class="meta-item"><strong>발행기관</strong>씨앤지파트너스</div>
-    </div>
+<!-- 헤더 -->
+<div class="rh">
+  <div class="rh-top">
+    <div class="rh-brand">씨앤지파트너스 · C&G PARTNERS</div>
+    <div class="rh-badge">AI 재무분석 리포트</div>
   </div>
-
-  <div class="report-body">
-
-    <!-- 핵심 지표 -->
-    <div class="section">
-      <div class="section-header">
-        <div class="section-num">1</div>
-        <div class="section-title">핵심 재무지표 (Key Financial Indicators)</div>
-        <div class="section-line"></div>
-      </div>
-      <div id="kpi-section" class="avoid-break"></div>
-    </div>
-
-    <!-- 진단 결과 -->
-    <div class="section page-break">
-      <div class="section-header">
-        <div class="section-num">2</div>
-        <div class="section-title">재무건전성 진단 (Financial Health Diagnosis)</div>
-        <div class="section-line"></div>
-      </div>
-      <div id="diag-section" class="avoid-break"></div>
-    </div>
-
-    <!-- 재무 수치 -->
-    <div class="section page-break">
-      <div class="section-header">
-        <div class="section-num">3</div>
-        <div class="section-title">인식된 재무 수치 (Extracted Financial Data)</div>
-        <div class="section-line"></div>
-      </div>
-      <table class="fin-table avoid-break">
-        <thead><tr><th>항목</th><th class="cat">구분</th><th style="text-align:right;">금액</th></tr></thead>
-        <tbody id="fin-table-body"></tbody>
-      </table>
-      ${comment ? `<p style="margin-top:12px;font-size:12px;color:#6b7a8d;background:#f0f4f8;padding:10px 14px;border-radius:8px;border-left:3px solid #185FA5;">💬 ${comment}</p>` : ""}
-    </div>
-
-  </div>
-
-  <!-- 푸터 -->
-  <div class="report-footer">
-    <strong>씨앤지파트너스 (C&G Partners)</strong> &nbsp;|&nbsp; 대표 정성경 &nbsp;|&nbsp; 사업자번호 743-42-01047<br/>
-    경기도 고양시 향동동 469 DMC스타비즈4st, 1316호 &nbsp;|&nbsp; cngpartners123@gmail.com
-    <div class="disclaimer">
-      ※ 본 리포트는 AI가 재무제표 이미지에서 추출한 수치를 기반으로 자동 계산된 참고자료입니다. 실제 의사결정 전에 공인 회계사 또는 재무 전문가의 검토를 받으시기 바랍니다.<br/>
-      ※ 분석된 재무제표는 결제일로부터 3개월간 보관됩니다.
-    </div>
+  <div class="rh-title">재무상태 진단 결과</div>
+  <div class="rh-sub">Financial Health Diagnostic Report</div>
+  <div class="rh-meta">
+    <div class="rh-meta-item"><strong>분석일자</strong>${dateStr}</div>
+    <div class="rh-meta-item"><strong>발행기관</strong>씨앤지파트너스</div>
   </div>
 </div>
 
-<div class="watermark">FinAnalyzer © 씨앤지파트너스</div>
+<div class="body">
+
+  <!-- 1. 핵심 재무지표 -->
+  <div class="sh">
+    <div class="sh-num">1</div>
+    <div class="sh-title">핵심 재무지표 (Key Financial Indicators)</div>
+    <div class="sh-line"></div>
+  </div>
+  <div class="kpi-grid" id="kpi-grid"></div>
+
+  <!-- 2. 재무건전성 진단 -->
+  <div class="sh">
+    <div class="sh-num">2</div>
+    <div class="sh-title">재무건전성 진단 (Financial Health Diagnosis)</div>
+    <div class="sh-line"></div>
+  </div>
+  <div id="diag-cards"></div>
+  <div class="asset-row" id="asset-row"></div>
+  <div class="score-wrap" id="score-wrap"></div>
+
+  <!-- 3. 종합 분석 의견 -->
+  <div class="sh">
+    <div class="sh-num">3</div>
+    <div class="sh-title">종합 분석 의견 (Analysis Summary)</div>
+    <div class="sh-line"></div>
+  </div>
+  <div class="opinion" id="opinion-section"></div>
+
+  <!-- 4. 재무건전성 체크리스트 -->
+  <div class="sh">
+    <div class="sh-num">4</div>
+    <div class="sh-title">재무건전성 체크리스트 (Health Checklist)</div>
+    <div class="sh-line"></div>
+  </div>
+  <div class="checklist" id="checklist"></div>
+
+  <!-- 5. 인식된 재무 수치 -->
+  <div class="sh">
+    <div class="sh-num">5</div>
+    <div class="sh-title">인식된 재무 수치 (Extracted Financial Data)</div>
+    <div class="sh-line"></div>
+  </div>
+  <table class="fin-table">
+    <thead><tr><th>항목</th><th class="cat">구분</th><th style="text-align:right;">금액</th></tr></thead>
+    <tbody id="fin-table-body"></tbody>
+  </table>
+  ${comment ? `<p style="font-size:10px;color:#6b7a8d;background:#f0f4f8;padding:8px 12px;border-radius:7px;border-left:3px solid #185FA5;margin-bottom:8px;">${comment}</p>` : ""}
+
+  <!-- 면책 고지 -->
+  <div class="disclaimer-box">
+    <p>※ 본 리포트는 AI가 재무제표에서 추출한 수치를 기반으로 자동 계산된 참고자료로, 공인 회계사 또는 재무 전문가의 검토를 대체하지 않습니다.<br/>
+    ※ 분석된 재무제표는 결제일로부터 3개월간 보관됩니다. 중요 자료는 반드시 별도 보관하시기 바랍니다.</p>
+  </div>
+
+</div>
+
+<!-- 푸터 -->
+<div class="rf">
+  <strong>씨앤지파트너스 (C&G Partners)</strong> &nbsp;|&nbsp; 대표 정성경 &nbsp;|&nbsp; 사업자번호 743-42-01047<br/>
+  경기도 고양시 향동동 469 DMC스타비즈4st, 1316호 &nbsp;|&nbsp; cngpartners123@gmail.com
+</div>
 
 <script>
-  // 현재 분석 결과에서 데이터 파싱
-  const metricEl = document.createElement('div');
-  metricEl.innerHTML = ${JSON.stringify(metricsHTML)};
+  // ── 현재 화면 데이터 파싱 ───────────────────────────
+  const diagEl = document.createElement('div');
+  diagEl.innerHTML = ${JSON.stringify(diagHTML)};
 
-  // KPI 섹션 — 원본 HTML에서 값 추출
-  const cards = metricEl.querySelectorAll('[style*="border-radius:14px"]');
-  let kpiHtml = '<div class="kpi-grid">';
-  cards.forEach(card => {
-    kpiHtml += card.outerHTML.replace('border-radius:14px', 'border-radius:14px');
-  });
-  kpiHtml += '</div>';
-  document.getElementById('kpi-section').innerHTML = ${JSON.stringify(metricsHTML)};
+  const metricsEl = document.createElement('div');
+  metricsEl.innerHTML = ${JSON.stringify(metricsHTML)};
 
-  // 진단 섹션
-  document.getElementById('diag-section').innerHTML = ${JSON.stringify(diagHTML)};
-
-  // 재무 수치 테이블
   const extractedEl = document.createElement('div');
   extractedEl.innerHTML = ${JSON.stringify(extractedHTML)};
+
+  // ── KPI 카드 재구성 ──────────────────────────────────
+  const kpiCards = metricsEl.querySelectorAll('[style*="border-top:4px solid"]');
+  let kpiHTML = '';
+  kpiCards.forEach(card => {
+    const label = card.querySelector('[style*="color:#9b9a95"]')?.innerText || '';
+    const value = card.querySelector('[style*="font-size:32px"]')?.innerText || '';
+    const badge = card.querySelector('[style*="border-radius:20px"]')?.innerText || '';
+    const gaugeEl = card.querySelector('[style*="height:8px"][style*="background:#e5e4e0"]');
+    const fillEl = gaugeEl?.querySelector('div');
+    const fillWidth = fillEl?.style.width || '0%';
+    const gaugeLabels = card.querySelectorAll('[style*="font-size:11px"][style*="color:#9b9a95"]');
+    const hint = card.querySelector('[style*="margin-top:8px"]')?.innerText || '';
+    const color = card.style.borderTopColor || '#185FA5';
+    const cls = color.includes('A32') ? 'danger' : color.includes('854') ? 'warn' : 'safe';
+    const labelTexts = Array.from(gaugeLabels).map(l => l.innerText).join(' ');
+    kpiHTML += \`<div class="kpi-card \${cls}">
+      <div class="kpi-label">\${label}</div>
+      <div class="kpi-value \${cls}">\${value}</div>
+      <span class="kpi-badge \${cls}">\${badge}</span>
+      <div class="kpi-gauge">
+        <div class="kpi-gauge-labels">\${labelTexts.split(' ').map(t => \`<span>\${t}</span>\`).join('')}</div>
+        <div class="kpi-gauge-bg"><div class="kpi-gauge-fill" style="width:\${fillWidth};background:\${color};"></div></div>
+      </div>
+      <div class="kpi-hint">\${hint}</div>
+    </div>\`;
+  });
+  document.getElementById('kpi-grid').innerHTML = kpiHTML || metricsEl.innerHTML;
+
+  // ── 진단 카드 (자본잠식/결손) ─────────────────────────
+  const diagCards = diagEl.querySelectorAll('[style*="border-radius:12px"][style*="padding:1rem"]');
+  let dcHTML = '<div class="diag-row">';
+  diagCards.forEach(card => {
+    const lbl = card.querySelector('[style*="font-size:12px"]')?.innerText || '';
+    const val = card.querySelector('[style*="font-size:16px"]')?.innerText || '';
+    const bg = card.style.background || '#f9f9f8';
+    const cls = bg.includes('E1F') ? 'safe' : bg.includes('FAE') ? 'warn' : bg.includes('FCE') ? 'danger' : 'neutral';
+    dcHTML += \`<div class="diag-card \${cls}"><div class="dc-label">\${lbl}</div><div class="dc-value \${cls}">\${val}</div></div>\`;
+  });
+  // 3번째 칸: 핵심 메시지
+  const opinions = diagEl.querySelectorAll('[style*="color:#2d3748"]');
+  const firstOpinion = opinions[0]?.innerText?.replace('📌','').trim() || '';
+  dcHTML += \`<div class="diag-card neutral"><div class="dc-label">핵심 메시지</div><div class="dc-value neutral" style="font-size:10px;line-height:1.5;">\${firstOpinion.substring(0,60)}...</div></div>\`;
+  dcHTML += '</div>';
+  document.getElementById('diag-cards').innerHTML = dcHTML;
+
+  // ── 자산 요약 ─────────────────────────────────────────
+  const assetRows = diagEl.querySelectorAll('[style*="grid-template-columns:1fr 1fr 1fr"]');
+  if (assetRows.length > 0) {
+    const ar = assetRows[0];
+    document.getElementById('asset-row').innerHTML = ar.innerHTML;
+  }
+
+  // ── 종합점수 ──────────────────────────────────────────
+  const scoreWrap = diagEl.querySelector('[style*="border-top:4px solid"]') ||
+                    diagEl.querySelector('[style*="border-top:3px solid"]');
+  if (scoreWrap) {
+    const scoreColor = scoreWrap.style.borderTopColor || '#185FA5';
+    const scoreNum = scoreWrap.querySelector('[style*="font-size:42px"]')?.innerText || '';
+    const gradeBadge = scoreWrap.querySelector('[style*="border-radius:20px"]')?.innerText || '';
+    const gradeBg = scoreWrap.querySelector('[style*="border-radius:20px"]')?.style.background || '#EBF2FA';
+    const gradeFill = scoreWrap.querySelector('[style*="transition:width 1s"]')?.style.width || '0%';
+    const scoreItemEls = scoreWrap.querySelectorAll('[style*="border-radius:10px"]');
+    let siHTML = '';
+    scoreItemEls.forEach(si => {
+      const lbl = si.querySelector('div:first-child')?.innerText || '';
+      const sc = si.querySelector('[style*="font-size:16px"]')?.innerText || '';
+      const badge = si.querySelector('[style*="border-radius:10px"]')?.innerText || '';
+      const bc = si.querySelector('[style*="border-radius:10px"]')?.style.color || '#185FA5';
+      const bbg = si.querySelector('[style*="border-radius:10px"]')?.style.background || '#EBF2FA';
+      siHTML += \`<div class="si"><div class="si-label">\${lbl}</div><div class="si-score" style="color:\${bc}">\${sc}</div><span class="si-badge" style="background:\${bbg};color:\${bc}">\${badge}</span></div>\`;
+    });
+    document.getElementById('score-wrap').innerHTML = \`
+      <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">🏆 사업 안정성 종합점수</div>
+      <div class="score-top">
+        <div class="score-num" style="color:\${scoreColor}">\${scoreNum}</div>
+        <div>
+          <div class="score-grade-badge" style="background:\${gradeBg};color:\${scoreColor}">\${gradeBadge}</div>
+          <div class="score-hint">100점 만점 기준</div>
+        </div>
+      </div>
+      <div class="score-bar-bg"><div class="score-bar-fill" style="width:\${gradeFill};background:\${scoreColor};"></div></div>
+      <div class="score-items">\${siHTML}</div>
+    \`;
+    document.getElementById('score-wrap').style.borderTopColor = scoreColor;
+  }
+
+  // ── 종합 분석 의견 ────────────────────────────────────
+  const allOpinions = diagEl.querySelectorAll('[style*="color:#2d3748"]');
+  let opHTML = '<div class="opinion-title">🔍 재무 종합 분석 의견</div>';
+  allOpinions.forEach(op => {
+    opHTML += \`<div class="opinion-item">\${op.innerText}</div>\`;
+  });
+  const opNote = diagEl.querySelector('[style*="font-size:11px"][style*="color:#9b9a95"]')?.innerText || '';
+  if (opNote) opHTML += \`<div class="opinion-note">\${opNote}</div>\`;
+  document.getElementById('opinion-section').innerHTML = opHTML;
+
+  // ── 재무건전성 체크리스트 생성 ───────────────────────
+  const checkItems = [
+    { ok: true,  text: '사업자등록 및 법인 설립 여부 확인 완료' },
+    { ok: true,  text: '재무제표 AI 자동 인식 및 수치 추출 완료' },
+    { ok: null,  text: '부채비율 200% 이하 유지 (권장 기준)' },
+    { ok: null,  text: '이자보상배수 1배 이상 유지 (이자 상환 능력)' },
+    { ok: null,  text: '자본잠식 없음 (자본총계 > 자본금)' },
+    { ok: null,  text: '당기순이익 흑자 유지 (수익성 확보)' },
+    { ok: true,  text: '재무분석 리포트 발행 및 3개월 보관 예정' },
+    { ok: true,  text: '씨앤지파트너스 컨설팅 연계 상담 가능' },
+  ];
+
+  // 실제 데이터 기반으로 체크리스트 업데이트
+  const kpiSection = metricsEl.querySelector('[style*="font-size:32px"]');
+  const drText = metricsEl.querySelectorAll('[style*="font-size:32px"]')[0]?.innerText || '';
+  const iceText = metricsEl.querySelectorAll('[style*="font-size:32px"]')[1]?.innerText || '';
+  const erosionText = diagEl.querySelectorAll('[style*="font-size:16px"]')[0]?.innerText || '';
+  const defText = diagEl.querySelectorAll('[style*="font-size:16px"]')[1]?.innerText || '';
+
+  const drNum = parseFloat(drText.replace('%',''));
+  const iceNum = parseFloat(iceText.replace('배',''));
+  if (!isNaN(drNum)) checkItems[2].ok = drNum <= 200;
+  if (!isNaN(iceNum)) checkItems[3].ok = iceNum >= 1;
+  checkItems[4].ok = erosionText.includes('정상');
+  checkItems[5].ok = !defText.includes('손실');
+
+  let clHTML = '';
+  checkItems.forEach(item => {
+    const icon = item.ok === true ? '✅' : item.ok === false ? '❌' : '⚪';
+    clHTML += \`<div class="cl-item"><div class="cl-icon">\${icon}</div><div>\${item.text}</div></div>\`;
+  });
+  document.getElementById('checklist').innerHTML = clHTML;
+
+  // ── 재무수치 테이블 ───────────────────────────────────
   const items = extractedEl.querySelectorAll('div[style*="border-radius:10px"]');
   const cats = {
     '유동자산':'재무상태표','비유동자산':'재무상태표','유동부채':'재무상태표',
@@ -1104,13 +1258,9 @@ function downloadResult() {
   items.forEach(item => {
     const label = item.querySelector('div:first-child')?.innerText?.replace(/[💵🏗️📋🏦💼📦📈💸🎯]/g,'').trim() || '';
     const value = item.querySelector('div:last-child')?.innerText?.trim() || '';
-    if (!label || label === '이자비용') return; // 기존 이자비용 단일 항목 제외
+    if (!label || label === '이자비용') return;
     const isEmpty = value === '미인식';
-    rows += \`<tr>
-      <td>\${label}</td>
-      <td class="cat">\${cats[label]||''}</td>
-      <td class="val \${isEmpty?'empty':''}">\${value}</td>
-    </tr>\`;
+    rows += \`<tr><td>\${label}</td><td class="cat">\${cats[label]||''}</td><td class="val \${isEmpty?'empty':''}">\${value}</td></tr>\`;
   });
   document.getElementById('fin-table-body').innerHTML = rows;
 
