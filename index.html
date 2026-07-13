@@ -194,7 +194,7 @@
         <input type="tel" id="reg-phone" placeholder="예: 010-1234-5678" />
       </div>
       <div class="field">
-        <label>이메일</label>
+        <label>이메일 <span style="color:var(--text3);font-weight:400;">(이메일이 ID로 사용됩니다)</span></label>
         <input type="email" id="reg-email" placeholder="name@company.com" />
       </div>
       <div class="field">
@@ -237,6 +237,8 @@
     <a class="logo" href="#" onclick="showPage('dashboard')">Fin<span>Analyzer</span></a>
     <div class="header-right">
       <span class="credit-badge" id="header-credits">0 크레딧</span>
+      <button class="btn" onclick="showPage('landing')">홈</button>
+      <button class="btn" onclick="showPage('myinfo')">내 정보</button>
       <button class="btn" onclick="showPage('charge')">충전</button>
       <button class="btn" onclick="doLogout()">로그아웃</button>
     </div>
@@ -322,6 +324,44 @@
       <button class="btn btn-primary btn-full mt1" onclick="downloadResult()" style="display:flex;align-items:center;justify-content:center;gap:8px;">
         📥 분석 결과 다운로드 (PDF)
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 내 정보 ───────────────────────── -->
+<div id="page-myinfo" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('dashboard')">Fin<span>Analyzer</span></a>
+    <div class="header-right">
+      <span class="credit-badge" id="myinfo-credits">0 크레딧</span>
+      <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
+    </div>
+  </header>
+  <div class="main" style="max-width:480px;">
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">내 정보</h2>
+
+    <!-- 비밀번호 확인 -->
+    <div class="card" id="myinfo-verify-card">
+      <div class="card-title" style="margin-bottom:.75rem;">본인 확인</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:1rem;">가입 정보를 확인하려면 비밀번호를 입력해주세요.</p>
+      <div class="field">
+        <label>비밀번호</label>
+        <input type="password" id="myinfo-pw" placeholder="비밀번호 입력" />
+      </div>
+      <div id="myinfo-error" class="error-msg"></div>
+      <button class="btn btn-primary btn-full mt1" onclick="verifyMyInfo()">확인하기</button>
+    </div>
+
+    <!-- 가입 정보 (확인 후 표시) -->
+    <div class="card hidden" id="myinfo-detail-card">
+      <div class="card-title" style="margin-bottom:.75rem;">가입 정보</div>
+      <div class="diag-list" style="display:flex;flex-direction:column;gap:8px;">
+        <div class="diag-item"><div><div class="di-label">회사명</div></div><span id="mi-company" style="font-size:14px;font-weight:500;"></span></div>
+        <div class="diag-item"><div><div class="di-label">대표자명</div></div><span id="mi-name" style="font-size:14px;font-weight:500;"></span></div>
+        <div class="diag-item"><div><div class="di-label">휴대폰번호</div></div><span id="mi-phone" style="font-size:14px;font-weight:500;"></span></div>
+        <div class="diag-item"><div><div class="di-label">이메일 (ID)</div></div><span id="mi-email" style="font-size:14px;font-weight:500;"></span></div>
+        <div class="diag-item"><div><div class="di-label">보유 크레딧</div></div><span id="mi-credits" style="font-size:14px;font-weight:500;"></span></div>
+      </div>
     </div>
   </div>
 </div>
@@ -499,6 +539,12 @@ function showPage(name) {
     const mCompany = document.getElementById("m-company");
     if (mCompany && userCompanyName && !mCompany.value) mCompany.value = userCompanyName;
   }
+  if (name === "myinfo") {
+    document.getElementById("myinfo-pw").value = "";
+    document.getElementById("myinfo-error").style.display = "none";
+    document.getElementById("myinfo-verify-card").classList.remove("hidden");
+    document.getElementById("myinfo-detail-card").classList.add("hidden");
+  }
 }
 
 function toast(msg) {
@@ -591,6 +637,24 @@ function doLogout() {
   localStorage.removeItem("fa_credits");
   localStorage.removeItem("fa_company");
   showPage("landing");
+}
+
+// ── 내 정보 확인 ──────────────────────────────────────────────
+async function verifyMyInfo() {
+  const pw = document.getElementById("myinfo-pw").value;
+  const errEl = document.getElementById("myinfo-error");
+  errEl.style.display = "none";
+  if (!pw) { errEl.textContent = "비밀번호를 입력해주세요."; errEl.style.display = "block"; return; }
+  try {
+    const d = await api("POST", "/auth/verify", { password: pw });
+    document.getElementById("mi-company").textContent = d.company_name || "-";
+    document.getElementById("mi-name").textContent = d.rep_name || "-";
+    document.getElementById("mi-phone").textContent = d.phone || "-";
+    document.getElementById("mi-email").textContent = d.email;
+    document.getElementById("mi-credits").textContent = d.credits.toLocaleString() + " 크레딧";
+    document.getElementById("myinfo-verify-card").classList.add("hidden");
+    document.getElementById("myinfo-detail-card").classList.remove("hidden");
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; }
 }
 
 // ── 이미지 업로드 ──────────────────────────────────────────────

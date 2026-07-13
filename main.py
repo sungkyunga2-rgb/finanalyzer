@@ -39,6 +39,9 @@ CREDIT_PACKAGES = {
 class UserCreate(BaseModel):
     email: str
     password: str
+    company_name: str = ""
+    rep_name: str = ""
+    phone: str = ""
 
 class UserLogin(BaseModel):
     email: str
@@ -83,11 +86,14 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
     import hashlib
     pw_hash = hashlib.sha256(body.password.encode()).hexdigest()
     token = str(uuid.uuid4())
-    user = models.User(email=body.email, password_hash=pw_hash, token=token, credits=1000)
+    user = models.User(
+        email=body.email, password_hash=pw_hash, token=token, credits=1000,
+        company_name=body.company_name, rep_name=body.rep_name, phone=body.phone
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return {"token": token, "email": user.email, "credits": user.credits}
+    return {"token": token, "email": user.email, "credits": user.credits, "company_name": user.company_name}
 
 # 로그인
 @app.post("/auth/login")
@@ -100,12 +106,34 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
     ).first()
     if not user:
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 틀렸습니다.")
-    return {"token": user.token, "email": user.email, "credits": user.credits}
+    return {"token": user.token, "email": user.email, "credits": user.credits, "company_name": user.company_name}
 
 # 내 크레딧 조회
 @app.get("/me")
 def me(user: models.User = Depends(get_current_user)):
     return {"email": user.email, "credits": user.credits}
+
+# 비밀번호 재확인 후 상세 정보 조회
+class PasswordVerify(BaseModel):
+    password: str
+
+@app.post("/auth/verify")
+def verify_password(
+    body: PasswordVerify,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    import hashlib
+    pw_hash = hashlib.sha256(body.password.encode()).hexdigest()
+    if pw_hash != user.password_hash:
+        raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
+    return {
+        "email": user.email,
+        "company_name": user.company_name,
+        "rep_name": user.rep_name,
+        "phone": user.phone,
+        "credits": user.credits
+    }
 
 # 결제 검증 + 크레딧 지급 (포트원 V2)
 @app.post("/payments/confirm")
