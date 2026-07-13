@@ -11,6 +11,9 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     token         = Column(String, unique=True, index=True)
     credits       = Column(Integer, default=0)
+    company_name  = Column(String, default="")
+    rep_name      = Column(String, default="")
+    phone         = Column(String, default="")
     created_at    = Column(DateTime, default=datetime.utcnow)
 
 class Payment(Base):
