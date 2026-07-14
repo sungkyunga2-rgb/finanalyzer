@@ -954,7 +954,7 @@ function renderResults(d) {
     </div>` : "";
 
   document.getElementById("diagList").innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;page-break-inside:avoid;break-inside:avoid;">
       <div style="background:${clsBg[erosionClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[erosionClass]}33;">
         <div style="font-size:12px;color:#6b6a65;margin-bottom:4px;font-weight:500;">🏢 자본잠식 여부</div>
         <div style="font-size:16px;font-weight:700;color:${clsColor[erosionClass]};">${clsIcon[erosionClass]} ${erosionStatus}</div>
@@ -964,11 +964,11 @@ function renderResults(d) {
         <div style="font-size:16px;font-weight:700;color:${clsColor[defClass]};">${clsIcon[defClass]} ${defText}</div>
       </div>
     </div>
-    <div style="background:${clsBg[loanClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[loanClass]}33;margin-bottom:10px;">
+    <div style="background:${clsBg[loanClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[loanClass]}33;margin-bottom:10px;page-break-inside:avoid;break-inside:avoid;">
       <div style="font-size:12px;color:#6b6a65;margin-bottom:4px;font-weight:500;">💳 매출 대비 대출 비율</div>
       <div style="font-size:16px;font-weight:700;color:${clsColor[loanClass]};">${clsIcon[loanClass]} ${loanRatio !== null ? loanRatio.toFixed(1) + "%" : "N/A"} (${loanLabel})</div>
     </div>
-    <div style="background:#f9f9f8;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;margin-bottom:10px;">
+    <div style="background:#f9f9f8;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;margin-bottom:10px;page-break-inside:avoid;break-inside:avoid;">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
         <div>
           <div style="font-size:11px;color:#9b9a95;margin-bottom:4px;">총자산</div>
@@ -1067,7 +1067,7 @@ function downloadResult() {
   .body { padding: 16px 28px; }
 
   /* 섹션 헤더 */
-  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:14px; }
+  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:14px; page-break-after:avoid; break-after:avoid; }
   .sh:first-child { margin-top:0; }
   .sh-num { width:20px; height:20px; background:#185FA5; color:#fff; border-radius:50%; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .sh-title { font-size:12px; font-weight:700; color:#0d3b7c; }
@@ -1138,7 +1138,7 @@ function downloadResult() {
 
   /* 재무건전성 체크리스트 */
   .checklist { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
-  .cl-item { display:flex; align-items:flex-start; gap:6px; background:#f9f9f8; border-radius:7px; padding:8px 10px; font-size:10px; color:#2d3748; line-height:1.5; }
+  .cl-item { display:flex; align-items:flex-start; gap:6px; background:#f9f9f8; border-radius:7px; padding:8px 10px; font-size:10px; color:#2d3748; line-height:1.5; page-break-inside:avoid; break-inside:avoid; }
   .cl-icon { flex-shrink:0; font-size:12px; }
 
   /* 면책고지 */
@@ -1191,19 +1191,18 @@ function downloadResult() {
   </div>
   <div id="diag-section"></div>
 
-  <!-- 3. 종합 분석 의견 -->
-  <div class="sh">
-    <div class="sh-num">3</div>
-    <div class="sh-title">종합 분석 의견 (Analysis Summary)</div>
-    <div class="sh-line"></div>
+  <!-- 3. 종합 분석 의견: 1,2번 섹션이 1페이지를 거의 채우므로 항상 2페이지 맨 위에서 시작 (헤더+본문 분리 방지) -->
+  <div style="page-break-before:always;break-before:always;page-break-inside:avoid;break-inside:avoid;">
+    <div class="sh" style="margin-top:0;">
+      <div class="sh-num">3</div>
+      <div class="sh-title">종합 분석 의견 (Analysis Summary)</div>
+      <div class="sh-line"></div>
+    </div>
+    <div class="opinion" id="opinion-section"></div>
   </div>
-  <div class="opinion" id="opinion-section"></div>
-
-  <!-- 2페이지 시작 -->
-  <div style="page-break-before:always;break-before:always;"></div>
 
   <!-- 4. 재무건전성 체크리스트 -->
-  <div class="sh" style="margin-top:0;">
+  <div class="sh">
     <div class="sh-num">4</div>
     <div class="sh-title">재무건전성 체크리스트 (Health Checklist)</div>
     <div class="sh-line"></div>
