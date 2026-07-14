@@ -27,8 +27,8 @@
     --accent-bg: #EBF2FA;
     --success: #0F6E56;
     --success-bg: #E1F5EE;
-    --warn: #854F0B;
-    --warn-bg: #FAEEDA;
+    --warn: #B8860B;
+    --warn-bg: #FEF6D8;
     --danger: #A32D2D;
     --danger-bg: #FCEBEB;
     --radius: 10px;
@@ -788,8 +788,8 @@ function renderResults(d) {
   const drClass  = dr  === null ? "warn" : dr  > 400 ? "danger" : dr  > 200 ? "warn" : "safe";
   const iceClass = ice === null ? "warn" : ice < 1   ? "danger" : ice <  2  ? "warn" : "safe";
 
-  const clsColor = { safe: "#0F6E56", warn: "#854F0B", danger: "#A32D2D" };
-  const clsBg    = { safe: "#E1F5EE", warn: "#FAEEDA", danger: "#FCEBEB" };
+  const clsColor = { safe: "#0F6E56", warn: "#B8860B", danger: "#A32D2D" };
+  const clsBg    = { safe: "#E1F5EE", warn: "#FEF6D8", danger: "#FCEBEB" };
   const clsIcon  = { safe: "✅", warn: "⚠️", danger: "🚨" };
   const clsLabel = { safe: "양호", warn: "주의", danger: "위험" };
 
@@ -906,7 +906,7 @@ function renderResults(d) {
   const scorePct = maxScore > 0 ? Math.round(scoreTotal / maxScore * 100) : 0;
   const scoreGrade = scorePct >= 80 ? { label: "A (우수)", color: "#0F6E56", bg: "#E1F5EE" }
                    : scorePct >= 60 ? { label: "B (양호)", color: "#185FA5", bg: "#EBF2FA" }
-                   : scorePct >= 40 ? { label: "C (주의)", color: "#854F0B", bg: "#FAEEDA" }
+                   : scorePct >= 40 ? { label: "C (주의)", color: "#B8860B", bg: "#FEF6D8" }
                    : { label: "D (위험)", color: "#A32D2D", bg: "#FCEBEB" };
 
   const stabilityHTML = `
@@ -925,8 +925,8 @@ function renderResults(d) {
       <div style="display:grid;grid-template-columns:repeat(${scoreItems.length},1fr);gap:8px;">
         ${scoreItems.map(item => {
           const pct = Math.round(item.score / item.max * 100);
-          const c = item.comment === "우수" ? "#0F6E56" : item.comment === "보통" || item.comment === "주의" ? "#854F0B" : "#A32D2D";
-          const bg = item.comment === "우수" ? "#E1F5EE" : item.comment === "보통" || item.comment === "주의" ? "#FAEEDA" : "#FCEBEB";
+          const c = item.comment === "우수" ? "#0F6E56" : item.comment === "보통" || item.comment === "주의" ? "#B8860B" : "#A32D2D";
+          const bg = item.comment === "우수" ? "#E1F5EE" : item.comment === "보통" || item.comment === "주의" ? "#FEF6D8" : "#FCEBEB";
           return `<div style="background:#f9f9f8;border-radius:10px;padding:10px;text-align:center;page-break-inside:avoid;break-inside:avoid;">
             <div style="font-size:10px;color:#9b9a95;margin-bottom:4px;">${item.label}</div>
             <div style="font-size:16px;font-weight:700;color:${c};">${item.score}<span style="font-size:10px;color:#9b9a95;">/${item.max}</span></div>
@@ -1061,13 +1061,13 @@ function downloadResult() {
   .kpi-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
   .kpi-card { border-radius:10px; padding:12px 14px; border:1px solid #e5e4e0; border-left:4px solid; page-break-inside:avoid; }
   .kpi-card.danger { border-left-color:#A32D2D; }
-  .kpi-card.warn { border-left-color:#854F0B; }
+  .kpi-card.warn { border-left-color:#B8860B; }
   .kpi-card.safe { border-left-color:#0F6E56; }
   .kpi-label { font-size:10px; color:#9b9a95; font-weight:600; margin-bottom:4px; }
   .kpi-value { font-size:26px; font-weight:700; letter-spacing:-.02em; margin-bottom:3px; }
-  .kpi-value.danger { color:#A32D2D; } .kpi-value.warn { color:#854F0B; } .kpi-value.safe { color:#0F6E56; }
+  .kpi-value.danger { color:#A32D2D; } .kpi-value.warn { color:#B8860B; } .kpi-value.safe { color:#0F6E56; }
   .kpi-badge { display:inline-block; font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px; }
-  .kpi-badge.danger { background:#FCEBEB; color:#A32D2D; } .kpi-badge.warn { background:#FAEEDA; color:#854F0B; } .kpi-badge.safe { background:#E1F5EE; color:#0F6E56; }
+  .kpi-badge.danger { background:#FCEBEB; color:#A32D2D; } .kpi-badge.warn { background:#FEF6D8; color:#B8860B; } .kpi-badge.safe { background:#E1F5EE; color:#0F6E56; }
   .kpi-gauge { margin-top:6px; }
   .kpi-gauge-labels { display:flex; justify-content:space-between; font-size:9px; color:#b8c4cc; margin-bottom:2px; }
   .kpi-gauge-bg { height:5px; background:#e5e4e0; border-radius:5px; overflow:hidden; }
@@ -1083,7 +1083,7 @@ function downloadResult() {
   .diag-card.neutral { background:#f0f4f8; border-color:#b8cce4; }
   .dc-label { font-size:9px; color:#6b7a8d; font-weight:600; margin-bottom:3px; }
   .dc-value { font-size:12px; font-weight:700; }
-  .dc-value.safe { color:#0F6E56; } .dc-value.warn { color:#854F0B; } .dc-value.danger { color:#A32D2D; } .dc-value.neutral { color:#185FA5; }
+  .dc-value.safe { color:#0F6E56; } .dc-value.warn { color:#B8860B; } .dc-value.danger { color:#A32D2D; } .dc-value.neutral { color:#185FA5; }
 
   /* 자산요약 */
   .asset-row { display:grid; grid-template-columns:1fr 1fr 1fr; background:#f0f4f8; border-radius:8px; padding:10px; margin-bottom:8px; text-align:center; }
