@@ -785,7 +785,7 @@ function renderResults(d) {
   const dr  = d.total_equity ? tl / d.total_equity * 100 : null;
   const ice = (d.interest_expense > 0 && d.operating_income !== null) ? d.operating_income / d.interest_expense : null;
 
-  const drClass  = dr  === null ? "warn" : dr  > 200 ? "danger" : dr  > 100 ? "warn" : "safe";
+  const drClass  = dr  === null ? "warn" : dr  > 400 ? "danger" : dr  > 200 ? "warn" : "safe";
   const iceClass = ice === null ? "warn" : ice < 1   ? "danger" : ice <  2  ? "warn" : "safe";
 
   const clsColor = { safe: "#0F6E56", warn: "#854F0B", danger: "#A32D2D" };
@@ -838,7 +838,7 @@ function renderResults(d) {
       <div style="font-size:32px;font-weight:700;color:${clsColor[drClass]};letter-spacing:-0.02em;">${dr !== null ? dr.toFixed(1) + "%" : "N/A"}</div>
       <div style="display:inline-block;background:${clsBg[drClass]};color:${clsColor[drClass]};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:6px;">${clsIcon[drClass]} ${clsLabel[drClass]}</div>
       ${drGauge}
-      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">200% 초과 시 위험 · 100% 이하 양호</div>
+      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">400% 초과 시 위험 · 200% 이하 양호</div>
     </div>
     <div style="background:#fff;border-radius:14px;padding:1.25rem;border:1px solid #e5e4e0;border-top:4px solid ${clsColor[iceClass]};">
       <div style="font-size:12px;color:#9b9a95;margin-bottom:6px;font-weight:500;">💰 이자보상배수</div>
@@ -855,8 +855,8 @@ function renderResults(d) {
 
   // 부채비율 코멘트
   if (dr !== null) {
-    if (dr > 200) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 위험 수준입니다. 부채가 자본의 2배를 초과하여 적극적인 부채 관리가 필요합니다.`);
-    else if (dr > 100) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 주의 수준입니다. 부채 규모를 점진적으로 축소하는 것이 바람직합니다.`);
+    if (dr > 400) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 위험 수준입니다. 부채가 자본의 4배를 초과하여 적극적인 부채 관리가 필요합니다.`);
+    else if (dr > 200) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 주의 수준입니다. 부채 규모를 점진적으로 축소하는 것이 바람직합니다.`);
     else comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 양호한 수준입니다. 안정적인 재무구조를 유지하고 있습니다.`);
   }
 
@@ -881,9 +881,9 @@ function renderResults(d) {
 
   // 부채비율 점수 (30점)
   if (dr !== null) {
-    const s = dr <= 100 ? 30 : dr <= 150 ? 24 : dr <= 200 ? 16 : dr <= 300 ? 8 : 2;
+    const s = dr <= 200 ? 30 : dr <= 300 ? 24 : dr <= 400 ? 16 : dr <= 500 ? 8 : 2;
     scoreTotal += s; scoreCnt++;
-    scoreItems.push({ label: "부채비율", score: s, max: 30, comment: dr <= 100 ? "우수" : dr <= 200 ? "보통" : "위험" });
+    scoreItems.push({ label: "부채비율", score: s, max: 30, comment: dr <= 200 ? "우수" : dr <= 400 ? "보통" : "위험" });
   }
   // 이자보상배수 점수 (25점)
   if (ice !== null) {
@@ -1274,7 +1274,7 @@ function downloadResult() {
   const checkItems = [
     { ok: true,  text: '사업자등록 및 법인 설립 여부 확인 완료' },
     { ok: true,  text: '재무제표 AI 자동 인식 및 수치 추출 완료' },
-    { ok: null,  text: '부채비율 200% 이하 유지 (권장 기준)' },
+    { ok: null,  text: '부채비율 400% 이하 유지 (권장 기준)' },
     { ok: null,  text: '이자보상배수 1배 이상 유지 (이자 상환 능력)' },
     { ok: null,  text: '자본잠식 없음 (자본총계 > 자본금)' },
     { ok: null,  text: '당기순이익 흑자 유지 (수익성 확보)' },
@@ -1285,7 +1285,7 @@ function downloadResult() {
   const iceNum = parseFloat((metricsEl.querySelectorAll('[style*="font-size:32px"]')[1]?.innerText || '').replace('배',''));
   const erosionText = diagEl.querySelectorAll('[style*="font-size:16px"]')[0]?.innerText || '';
   const defText     = diagEl.querySelectorAll('[style*="font-size:16px"]')[1]?.innerText || '';
-  if (!isNaN(drNum))  checkItems[2].ok = drNum <= 200;
+  if (!isNaN(drNum))  checkItems[2].ok = drNum <= 400;
   if (!isNaN(iceNum)) checkItems[3].ok = iceNum >= 1;
   checkItems[4].ok = erosionText.includes('정상');
   checkItems[5].ok = !defText.includes('손실');
