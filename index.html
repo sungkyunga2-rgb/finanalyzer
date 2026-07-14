@@ -965,13 +965,8 @@ function renderResults(d) {
       </div>
     </div>
     <div style="background:${clsBg[loanClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[loanClass]}33;margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-size:12px;color:#6b6a65;margin-bottom:4px;font-weight:500;">💳 매출 대비 대출 비율</div>
-          <div style="font-size:16px;font-weight:700;color:${clsColor[loanClass]};">${clsIcon[loanClass]} ${loanRatio !== null ? loanRatio.toFixed(1) + "%" : "N/A"} (${loanLabel})</div>
-        </div>
-        <div style="font-size:11px;color:#9b9a95;text-align:right;">0~15% 적정<br/>15~30% 주의<br/>30%↑ 과다</div>
-      </div>
+      <div style="font-size:12px;color:#6b6a65;margin-bottom:4px;font-weight:500;">💳 매출 대비 대출 비율</div>
+      <div style="font-size:16px;font-weight:700;color:${clsColor[loanClass]};">${clsIcon[loanClass]} ${loanRatio !== null ? loanRatio.toFixed(1) + "%" : "N/A"} (${loanLabel})</div>
     </div>
     <div style="background:#f9f9f8;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;margin-bottom:10px;">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
