@@ -171,6 +171,23 @@ def verify_password(
         "credits": user.credits
     }
 
+# 사업자등록번호 수정
+class BusinessNumberUpdate(BaseModel):
+    business_number: str
+
+@app.post("/auth/update-business-number")
+def update_business_number(
+    body: BusinessNumberUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    biz = body.business_number.strip()
+    if not biz:
+        raise HTTPException(status_code=400, detail="사업자등록번호를 입력해주세요.")
+    user.business_number = biz
+    db.commit()
+    return {"business_number": user.business_number}
+
 # 결제 검증 + 크레딧 지급 (포트원 V2)
 @app.post("/payments/confirm")
 async def confirm_payment(
