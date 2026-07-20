@@ -1465,7 +1465,7 @@ function downloadResult() {
     { ok: null,  text: '이자보상배수 1배 이상 유지 (이자 상환 능력)' },
     { ok: null,  text: '자본잠식 없음 (자본총계 > 자본금)' },
     { ok: null,  text: '당기순이익 흑자 유지 (수익성 확보)' },
-    { ok: null,  text: '결손 없음 (누적 손실 미발생)' },
+    { ok: true,  text: '결손 없음 (누적 손실 미발생)' },
     { ok: true,  text: '정책자금 연계 가능' },
   ];
   const drNum  = parseFloat((metricsEl.querySelectorAll('[style*="font-size:32px"]')[0]?.innerText || '').replace('%',''));
@@ -1477,6 +1477,12 @@ function downloadResult() {
   checkItems[4].ok = erosionText.includes('정상');
   checkItems[5].ok = !defText.includes('손실');
   checkItems[6].ok = !defText.includes('손실');
+  // 부채비율 400% 초과 또는 이자보상배수 1배 이하 → 정책자금 연계 불가능
+  const policyBlocked = (!isNaN(drNum) && drNum >= 400) || (!isNaN(iceNum) && iceNum <= 1);
+  if (policyBlocked) {
+    checkItems[7].ok = false;
+    checkItems[7].text = '정책자금 연계 불가능 (재무 기준 미충족)';
+  }
   document.getElementById('checklist').innerHTML = checkItems.map(item => {
     const icon = item.ok === true ? '✅' : item.ok === false ? '❌' : '⚪';
     return \`<div class="cl-item"><div class="cl-icon">\${icon}</div><div>\${item.text}</div></div>\`;
