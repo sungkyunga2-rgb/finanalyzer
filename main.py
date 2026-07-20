@@ -53,10 +53,9 @@ GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY", "")       # Google AI Studio > 
 COST_PER_ANALYSIS = 10  # 분석 1회당 차감 크레딧
 
 CREDIT_PACKAGES = {
-    "basic":    {"price": 1000,  "credits": 10,  "label": "기본 (1회)"},
-    "standard": {"price": 10000, "credits": 110, "label": "스탠다드 (11회)"},
-    "premium":  {"price": 30000, "credits": 360, "label": "프리미엄 (36회)"},
-    "vip":      {"price": 50000, "credits": 650, "label": "VIP (65회)"},
+    "single":   {"price": 9900,  "credits": 10,  "label": "1건"},
+    "standard": {"price": 49500, "credits": 50,  "label": "5건"},
+    "mega":     {"price": 99000, "credits": 130, "label": "10+3건 (총 13건)"},
 }
 
 
