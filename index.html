@@ -1135,7 +1135,7 @@ function downloadResult() {
   .body { padding: 16px 28px; }
 
   /* 섹션 헤더 */
-  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:14px; }
+  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:14px; page-break-after:avoid; break-after:avoid; page-break-inside:avoid; break-inside:avoid; }
   .sh:first-child { margin-top:0; }
   .sh-num { width:20px; height:20px; background:#185FA5; color:#fff; border-radius:50%; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .sh-title { font-size:12px; font-weight:700; color:#0d3b7c; }
@@ -1197,6 +1197,8 @@ function downloadResult() {
 
   /* 재무수치 테이블 */
   .fin-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+  .fin-table tr { page-break-inside:avoid; break-inside:avoid; }
+  .fin-table thead { display:table-header-group; }
   .fin-table th { background:#f0f4f8; color:#0d3b7c; font-size:10px; font-weight:700; padding:6px 10px; text-align:left; }
   .fin-table td { padding:6px 10px; font-size:11px; border-bottom:1px solid #eef2f7; }
   .fin-table tr:last-child td { border-bottom:none; }
@@ -1206,11 +1208,12 @@ function downloadResult() {
 
   /* 재무건전성 체크리스트 */
   .checklist { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
+  .checklist > * { page-break-inside:avoid; break-inside:avoid; }
   .cl-item { display:flex; align-items:flex-start; gap:6px; background:#f9f9f8; border-radius:7px; padding:8px 10px; font-size:10px; color:#2d3748; line-height:1.5; }
   .cl-icon { flex-shrink:0; font-size:12px; }
 
   /* 면책고지 */
-  .disclaimer-box { background:#f8f9fa; border-radius:8px; padding:10px 14px; border:1px solid #e5e4e0; margin-bottom:8px; }
+  .disclaimer-box { background:#f8f9fa; border-radius:8px; padding:10px 14px; border:1px solid #e5e4e0; margin-bottom:8px; page-break-inside:avoid; break-inside:avoid; }
   .disclaimer-box p { font-size:9px; color:#6b7a8d; line-height:1.7; }
 
   /* 푸터 */
@@ -1348,11 +1351,8 @@ function downloadResult() {
   </div>
   <div class="opinion" id="opinion-section"></div>
 
-  <!-- 2페이지 시작 -->
-  <div style="page-break-before:always;break-before:always;"></div>
-
   <!-- 4. 재무건전성 체크리스트 -->
-  <div class="sh" style="margin-top:0;">
+  <div class="sh" style="margin-top:14px;">
     <div class="sh-num">4</div>
     <div class="sh-title">재무건전성 체크리스트 (Health Checklist)</div>
     <div class="sh-line"></div>
