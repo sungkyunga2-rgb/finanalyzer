@@ -24,6 +24,7 @@ def run_auto_migration():
         "company_name": "VARCHAR DEFAULT ''",
         "rep_name": "VARCHAR DEFAULT ''",
         "phone": "VARCHAR DEFAULT ''",
+        "business_number": "VARCHAR DEFAULT ''",
     }
     with engine.connect() as conn:
         for col_name, col_def in required_columns.items():
@@ -66,6 +67,7 @@ class UserCreate(BaseModel):
     company_name: str = ""
     rep_name: str = ""
     phone: str = ""
+    business_number: str = ""
 
 class UserLogin(BaseModel):
     email: str
@@ -112,12 +114,17 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
     token = str(uuid.uuid4())
     user = models.User(
         email=body.email, password_hash=pw_hash, token=token, credits=1000,
-        company_name=body.company_name, rep_name=body.rep_name, phone=body.phone
+        company_name=body.company_name, rep_name=body.rep_name, phone=body.phone,
+        business_number=body.business_number
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return {"token": token, "email": user.email, "credits": user.credits, "company_name": user.company_name}
+    return {
+        "token": token, "email": user.email, "credits": user.credits,
+        "company_name": user.company_name, "rep_name": user.rep_name,
+        "business_number": user.business_number
+    }
 
 # 로그인
 @app.post("/auth/login")
@@ -130,7 +137,11 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
     ).first()
     if not user:
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 틀렸습니다.")
-    return {"token": user.token, "email": user.email, "credits": user.credits, "company_name": user.company_name}
+    return {
+        "token": user.token, "email": user.email, "credits": user.credits,
+        "company_name": user.company_name, "rep_name": user.rep_name,
+        "business_number": user.business_number
+    }
 
 # 내 크레딧 조회
 @app.get("/me")
@@ -156,6 +167,7 @@ def verify_password(
         "company_name": user.company_name,
         "rep_name": user.rep_name,
         "phone": user.phone,
+        "business_number": user.business_number,
         "credits": user.credits
     }
 

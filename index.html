@@ -194,6 +194,10 @@
         <input type="tel" id="reg-phone" placeholder="예: 010-1234-5678" />
       </div>
       <div class="field">
+        <label>사업자등록번호 <span style="color:var(--danger);font-size:11px;">필수</span></label>
+        <input type="text" id="reg-biz" placeholder="예: 123-45-67890" />
+      </div>
+      <div class="field">
         <label>이메일 <span style="color:var(--danger);font-size:11px;">필수</span> <span style="color:var(--text3);font-weight:400;">(이메일이 ID로 사용됩니다)</span></label>
         <input type="email" id="reg-email" placeholder="name@company.com" />
       </div>
@@ -359,6 +363,7 @@
         <div class="diag-item"><div><div class="di-label">회사명</div></div><span id="mi-company" style="font-size:14px;font-weight:500;"></span></div>
         <div class="diag-item"><div><div class="di-label">대표자명</div></div><span id="mi-name" style="font-size:14px;font-weight:500;"></span></div>
         <div class="diag-item"><div><div class="di-label">휴대폰번호</div></div><span id="mi-phone" style="font-size:14px;font-weight:500;"></span></div>
+        <div class="diag-item"><div><div class="di-label">사업자등록번호</div></div><span id="mi-biz" style="font-size:14px;font-weight:500;"></span></div>
         <div class="diag-item"><div><div class="di-label">이메일 (ID)</div></div><span id="mi-email" style="font-size:14px;font-weight:500;"></span></div>
         <div class="diag-item"><div><div class="di-label">보유 크레딧</div></div><span id="mi-credits" style="font-size:14px;font-weight:500;"></span></div>
       </div>
@@ -526,6 +531,8 @@ let token = localStorage.getItem("fa_token") || null;
 let userEmail = localStorage.getItem("fa_email") || null;
 let userCredits = parseInt(localStorage.getItem("fa_credits") || "0");
 let userCompanyName = localStorage.getItem("fa_company") || "";
+let userRepName = localStorage.getItem("fa_rep") || "";
+let userBizNumber = localStorage.getItem("fa_biz") || "";
 let imageBase64 = null;
 let imageMime = "image/jpeg";
 let selectedPkg = null;
@@ -585,11 +592,12 @@ async function doRegister() {
   const company = document.getElementById("reg-company").value.trim();
   const name    = document.getElementById("reg-name").value.trim();
   const phone   = document.getElementById("reg-phone").value.trim();
+  const biz     = document.getElementById("reg-biz").value.trim();
   const email   = document.getElementById("reg-email").value.trim();
   const pw      = document.getElementById("reg-pw").value;
   const errEl   = document.getElementById("reg-error");
   errEl.style.display = "none";
-  if (!company || !name || !phone || !email || !pw) {
+  if (!company || !name || !phone || !biz || !email || !pw) {
     errEl.textContent = "모든 필수 항목을 입력해주세요.";
     errEl.style.display = "block";
     return;
@@ -597,14 +605,18 @@ async function doRegister() {
   try {
     const d = await api("POST", "/auth/register", {
       email, password: pw,
-      company_name: company, rep_name: name, phone
+      company_name: company, rep_name: name, phone, business_number: biz
     });
     token = d.token; userEmail = d.email; userCredits = d.credits;
     userCompanyName = company;
+    userRepName = d.rep_name || name;
+    userBizNumber = d.business_number || biz;
     localStorage.setItem("fa_token", token);
     localStorage.setItem("fa_email", userEmail);
     localStorage.setItem("fa_credits", userCredits);
     localStorage.setItem("fa_company", userCompanyName);
+    localStorage.setItem("fa_rep", userRepName);
+    localStorage.setItem("fa_biz", userBizNumber);
     updateCreditBadges();
     showPage("dashboard");
     toast("가입 완료! 환영합니다 🎉");
@@ -620,10 +632,14 @@ async function doLogin() {
     const d = await api("POST", "/auth/login", { email, password: pw });
     token = d.token; userEmail = d.email; userCredits = d.credits;
     userCompanyName = d.company_name || "";
+    userRepName = d.rep_name || "";
+    userBizNumber = d.business_number || "";
     localStorage.setItem("fa_token", token);
     localStorage.setItem("fa_email", userEmail);
     localStorage.setItem("fa_credits", userCredits);
     localStorage.setItem("fa_company", userCompanyName);
+    localStorage.setItem("fa_rep", userRepName);
+    localStorage.setItem("fa_biz", userBizNumber);
     updateCreditBadges();
     showPage("dashboard");
     toast("로그인되었습니다.");
@@ -631,11 +647,13 @@ async function doLogin() {
 }
 
 function doLogout() {
-  token = userEmail = null; userCredits = 0; userCompanyName = "";
+  token = userEmail = null; userCredits = 0; userCompanyName = ""; userRepName = ""; userBizNumber = "";
   localStorage.removeItem("fa_token");
   localStorage.removeItem("fa_email");
   localStorage.removeItem("fa_credits");
   localStorage.removeItem("fa_company");
+  localStorage.removeItem("fa_rep");
+  localStorage.removeItem("fa_biz");
   showPage("landing");
 }
 
@@ -650,6 +668,7 @@ async function verifyMyInfo() {
     document.getElementById("mi-company").textContent = d.company_name || "-";
     document.getElementById("mi-name").textContent = d.rep_name || "-";
     document.getElementById("mi-phone").textContent = d.phone || "-";
+    document.getElementById("mi-biz").textContent = d.business_number || "-";
     document.getElementById("mi-email").textContent = d.email;
     document.getElementById("mi-credits").textContent = d.credits.toLocaleString() + " 크레딧";
     document.getElementById("myinfo-verify-card").classList.add("hidden");
@@ -779,6 +798,8 @@ function doManualAnalyze() {
 
 function renderResults(d) {
   window.lastCompanyName = d.company_name || "";
+  window.lastRepName = userRepName || "";
+  window.lastBizNumber = userBizNumber || "";
   document.getElementById("companyNameHeader").textContent = d.company_name ? `🏢 ${d.company_name}` : "";
 
   const tl  = (d.current_liabilities || 0) + (d.noncurrent_liabilities || 0);
@@ -954,7 +975,7 @@ function renderResults(d) {
     </div>` : "";
 
   document.getElementById("diagList").innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;page-break-inside:avoid;break-inside:avoid;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
       <div style="background:${clsBg[erosionClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[erosionClass]}33;">
         <div style="font-size:12px;color:#6b6a65;margin-bottom:4px;font-weight:500;">🏢 자본잠식 여부</div>
         <div style="font-size:16px;font-weight:700;color:${clsColor[erosionClass]};">${clsIcon[erosionClass]} ${erosionStatus}</div>
@@ -964,11 +985,11 @@ function renderResults(d) {
         <div style="font-size:16px;font-weight:700;color:${clsColor[defClass]};">${clsIcon[defClass]} ${defText}</div>
       </div>
     </div>
-    <div style="background:${clsBg[loanClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[loanClass]}33;margin-bottom:10px;page-break-inside:avoid;break-inside:avoid;">
+    <div style="background:${clsBg[loanClass]};border-radius:12px;padding:1rem;border:1px solid ${clsColor[loanClass]}33;margin-bottom:10px;">
       <div style="font-size:12px;color:#6b6a65;margin-bottom:4px;font-weight:500;">💳 매출 대비 대출 비율</div>
       <div style="font-size:16px;font-weight:700;color:${clsColor[loanClass]};">${clsIcon[loanClass]} ${loanRatio !== null ? loanRatio.toFixed(1) + "%" : "N/A"} (${loanLabel})</div>
     </div>
-    <div style="background:#f9f9f8;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;margin-bottom:10px;page-break-inside:avoid;break-inside:avoid;">
+    <div style="background:#f9f9f8;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;margin-bottom:10px;">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
         <div>
           <div style="font-size:11px;color:#9b9a95;margin-bottom:4px;">총자산</div>
@@ -1067,7 +1088,7 @@ function downloadResult() {
   .body { padding: 16px 28px; }
 
   /* 섹션 헤더 */
-  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:14px; page-break-after:avoid; break-after:avoid; }
+  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:14px; }
   .sh:first-child { margin-top:0; }
   .sh-num { width:20px; height:20px; background:#185FA5; color:#fff; border-radius:50%; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .sh-title { font-size:12px; font-weight:700; color:#0d3b7c; }
@@ -1138,7 +1159,7 @@ function downloadResult() {
 
   /* 재무건전성 체크리스트 */
   .checklist { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
-  .cl-item { display:flex; align-items:flex-start; gap:6px; background:#f9f9f8; border-radius:7px; padding:8px 10px; font-size:10px; color:#2d3748; line-height:1.5; page-break-inside:avoid; break-inside:avoid; }
+  .cl-item { display:flex; align-items:flex-start; gap:6px; background:#f9f9f8; border-radius:7px; padding:8px 10px; font-size:10px; color:#2d3748; line-height:1.5; }
   .cl-icon { flex-shrink:0; font-size:12px; }
 
   /* 면책고지 */
@@ -1150,13 +1171,94 @@ function downloadResult() {
   .rf strong { color:#fff; }
   .rf .dis { margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,.15); font-size:9px; opacity:.6; }
 
+  /* 표지 페이지 */
+  .cover { position:relative; page-break-after:always; break-after:always; min-height: 277mm; }
+  .cover-brandbar { display:flex; justify-content:space-between; align-items:center; padding:14mm 16mm 12mm; background:linear-gradient(90deg,#0d3b7c 0%,#185fa5 60%,#2e80d8 100%); }
+  .cover-brand-mark { display:flex; align-items:center; gap:10px; }
+  .cover-brand-logo { width:34px; height:34px; border-radius:8px; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.4); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:13px; letter-spacing:-.03em; color:#fff; }
+  .cover-brand-name { font-size:12px; font-weight:700; letter-spacing:.06em; color:#fff; }
+  .cover-brand-name span { display:block; font-size:9px; font-weight:400; letter-spacing:.04em; opacity:.75; margin-top:1px; }
+  .cover-doc-badge { font-size:10px; font-weight:600; letter-spacing:.04em; padding:5px 12px; border-radius:20px; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.4); color:#fff; }
+  .cover-titleblock { padding:26mm 16mm 0; }
+  .cover-eyebrow { font-size:11px; font-weight:700; letter-spacing:.14em; color:#185fa5; margin-bottom:14px; }
+  .cover-maintitle { font-size:36px; font-weight:900; letter-spacing:-.03em; line-height:1.28; color:#0d3b7c; }
+  .cover-subtitle { margin-top:16px; font-size:12px; color:#6b7a8d; }
+  .cover-signature { display:block; margin:20mm auto 0; width:100%; max-width:170mm; height:auto; }
+  .cover-infopanel { margin:14mm 16mm 0; background:#f4f8fc; border:1px solid #d7e4f2; border-left:4px solid #185fa5; border-radius:14px; padding:8mm 10mm; }
+  .cover-info-target { font-size:19px; font-weight:700; letter-spacing:-.01em; padding-bottom:7mm; margin-bottom:7mm; border-bottom:1px solid #d7e4f2; color:#0d3b7c; }
+  .cover-info-grid { display:grid; grid-template-columns:1fr 1fr; row-gap:6mm; column-gap:8mm; }
+  .cover-info-item .cl { font-size:10px; color:#7a8ca3; font-weight:500; margin-bottom:3px; letter-spacing:.02em; }
+  .cover-info-item .cv { font-size:14px; font-weight:700; color:#1a2332; }
+  .cover-footer { margin:16mm 16mm 0; display:flex; justify-content:space-between; align-items:flex-end; }
+  .cover-footer-brand { font-size:10px; font-weight:700; letter-spacing:.05em; color:#0d3b7c; }
+  .cover-footer-tagline { font-size:9px; color:#9aa7b8; margin-top:2px; }
+  .cover-footer-note { font-size:9px; color:#9aa7b8; text-align:right; }
+
   @media print {
     body { background:#fff; }
     @page { margin: 10mm; }
+    .cover { page-break-after:always; }
   }
 </style>
 </head>
 <body>
+
+<!-- 0. 표지 -->
+<div class="cover">
+  <div class="cover-brandbar">
+    <div class="cover-brand-mark">
+      <div class="cover-brand-logo">C&amp;G</div>
+      <div class="cover-brand-name">C&amp;G PARTNERS<span>씨앤지파트너스</span></div>
+    </div>
+    <div class="cover-doc-badge">AI 재무분석 리포트</div>
+  </div>
+  <div class="cover-titleblock">
+    <div class="cover-eyebrow">FINANCIAL HEALTH DIAGNOSTIC REPORT</div>
+    <div class="cover-maintitle">재무제표<br>진단 결과 보고서</div>
+    <div class="cover-subtitle">AI Financial Statement Diagnostic Report</div>
+  </div>
+  <svg class="cover-signature" viewBox="0 0 780 300" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="cbarA" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0%" stop-color="#a9c9ec" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#185fa5" stop-opacity="0.55"/>
+      </linearGradient>
+      <linearGradient id="cbarB" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0%" stop-color="#9fe1cb" stop-opacity="0.4"/>
+        <stop offset="100%" stop-color="#0f6e56" stop-opacity="0.6"/>
+      </linearGradient>
+    </defs>
+    <rect x="40"  y="220" width="46" height="60"  rx="4" fill="url(#cbarA)"/>
+    <rect x="104" y="190" width="46" height="90"  rx="4" fill="url(#cbarA)"/>
+    <rect x="168" y="200" width="46" height="80"  rx="4" fill="url(#cbarA)"/>
+    <rect x="232" y="165" width="46" height="115" rx="4" fill="url(#cbarB)"/>
+    <rect x="296" y="140" width="46" height="140" rx="4" fill="url(#cbarA)"/>
+    <rect x="360" y="150" width="46" height="130" rx="4" fill="url(#cbarA)"/>
+    <rect x="424" y="115" width="46" height="165" rx="4" fill="url(#cbarB)"/>
+    <rect x="488" y="90"  width="46" height="190" rx="4" fill="url(#cbarA)"/>
+    <rect x="552" y="105" width="46" height="175" rx="4" fill="url(#cbarA)"/>
+    <rect x="616" y="65"  width="46" height="215" rx="4" fill="url(#cbarB)"/>
+    <rect x="680" y="45"  width="46" height="235" rx="4" fill="url(#cbarA)"/>
+    <polyline points="63,220 127,190 191,200 255,165 319,140 383,150 447,115 511,90 575,105 639,65 703,45"
+      fill="none" stroke="#185fa5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+    <circle cx="703" cy="45" r="6" fill="#185fa5"/>
+  </svg>
+  <div class="cover-infopanel">
+    <div class="cover-info-target">${window.lastCompanyName || "-"}</div>
+    <div class="cover-info-grid">
+      <div class="cover-info-item"><div class="cl">대표자명</div><div class="cv">${window.lastRepName || "-"}</div></div>
+      <div class="cover-info-item"><div class="cl">사업자번호</div><div class="cv">${window.lastBizNumber || "-"}</div></div>
+      <div class="cover-info-item"><div class="cl">평가완료일</div><div class="cv">${dateStr}</div></div>
+    </div>
+  </div>
+  <div class="cover-footer">
+    <div>
+      <div class="cover-footer-brand">C&amp;G PARTNERS</div>
+      <div class="cover-footer-tagline">AI 기반 재무제표 자동진단 서비스</div>
+    </div>
+    <div class="cover-footer-note">본 문서는 재무건전성 참고자료이며<br>공인 회계사의 검토를 대체하지 않습니다.</div>
+  </div>
+</div>
 
 <!-- 헤더 -->
 <div class="rh">
@@ -1191,18 +1293,19 @@ function downloadResult() {
   </div>
   <div id="diag-section"></div>
 
-  <!-- 3. 종합 분석 의견: 1,2번 섹션이 1페이지를 거의 채우므로 항상 2페이지 맨 위에서 시작 (헤더+본문 분리 방지) -->
-  <div style="page-break-before:always;break-before:always;page-break-inside:avoid;break-inside:avoid;">
-    <div class="sh" style="margin-top:0;">
-      <div class="sh-num">3</div>
-      <div class="sh-title">종합 분석 의견 (Analysis Summary)</div>
-      <div class="sh-line"></div>
-    </div>
-    <div class="opinion" id="opinion-section"></div>
+  <!-- 3. 종합 분석 의견 -->
+  <div class="sh">
+    <div class="sh-num">3</div>
+    <div class="sh-title">종합 분석 의견 (Analysis Summary)</div>
+    <div class="sh-line"></div>
   </div>
+  <div class="opinion" id="opinion-section"></div>
+
+  <!-- 2페이지 시작 -->
+  <div style="page-break-before:always;break-before:always;"></div>
 
   <!-- 4. 재무건전성 체크리스트 -->
-  <div class="sh">
+  <div class="sh" style="margin-top:0;">
     <div class="sh-num">4</div>
     <div class="sh-title">재무건전성 체크리스트 (Health Checklist)</div>
     <div class="sh-line"></div>
@@ -1212,7 +1315,7 @@ function downloadResult() {
   <!-- 5. 인식된 재무 수치 -->
   <div class="sh">
     <div class="sh-num">5</div>
-    <div class="sh-title">재무 수치 (Extracted Financial Data)</div>
+    <div class="sh-title">인식된 재무 수치 (Extracted Financial Data)</div>
     <div class="sh-line"></div>
   </div>
   <table class="fin-table">

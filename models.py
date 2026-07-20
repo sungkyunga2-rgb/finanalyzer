@@ -14,6 +14,7 @@ class User(Base):
     company_name  = Column(String, default="")
     rep_name      = Column(String, default="")
     phone         = Column(String, default="")
+    business_number = Column(String, default="")
     created_at    = Column(DateTime, default=datetime.utcnow)
 
 class Payment(Base):
