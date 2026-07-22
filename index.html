@@ -1384,14 +1384,103 @@ function applyEditedFields() {
 function downloadResult() {
   const now = new Date();
   const dateStr = `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
-  // 화면 전용 안내문구(값 수정하기 안내)는 PDF에 포함하지 않음
-  const comment = "";
 
-  // 현재 분석 데이터 추출
-  const extractedHTML = document.getElementById("extractedGrid").innerHTML;
-  const metricsHTML   = document.getElementById("metricGrid").innerHTML;
-  const diagHTML      = document.getElementById("diagList").innerHTML;
-  const opinionHTML   = document.getElementById("opinionBox").innerHTML;
+  // ── 아래 내용은 전부 "지금 이 페이지"에서 미리 계산합니다.
+  //    (다운로드된 리포트 파일 자체에는 스크립트를 넣지 않아, 모바일 파일 미리보기처럼
+  //     자바스크립트가 실행되지 않는 환경에서도 내용이 그대로 보이도록 함) ──
+
+  // ── KPI 카드 (핵심 재무지표) ──
+  const kpiCards = document.querySelectorAll('#metricGrid > div');
+  let kpiHTML = '';
+  kpiCards.forEach(card => {
+    const label = card.querySelector('[style*="color:#9b9a95"]')?.innerText || '';
+    const value = card.querySelector('.metric-value')?.innerText || card.querySelector('[style*="font-size:32px"]')?.innerText || '';
+    const badge = card.querySelector('[style*="border-radius:20px"]')?.innerText || '';
+    const gaugeEl = card.querySelector('[style*="height:8px"][style*="background:#e5e4e0"]');
+    const fillEl = gaugeEl?.querySelector('div');
+    const fillWidth = fillEl?.style.width || '0%';
+    const gaugeLabels = card.querySelectorAll('[style*="font-size:11px"][style*="color:#9b9a95"]');
+    const hint = card.querySelector('[style*="margin-top:8px"]')?.innerText || '';
+    const color = card.style.borderTopColor || '#185FA5';
+    const cls = color.includes('163, 45, 45') || color.includes('A32') ? 'danger' : color.includes('184, 134') || color.includes('854') ? 'warn' : 'safe';
+    const labelTexts = Array.from(gaugeLabels).map(l => l.innerText).join(' ');
+    kpiHTML += `<div class="kpi-card ${cls}">
+      <div class="kpi-label">${label}</div>
+      <div class="kpi-value ${cls}">${value}</div>
+      <span class="kpi-badge ${cls}">${badge}</span>
+      <div class="kpi-gauge">
+        <div class="kpi-gauge-labels">${labelTexts.split(' ').map(t => `<span>${t}</span>`).join('')}</div>
+        <div class="kpi-gauge-bg"><div class="kpi-gauge-fill" style="width:${fillWidth};background:${color};"></div></div>
+      </div>
+      <div class="kpi-hint">${hint}</div>
+    </div>`;
+  });
+  if (!kpiHTML) kpiHTML = document.getElementById("metricGrid").innerHTML;
+
+  // ── 재무건전성 진단 섹션 (화면 그대로) ──
+  const diagSectionHTML = document.getElementById("diagList").innerHTML;
+
+  // ── 종합 분석 의견 ──
+  const opItems = document.querySelectorAll('#opinionBox [style*="color:#2d3748"]');
+  let opinionSectionHTML = '';
+  if (opItems.length > 0) {
+    opinionSectionHTML = '<div class="opinion-title">🔍 재무 종합 분석 의견</div>';
+    opItems.forEach(op => {
+      if (op.innerText.trim()) opinionSectionHTML += `<div class="opinion-item">${op.innerText}</div>`;
+    });
+    const opNote = document.querySelector('#opinionBox [style*="font-size:11px"][style*="color:#9b9a95"]')?.innerText || '';
+    if (opNote) opinionSectionHTML += `<div class="opinion-note">${opNote}</div>`;
+  }
+
+  // ── 재무건전성 체크리스트 ──
+  const drNum  = parseFloat((document.querySelectorAll('#metricGrid .metric-value')[0]?.innerText || '').replace('%',''));
+  const iceNum = parseFloat((document.querySelectorAll('#metricGrid .metric-value')[1]?.innerText || '').replace('배',''));
+  const erosionText = document.querySelectorAll('#diagList [style*="font-size:16px"]')[0]?.innerText || '';
+  const defText     = document.querySelectorAll('#diagList [style*="font-size:16px"]')[1]?.innerText || '';
+  const isEroded = erosionText.includes('자본잠식');
+  const isDeficit = defText.includes('손실');
+
+  const drOk  = isEroded ? false : (!isNaN(drNum) ? drNum <= 400 : null);
+  const iceOk = !isNaN(iceNum) ? iceNum >= 1 : null;
+  const erosionOk = !isEroded;
+  const profitOk = !isDeficit;
+  const deficitOk = !isDeficit;
+  const policyOk = !(isEroded || (drOk === false) || (iceOk === false));
+
+  const checkItems = [
+    { ok: true,  text: '사업자등록 및 법인 설립 여부 확인 완료' },
+    { ok: true,  text: '재무제표 AI 자동 인식 및 수치 추출 완료' },
+    { ok: drOk,  text: drOk === false ? '부채비율 400% 초과' : '부채비율 400% 이하 유지 (권장 기준)' },
+    { ok: iceOk, text: iceOk === false ? '이자보상배수 1배 미만 (이자 상환 능력 부족)' : '이자보상배수 1배 이상 유지 (이자 상환 능력)' },
+    { ok: erosionOk, text: erosionOk ? '자본잠식 없음 (자본총계 > 자본금)' : '현재 자본잠식 상태' },
+    { ok: profitOk,  text: profitOk ? '당기순이익 흑자 유지 (수익성 확보)' : '당기순이익 적자 (수익성 미확보)' },
+    { ok: deficitOk, text: deficitOk ? '결손 없음 (누적 손실 미발생)' : '결손 발생 (누적 손실 존재)' },
+    { ok: policyOk,  text: policyOk ? '정책자금 연계 가능' : '정책자금 연계 불가능 (재무 기준 미충족)' },
+  ];
+  const checklistHTML = checkItems.map(item => {
+    const icon = item.ok === true ? '✅' : item.ok === false ? '❌' : '⚪';
+    return `<div class="cl-item"><div class="cl-icon">${icon}</div><div>${item.text}</div></div>`;
+  }).join('');
+
+  // ── 인식된 재무 수치 테이블 ──
+  const items = document.querySelectorAll('#extractedGrid > div');
+  const cats = {
+    '매출액':'손익계산서','유동자산':'재무상태표','비유동자산':'재무상태표','유동부채':'재무상태표',
+    '비유동부채':'재무상태표','자본금':'재무상태표','자본총계':'재무상태표',
+    '영업이익':'손익계산서','이자비용 (연)':'손익계산서','이자비용 (월)':'손익계산서','당기순이익':'손익계산서'
+  };
+  let finTableRows = '';
+  items.forEach(item => {
+    const label = item.querySelector('div:first-child')?.innerText?.replace(/[💰💵🏗️📋🏦💼📦📈💸🎯]/g,'').trim() || '';
+    const value = item.querySelector('div:last-child')?.innerText?.trim() || '';
+    if (!label || label === '이자비용') return;
+    const isEmpty = value === '미인식';
+    finTableRows += `<tr><td>${label}</td><td class="cat">${cats[label]||''}</td><td class="val ${isEmpty?'empty':''}">${value}</td></tr>`;
+  });
+
+  const filenameBase = `재무분석리포트_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  // 화면 전용 안내문구(값 수정하기 안내)는 리포트 파일에 포함하지 않음
+  const comment = "";
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="ko">
@@ -1620,7 +1709,7 @@ function downloadResult() {
     <div class="sh-title">핵심 재무지표 (Key Financial Indicators)</div>
     <div class="sh-line"></div>
   </div>
-  <div class="kpi-grid" id="kpi-grid"></div>
+  <div class="kpi-grid" id="kpi-grid">${kpiHTML}</div>
 
   <!-- 2. 재무건전성 진단 -->
   <div class="sh">
@@ -1628,7 +1717,7 @@ function downloadResult() {
     <div class="sh-title">재무건전성 진단 (Financial Health Diagnosis)</div>
     <div class="sh-line"></div>
   </div>
-  <div id="diag-section"></div>
+  <div id="diag-section">${diagSectionHTML}</div>
 
   <!-- 3. 종합 분석 의견 -->
   <div class="sh">
@@ -1636,7 +1725,7 @@ function downloadResult() {
     <div class="sh-title">종합 분석 의견 (Analysis Summary)</div>
     <div class="sh-line"></div>
   </div>
-  <div class="opinion" id="opinion-section"></div>
+  <div class="opinion" id="opinion-section">${opinionSectionHTML}</div>
 
   <!-- 4. 재무건전성 체크리스트 -->
   <div class="sh" style="margin-top:14px;">
@@ -1644,7 +1733,7 @@ function downloadResult() {
     <div class="sh-title">재무건전성 체크리스트 (Health Checklist)</div>
     <div class="sh-line"></div>
   </div>
-  <div class="checklist" id="checklist"></div>
+  <div class="checklist" id="checklist">${checklistHTML}</div>
 
   <!-- 5. 인식된 재무 수치 -->
   <div class="sh">
@@ -1654,7 +1743,7 @@ function downloadResult() {
   </div>
   <table class="fin-table">
     <thead><tr><th>항목</th><th class="cat">구분</th><th style="text-align:right;">금액</th></tr></thead>
-    <tbody id="fin-table-body"></tbody>
+    <tbody id="fin-table-body">${finTableRows}</tbody>
   </table>
   ${comment ? `<p style="font-size:10px;color:#6b7a8d;background:#f0f4f8;padding:8px 12px;border-radius:7px;border-left:3px solid #185FA5;margin-bottom:8px;">${comment}</p>` : ""}
 
@@ -1673,111 +1762,6 @@ function downloadResult() {
   경기도 고양시 향동동 469 DMC스타비즈4st, 1316호 &nbsp;|&nbsp; cngpartners123@gmail.com
 </div>
 
-<script>
-  const isMobileReport = ${isMobileDevice()};
-  const diagEl = document.createElement('div');
-  diagEl.innerHTML = ${JSON.stringify(diagHTML)};
-  const metricsEl = document.createElement('div');
-  metricsEl.innerHTML = ${JSON.stringify(metricsHTML)};
-  const extractedEl = document.createElement('div');
-  extractedEl.innerHTML = ${JSON.stringify(extractedHTML)};
-  // ── KPI 카드 ──────────────────────────────────────────
-  const kpiCards = metricsEl.querySelectorAll('[style*="border-top:4px solid"]');
-  let kpiHTML = '';
-  kpiCards.forEach(card => {
-    const label = card.querySelector('[style*="color:#9b9a95"]')?.innerText || '';
-    const value = card.querySelector('[style*="font-size:32px"]')?.innerText || '';
-    const badge = card.querySelector('[style*="border-radius:20px"]')?.innerText || '';
-    const gaugeEl = card.querySelector('[style*="height:8px"][style*="background:#e5e4e0"]');
-    const fillEl = gaugeEl?.querySelector('div');
-    const fillWidth = fillEl?.style.width || '0%';
-    const gaugeLabels = card.querySelectorAll('[style*="font-size:11px"][style*="color:#9b9a95"]');
-    const hint = card.querySelector('[style*="margin-top:8px"]')?.innerText || '';
-    const color = card.style.borderTopColor || '#185FA5';
-    const cls = color.includes('A32') ? 'danger' : color.includes('854') ? 'warn' : 'safe';
-    const labelTexts = Array.from(gaugeLabels).map(l => l.innerText).join(' ');
-    kpiHTML += \`<div class="kpi-card \${cls}">
-      <div class="kpi-label">\${label}</div>
-      <div class="kpi-value \${cls}">\${value}</div>
-      <span class="kpi-badge \${cls}">\${badge}</span>
-      <div class="kpi-gauge">
-        <div class="kpi-gauge-labels">\${labelTexts.split(' ').map(t => \`<span>\${t}</span>\`).join('')}</div>
-        <div class="kpi-gauge-bg"><div class="kpi-gauge-fill" style="width:\${fillWidth};background:\${color};"></div></div>
-      </div>
-      <div class="kpi-hint">\${hint}</div>
-    </div>\`;
-  });
-  document.getElementById('kpi-grid').innerHTML = kpiHTML || metricsEl.innerHTML;
-
-  // ── 진단 섹션 — 기존 화면 스타일 그대로 출력 ────────
-  document.getElementById('diag-section').innerHTML = diagEl.innerHTML;
-
-  // ── 종합 분석 의견 (화면의 opinionBox 내용 그대로 사용) ──
-  const opinionEl = document.createElement('div');
-  opinionEl.innerHTML = ${JSON.stringify(opinionHTML)};
-  const opItems = opinionEl.querySelectorAll('[style*="color:#2d3748"]');
-  let opHTML = '<div class="opinion-title">🔍 재무 종합 분석 의견</div>';
-  opItems.forEach(op => {
-    if (op.innerText.trim()) opHTML += \`<div class="opinion-item">\${op.innerText}</div>\`;
-  });
-  const opNote = opinionEl.querySelector('[style*="font-size:11px"][style*="color:#9b9a95"]')?.innerText || '';
-  if (opNote) opHTML += \`<div class="opinion-note">\${opNote}</div>\`;
-  document.getElementById('opinion-section').innerHTML = opItems.length > 0 ? opHTML : '';
-
-  // ── 재무건전성 체크리스트 ────────────────────────────
-  const drNum  = parseFloat((metricsEl.querySelectorAll('[style*="font-size:32px"]')[0]?.innerText || '').replace('%',''));
-  const iceNum = parseFloat((metricsEl.querySelectorAll('[style*="font-size:32px"]')[1]?.innerText || '').replace('배',''));
-  const erosionText = diagEl.querySelectorAll('[style*="font-size:16px"]')[0]?.innerText || '';
-  const defText     = diagEl.querySelectorAll('[style*="font-size:16px"]')[1]?.innerText || '';
-  const isEroded = erosionText.includes('자본잠식'); // 완전자본잠식/부분자본잠식 모두 포함
-  const isDeficit = defText.includes('손실');
-
-  // 자본잠식 상태면 부채비율 표시가 음수로 왜곡되므로, 부채비율 판정도 항상 실패로 강제
-  const drOk  = isEroded ? false : (!isNaN(drNum) ? drNum <= 400 : null);
-  const iceOk = !isNaN(iceNum) ? iceNum >= 1 : null;
-  const erosionOk = !isEroded;
-  const profitOk = !isDeficit;
-  const deficitOk = !isDeficit;
-  // 부채비율 400% 초과, 이자보상배수 1배 이하, 또는 자본잠식 상태 → 정책자금 연계 불가능
-  const policyOk = !(isEroded || (drOk === false) || (iceOk === false));
-
-  const checkItems = [
-    { ok: true,  text: '사업자등록 및 법인 설립 여부 확인 완료' },
-    { ok: true,  text: '재무제표 AI 자동 인식 및 수치 추출 완료' },
-    { ok: drOk,  text: drOk === false ? '부채비율 400% 초과' : '부채비율 400% 이하 유지 (권장 기준)' },
-    { ok: iceOk, text: iceOk === false ? '이자보상배수 1배 미만 (이자 상환 능력 부족)' : '이자보상배수 1배 이상 유지 (이자 상환 능력)' },
-    { ok: erosionOk, text: erosionOk ? '자본잠식 없음 (자본총계 > 자본금)' : '현재 자본잠식 상태' },
-    { ok: profitOk,  text: profitOk ? '당기순이익 흑자 유지 (수익성 확보)' : '당기순이익 적자 (수익성 미확보)' },
-    { ok: deficitOk, text: deficitOk ? '결손 없음 (누적 손실 미발생)' : '결손 발생 (누적 손실 존재)' },
-    { ok: policyOk,  text: policyOk ? '정책자금 연계 가능' : '정책자금 연계 불가능 (재무 기준 미충족)' },
-  ];
-  document.getElementById('checklist').innerHTML = checkItems.map(item => {
-    const icon = item.ok === true ? '✅' : item.ok === false ? '❌' : '⚪';
-    return \`<div class="cl-item"><div class="cl-icon">\${icon}</div><div>\${item.text}</div></div>\`;
-  }).join('');
-
-  // ── 재무수치 테이블 ───────────────────────────────────
-  const items = extractedEl.querySelectorAll('div[style*="border-radius:10px"]');
-  const cats = {
-    '매출액':'손익계산서','유동자산':'재무상태표','비유동자산':'재무상태표','유동부채':'재무상태표',
-    '비유동부채':'재무상태표','자본금':'재무상태표','자본총계':'재무상태표',
-    '영업이익':'손익계산서','이자비용 (연)':'손익계산서','이자비용 (월)':'손익계산서','당기순이익':'손익계산서'
-  };
-  let rows = '';
-  items.forEach(item => {
-    const label = item.querySelector('div:first-child')?.innerText?.replace(/[💰💵🏗️📋🏦💼📦📈💸🎯]/g,'').trim() || '';
-    const value = item.querySelector('div:last-child')?.innerText?.trim() || '';
-    if (!label || label === '이자비용') return;
-    const isEmpty = value === '미인식';
-    rows += \`<tr><td>\${label}</td><td class="cat">\${cats[label]||''}</td><td class="val \${isEmpty?'empty':''}">\${value}</td></tr>\`;
-  });
-  document.getElementById('fin-table-body').innerHTML = rows;
-
-  // 모바일 브라우저는 window.print()를 지원하지 않으므로 데스크톱에서만 자동 인쇄 트리거
-  if (!isMobileReport) {
-    setTimeout(() => { try { window.print(); } catch(e) {} }, 800);
-  }
-<\/script>
 </body>
 </html>`;
 
@@ -1785,29 +1769,78 @@ function downloadResult() {
   const url  = URL.createObjectURL(blob);
 
   if (isMobileDevice()) {
-    // 모바일: 새 탭 열기 대신 파일로 바로 다운로드
-    const filename = `재무분석리포트_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.html`;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    toast("리포트 파일이 다운로드됐어요. 다운로드함(파일 앱)에서 열어 공유 → PDF로 저장할 수 있어요.");
+    generateMobilePdf(htmlContent, filenameBase);
   } else {
     const win = window.open(url, "_blank");
-    if (!win) {
+    if (win) {
+      setTimeout(() => { try { win.print(); } catch(e) {} }, 700);
+    } else {
       const a = document.createElement("a");
       a.href = url;
-      a.download = `재무분석리포트_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.html`;
+      a.download = `${filenameBase}.html`;
       a.click();
     }
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
   }
-  setTimeout(() => URL.revokeObjectURL(url), 15000);
 }
 
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+function loadExternalScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("스크립트 로드 실패"));
+    document.head.appendChild(s);
+  });
+}
+
+// 모바일: 정적 리포트를 숨겨진 iframe에 렌더링한 뒤 실제 PDF 파일로 변환해서 다운로드
+async function generateMobilePdf(htmlContent, filenameBase) {
+  toast("PDF 생성 중이에요. 잠시만 기다려주세요...");
+  let iframe;
+  try {
+    if (!window.html2pdf) {
+      await loadExternalScript("https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js");
+    }
+    iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.left = "-99999px";
+    iframe.style.top = "0";
+    iframe.style.width = "900px";
+    iframe.style.height = "1400px";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);
+
+    await new Promise((resolve) => {
+      iframe.onload = resolve;
+      iframe.srcdoc = htmlContent;
+    });
+
+    // 웹폰트 로딩 대기 (실패해도 진행)
+    try { await iframe.contentDocument.fonts.ready; } catch(e) {}
+    await new Promise(r => setTimeout(r, 400));
+
+    const target = iframe.contentDocument.body;
+    await window.html2pdf().set({
+      margin: 0,
+      filename: `${filenameBase}.pdf`,
+      image: { type: "jpeg", quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, windowWidth: 900 },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["css", "legacy"] }
+    }).from(target).save();
+
+    toast("PDF 파일이 다운로드됐어요.");
+  } catch (e) {
+    toast("PDF 생성에 실패했어요: " + e.message);
+  } finally {
+    if (iframe && iframe.parentNode) document.body.removeChild(iframe);
+  }
 }
 
 // ── 결제 (포트원 V2) ───────────────────────────────────────────
