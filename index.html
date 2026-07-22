@@ -1231,7 +1231,7 @@ function renderResults(d) {
   document.getElementById("editFieldsWrap").classList.add("hidden");
   document.getElementById("editToggleBtn").textContent = "✏️ 값 수정하기";
 
-  if (d.comment) document.getElementById("aiComment").textContent = "💬 " + d.comment;
+  document.getElementById("aiComment").textContent = "💡 재무제표와 입력된 값이 다른 경우, 우측 상단의 '✏️ 값 수정하기'를 클릭하시면 직접 수정할 수 있습니다.";
 
   document.getElementById("results").classList.remove("hidden");
 }
@@ -1294,7 +1294,8 @@ function applyEditedFields() {
 function downloadResult() {
   const now = new Date();
   const dateStr = `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
-  const comment = document.getElementById("aiComment").innerText;
+  // 화면 전용 안내문구(값 수정하기 안내)는 PDF에 포함하지 않음
+  const comment = "";
 
   // 현재 분석 데이터 추출
   const extractedHTML = document.getElementById("extractedGrid").innerHTML;
