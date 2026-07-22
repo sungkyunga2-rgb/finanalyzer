@@ -1128,7 +1128,7 @@ function renderResults(d) {
         <div style="font-size:42px;font-weight:700;color:${scoreGrade.color};letter-spacing:-0.03em;line-height:1;">${scoreTotal}<span style="font-size:18px;">/${maxScore}</span></div>
         <div>
           <div style="background:${scoreGrade.bg};color:${scoreGrade.color};font-size:14px;font-weight:700;padding:4px 14px;border-radius:20px;display:inline-block;">${scoreGrade.label}</div>
-          <div style="font-size:11px;color:#9b9a95;margin-top:4px;">100점 만점 기준</div>
+          <div style="font-size:11px;color:#9b9a95;margin-top:4px;">${maxScore}점 만점 기준${maxScore < 100 ? ` (일부 항목 산정불가로 ${100-maxScore}점 제외)` : ""}</div>
         </div>
       </div>
       <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;margin-bottom:14px;">
