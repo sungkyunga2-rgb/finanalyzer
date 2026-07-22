@@ -1769,10 +1769,14 @@ function downloadResult() {
 </html>`;
 
   if (isMobileDevice()) {
-    // 모바일: blob: 링크 이동이 사파리에서 막히는 경우가 있어 data: URI로 우회
-    toast("리포트 화면으로 이동합니다. 공유 버튼(⬆️) → 프린트를 누르면 PDF로 저장할 수 있어요.");
-    const dataUrl = "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent);
-    setTimeout(() => { window.location.href = dataUrl; }, 500);
+    // 모바일: blob/data URI로의 이동이 사파리에서 차단되는 경우가 있어,
+    // 아예 이동하지 않고 현재 문서 자체를 리포트 내용으로 바로 교체
+    toast("리포트 화면으로 전환합니다. 공유 버튼(⬆️) → 프린트를 누르면 PDF로 저장할 수 있어요.");
+    setTimeout(() => {
+      document.open();
+      document.write(htmlContent);
+      document.close();
+    }, 500);
     return;
   } else {
     const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
