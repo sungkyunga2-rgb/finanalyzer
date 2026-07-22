@@ -65,16 +65,31 @@
   .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 
   /* ── 히어로 (랜딩) ── */
-  .hero { text-align: center; padding: 4rem 1.5rem 3rem; }
+  .hero { text-align: center; padding: 4rem 1.5rem 3rem; position: relative; z-index: 1; }
   .hero h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 700; letter-spacing: -0.03em; margin-bottom: 1rem; line-height: 1.2; }
   .hero h1 em { font-style: normal; color: var(--accent); }
   .hero p { font-size: 17px; color: var(--text2); max-width: 480px; margin: 0 auto 2rem; }
   .hero-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; max-width: 760px; margin: 0 auto 3rem; padding: 0 1.5rem; }
-  .feature { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; max-width: 760px; margin: -28px auto 3rem; padding: 0 1.5rem; position: relative; z-index: 1; }
+  .feature { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; border-top: 3px solid var(--accent); box-shadow: 0 8px 24px rgba(13,59,124,0.06); }
   .feature-icon { font-size: 22px; margin-bottom: 0.6rem; }
   .feature h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
   .feature p { font-size: 13px; color: var(--text2); line-height: 1.5; }
+
+  /* ── 랜딩 히어로 배너 (네이비-블루 그라데이션) ── */
+  .hero-band { position: relative; overflow: hidden; background: linear-gradient(135deg, #0a2f66 0%, #0d3b7c 45%, #185FA5 78%, #2e80d8 100%); padding-bottom: 56px; }
+  .hero-bg-deco { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .hero-band header { background: transparent; border-bottom: 1px solid rgba(255,255,255,0.14); position: relative; z-index: 1; }
+  .hero-band header .logo { color: #fff; }
+  .hero-band header .logo span { color: #9fd4ff; }
+  .hero-band .btn { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.32); color: #fff; }
+  .hero-band .btn:hover { background: rgba(255,255,255,0.18); }
+  .hero-band .btn-primary { background: #fff; color: #0d3b7c; border-color: #fff; }
+  .hero-band .btn-primary:hover { background: #eaf2fb; opacity: 1; }
+  .hero-band .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.16em; color: #9fd4ff; margin-bottom: 14px; }
+  .hero-band .hero h1 { color: #fff; }
+  .hero-band .hero h1 em { color: #8fe9cf; }
+  .hero-band .hero p { color: rgba(255,255,255,0.78); }
 
   /* ── 요금제 카드 ── */
   .packages { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
@@ -159,19 +174,49 @@
 
 <!-- ───────────────────────── 랜딩 페이지 ───────────────────────── -->
 <div id="page-landing" class="page active">
-  <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
-    <div class="header-right">
-      <a class="btn" href="#" onclick="showPage('login')">로그인</a>
-      <a class="btn btn-primary" href="#" onclick="showPage('register')">시작하기</a>
-    </div>
-  </header>
-  <div class="hero">
-    <h1>재무제표 이미지 한 장으로<br/><em>즉시 재무 진단</em></h1>
-    <p>재무제표를 첨부하면 부채비율·자본잠식·이자보상배수를 자동 계산합니다.</p>
-    <div class="hero-btns">
-      <a class="btn btn-primary" href="#" onclick="showPage('register')">바로 시작하기</a>
-      <a class="btn" href="#" onclick="showPage('login')">로그인</a>
+  <div class="hero-band">
+    <svg class="hero-bg-deco" viewBox="0 0 1200 520" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="heroBarA" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.02"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0.12"/>
+        </linearGradient>
+        <linearGradient id="heroBarB" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="#8fd9c0" stop-opacity="0.05"/>
+          <stop offset="100%" stop-color="#8fd9c0" stop-opacity="0.22"/>
+        </linearGradient>
+      </defs>
+      <rect x="40"   y="400" width="64" height="90"  rx="5" fill="url(#heroBarA)"/>
+      <rect x="128"  y="360" width="64" height="130" rx="5" fill="url(#heroBarA)"/>
+      <rect x="216"  y="380" width="64" height="110" rx="5" fill="url(#heroBarA)"/>
+      <rect x="304"  y="320" width="64" height="170" rx="5" fill="url(#heroBarB)"/>
+      <rect x="392"  y="280" width="64" height="210" rx="5" fill="url(#heroBarA)"/>
+      <rect x="480"  y="300" width="64" height="190" rx="5" fill="url(#heroBarA)"/>
+      <rect x="568"  y="240" width="64" height="250" rx="5" fill="url(#heroBarB)"/>
+      <rect x="656"  y="200" width="64" height="290" rx="5" fill="url(#heroBarA)"/>
+      <rect x="744"  y="220" width="64" height="270" rx="5" fill="url(#heroBarA)"/>
+      <rect x="832"  y="160" width="64" height="330" rx="5" fill="url(#heroBarB)"/>
+      <rect x="920"  y="120" width="64" height="370" rx="5" fill="url(#heroBarA)"/>
+      <rect x="1008" y="140" width="64" height="350" rx="5" fill="url(#heroBarA)"/>
+      <rect x="1096" y="90"  width="64" height="400" rx="5" fill="url(#heroBarB)"/>
+      <polyline points="72,400 160,360 248,380 336,320 424,280 512,300 600,240 688,200 776,220 864,160 952,120 1040,140 1128,90"
+        fill="none" stroke="#8fd9c0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+    </svg>
+    <header>
+      <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+      <div class="header-right">
+        <a class="btn" href="#" onclick="showPage('login')">로그인</a>
+        <a class="btn btn-primary" href="#" onclick="showPage('register')">시작하기</a>
+      </div>
+    </header>
+    <div class="hero">
+      <div class="hero-eyebrow">AI FINANCIAL DIAGNOSTIC PLATFORM</div>
+      <h1>재무제표 이미지 한 장으로<br/><em>즉시 재무 진단</em></h1>
+      <p>재무제표를 첨부하면 부채비율·자본잠식·이자보상배수를 자동 계산합니다.</p>
+      <div class="hero-btns">
+        <a class="btn btn-primary" href="#" onclick="showPage('register')">바로 시작하기</a>
+        <a class="btn" href="#" onclick="showPage('login')">로그인</a>
+      </div>
     </div>
   </div>
   <div class="features">
