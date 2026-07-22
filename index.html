@@ -1769,15 +1769,10 @@ function downloadResult() {
   const url  = URL.createObjectURL(blob);
 
   if (isMobileDevice()) {
-    // 모바일: 실제 브라우저 탭으로 열어서(캔버스로 흉내내지 않고) 브라우저 자체 렌더링을 그대로 사용
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    toast("새 탭에서 리포트가 열려요. 공유 버튼(⬆️) → 프린트를 누르면 PDF로 저장할 수 있어요.");
+    // 모바일: 새 탭은 팝업으로 차단될 수 있어, 현재 화면에서 바로 리포트로 이동 (팝업 차단 영향 없음)
+    toast("리포트 화면으로 이동합니다. 공유 버튼(⬆️) → 프린트를 누르면 PDF로 저장할 수 있어요.");
+    setTimeout(() => { window.location.href = url; }, 900);
+    return;
   } else {
     const win = window.open(url, "_blank");
     if (win) {
