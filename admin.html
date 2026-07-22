@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>관리자 — FinAnalyzer</title>
+<style>
+  :root {
+    --navy: #0d3b7c; --blue: #185fa5; --accent: #2e80d8;
+    --safe: #0F6E56; --danger: #A32D2D; --warn: #B8860B;
+    --bg: #f7f9fc; --surface: #fff; --border: #e2e8f0;
+    --text: #1a2332; --text2: #6b7a8d; --text3: #9aa7b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 40px 16px;
+  }
+  .wrap { width: 100%; max-width: 640px; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 20px; color: var(--navy); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 24px; margin-bottom: 16px;
+  }
+  .field { margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; font-weight: 500; }
+  input {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-family: inherit;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; }
+  button {
+    padding: 10px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .btn-primary { background: var(--navy); color: #fff; }
+  .btn-primary:hover { background: var(--blue); }
+  .btn-ghost { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: #eef2f7; }
+  .btn-full { width: 100%; }
+  .error-msg { color: var(--danger); font-size: 12px; margin-top: 8px; display: none; }
+  .hidden { display: none !important; }
+
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .info-item { background: var(--bg); border-radius: 8px; padding: 10px 12px; }
+  .info-item .l { font-size: 11px; color: var(--text3); margin-bottom: 2px; }
+  .info-item .v { font-size: 14px; font-weight: 600; }
+
+  .count-badge {
+    display: inline-flex; align-items: center; gap: 6px; background: #EBF2FA; color: var(--blue);
+    font-size: 20px; font-weight: 800; padding: 8px 16px; border-radius: 20px; margin-bottom: 16px;
+  }
+  .count-badge span { font-size: 12px; font-weight: 500; color: var(--text2); }
+
+  .quick-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .quick-row button { flex: 1; min-width: 60px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text2); }
+  th { font-weight: 600; color: var(--text3); font-size: 11px; }
+  .section-title { font-size: 13px; font-weight: 700; margin: 18px 0 8px; color: var(--navy); }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--navy); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px;
+    opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 999;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>🔐 FinAnalyzer 관리자</h1>
+
+  <!-- 로그인 -->
+  <div class="card" id="loginCard">
+    <div class="field">
+      <label>관리자 비밀번호</label>
+      <input type="password" id="admin-pw" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')doLogin()" />
+    </div>
+    <button class="btn-primary btn-full" onclick="doLogin()">로그인</button>
+    <div class="error-msg" id="login-error"></div>
+  </div>
+
+  <!-- 검색 -->
+  <div class="card hidden" id="searchCard">
+    <div class="field">
+      <label>회원 이메일 (가입 시 사용한 로그인 ID)</label>
+      <div class="row">
+        <input type="email" id="search-email" placeholder="user@example.com" onkeydown="if(event.key==='Enter')searchUser()" />
+        <button class="btn-primary" onclick="searchUser()">검색</button>
+      </div>
+    </div>
+    <div class="error-msg" id="search-error"></div>
+  </div>
+
+  <!-- 결과 -->
+  <div class="card hidden" id="resultCard"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = "https://analyze-1-250m.onrender.com";
+let adminPw = sessionStorage.getItem("admin_pw") || "";
+let currentEmail = "";
+
+if (adminPw) showSearch();
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { "Content-Type": "application/json", "X-Admin-Password": adminPw } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API_BASE + path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || "요청 처리 중 오류가 발생했습니다.");
+  return data;
+}
+
+async function doLogin() {
+  const pw = document.getElementById("admin-pw").value;
+  const errEl = document.getElementById("login-error");
+  errEl.style.display = "none";
+  if (!pw) return;
+  try {
+    await fetch(API_BASE + "/admin/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw })
+    }).then(async res => {
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.detail || "로그인 실패");
+    });
+    adminPw = pw;
+    sessionStorage.setItem("admin_pw", pw);
+    showSearch();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+  }
+}
+
+function showSearch() {
+  document.getElementById("loginCard").classList.add("hidden");
+  document.getElementById("searchCard").classList.remove("hidden");
+}
+
+async function searchUser() {
+  const email = document.getElementById("search-email").value.trim();
+  const errEl = document.getElementById("search-error");
+  errEl.style.display = "none";
+  if (!email) return;
+  try {
+    const d = await api("GET", `/admin/user?email=${encodeURIComponent(email)}`);
+    currentEmail = d.email;
+    renderResult(d);
+  } catch (e) {
+    document.getElementById("resultCard").classList.add("hidden");
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+    if (e.message.includes("비밀번호") || e.message.includes("401")) {
+      sessionStorage.removeItem("admin_pw");
+      adminPw = "";
+      document.getElementById("loginCard").classList.remove("hidden");
+      document.getElementById("searchCard").classList.add("hidden");
+    }
+  }
+}
+
+function renderResult(d) {
+  const card = document.getElementById("resultCard");
+  card.classList.remove("hidden");
+
+  const paymentsRows = d.payments.length
+    ? d.payments.map(p => `<tr><td>${p.created_at ? p.created_at.slice(0,10) : "-"}</td><td>${p.package_id || "-"}</td><td>${p.amount ? p.amount.toLocaleString() + "원" : "-"}</td><td>+${Math.floor((p.credits||0)/10)}건</td></tr>`).join("")
+    : `<tr><td colspan="4" style="text-align:center;color:#9aa7b8;">결제 내역 없음</td></tr>`;
+
+  const analysesRows = d.recent_analyses.length
+    ? d.recent_analyses.map(l => `<tr><td>${l.created_at ? l.created_at.slice(0,16).replace('T',' ') : "-"}</td><td>-${Math.floor((l.credits_used||0)/10)}건</td></tr>`).join("")
+    : `<tr><td colspan="2" style="text-align:center;color:#9aa7b8;">분석 내역 없음</td></tr>`;
+
+  card.innerHTML = `
+    <div class="count-badge">잔여횟수 ${d.remaining_count}건 <span>(${d.credits} 크레딧)</span></div>
+
+    <div class="info-grid">
+      <div class="info-item"><div class="l">회사명</div><div class="v">${d.company_name || "-"}</div></div>
+      <div class="info-item"><div class="l">대표자명</div><div class="v">${d.rep_name || "-"}</div></div>
+      <div class="info-item"><div class="l">사업자번호</div><div class="v">${d.business_number || "-"}</div></div>
+      <div class="info-item"><div class="l">휴대폰번호</div><div class="v">${d.phone || "-"}</div></div>
+      <div class="info-item" style="grid-column:1/-1;"><div class="l">이메일 / 가입일</div><div class="v">${d.email} · ${d.created_at ? d.created_at.slice(0,10) : "-"}</div></div>
+    </div>
+
+    <div class="section-title">⚡ 빠른 조정</div>
+    <div class="quick-row">
+      <button class="btn-ghost" onclick="adjust(-1)">-1건</button>
+      <button class="btn-ghost" onclick="adjust(1)">+1건</button>
+      <button class="btn-ghost" onclick="adjust(5)">+5건</button>
+      <button class="btn-ghost" onclick="adjust(10)">+10건</button>
+      <button class="btn-ghost" onclick="adjust(13)">+13건</button>
+    </div>
+
+    <div class="section-title">직접 입력</div>
+    <div class="row" style="margin-bottom:8px;">
+      <input type="number" id="delta-input" placeholder="증감할 건수 (예: -3 또는 7)" />
+      <button class="btn-primary" onclick="adjustCustom()">증감 적용</button>
+    </div>
+    <div class="row">
+      <input type="number" id="set-input" placeholder="정확한 잔여횟수로 설정 (예: 20)" />
+      <button class="btn-primary" onclick="setExact()">값으로 설정</button>
+    </div>
+
+    <div class="section-title">💳 최근 결제 내역</div>
+    <table><thead><tr><th>날짜</th><th>패키지</th><th>금액</th><th>지급건수</th></tr></thead><tbody>${paymentsRows}</tbody></table>
+
+    <div class="section-title">📄 최근 분석 내역</div>
+    <table><thead><tr><th>일시</th><th>사용건수</th></tr></thead><tbody>${analysesRows}</tbody></table>
+  `;
+}
+
+async function adjust(delta) {
+  try {
+    const d = await api("POST", "/admin/adjust-credits", { email: currentEmail, delta_count: delta });
+    toast(`${delta > 0 ? "+" : ""}${delta}건 적용 완료 → 잔여횟수 ${d.remaining_count}건`);
+    searchUser();
+  } catch (e) { toast("오류: " + e.message); }
+}
+
+async function adjustCustom() {
+  const val = parseInt(document.getElementById("delta-input").value);
+  if (isNaN(val)) return toast("증감할 건수를 입력해주세요.");
+  await adjust(val);
+  document.getElementById("delta-input").value = "";
+}
+
+async function setExact() {
+  const val = parseInt(document.getElementById("set-input").value);
+  if (isNaN(val) || val < 0) return toast("올바른 잔여횟수를 입력해주세요.");
+  try {
+    const d = await api("POST", "/admin/set-credits", { email: currentEmail, remaining_count: val });
+    toast(`잔여횟수를 ${d.remaining_count}건으로 설정했습니다.`);
+    document.getElementById("set-input").value = "";
+    searchUser();
+  } catch (e) { toast("오류: " + e.message); }
+}
+</script>
+</body>
+</html>
