@@ -1632,6 +1632,7 @@ function downloadResult() {
     background: #0d3b7c; padding: 12px 16px; text-align: center;
   }
   .save-pdf-bar button {
+    display: block; margin: 0 auto;
     background: #fff; color: #0d3b7c; border: none; border-radius: 10px;
     padding: 12px 24px; font-size: 15px; font-weight: 700; cursor: pointer;
     font-family: 'Noto Sans KR', sans-serif; width: 100%; max-width: 420px;
@@ -1641,9 +1642,11 @@ function downloadResult() {
 <body>
 
 <div class="save-pdf-bar">
-  <button onclick="window.print()">📥 PDF로 저장하기 (탭하면 인쇄창이 열려요)</button>
+  <button onclick="window.print()">🖨️ PDF로 저장하기 (인쇄창 열기)</button>
+  <button onclick="saveAsImage()" style="margin-top:8px;background:rgba(255,255,255,0.15);color:#fff;border:1.5px solid rgba(255,255,255,0.5);">🖼️ 이미지로 저장하기 (모바일 추천)</button>
 </div>
 
+<div id="reportCaptureArea">
 <!-- 0. 표지 -->
 <div class="cover">
   <div class="cover-brandbar">
@@ -1778,6 +1781,47 @@ function downloadResult() {
   <strong>씨앤지파트너스 (C&G Partners)</strong> &nbsp;|&nbsp; 대표 정성경 &nbsp;|&nbsp; 사업자번호 743-42-01047<br/>
   경기도 고양시 향동동 469 DMC스타비즈4st, 1316호 &nbsp;|&nbsp; cngpartners123@gmail.com
 </div>
+
+</div><!-- /reportCaptureArea -->
+
+<!-- 이미지 저장 결과를 보여주는 모달 -->
+<div id="imgSaveModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;overflow-y:auto;padding:16px;">
+  <div style="max-width:600px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <span style="color:#fff;font-size:14px;font-weight:700;">👇 아래 이미지를 길게 눌러 "사진에 저장"을 선택하세요</span>
+      <button onclick="document.getElementById('imgSaveModal').style.display='none'" style="background:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;">닫기</button>
+    </div>
+    <div id="imgSaveResult" style="background:#fff;border-radius:8px;padding:8px;text-align:center;">
+      <div style="padding:40px 0;color:#666;">이미지 생성 중입니다. 잠시만 기다려주세요...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function saveAsImage() {
+  const modal = document.getElementById('imgSaveModal');
+  const resultBox = document.getElementById('imgSaveResult');
+  modal.style.display = 'block';
+  resultBox.innerHTML = '<div style="padding:40px 0;color:#666;">이미지 생성 중입니다. 잠시만 기다려주세요...</div>';
+  try {
+    if (!window.html2canvas) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('스크립트 로드 실패'));
+        document.head.appendChild(s);
+      });
+    }
+    const target = document.getElementById('reportCaptureArea');
+    const canvas = await window.html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    resultBox.innerHTML = '<img src="' + dataUrl + '" style="width:100%;height:auto;display:block;border-radius:6px;" />';
+  } catch (e) {
+    resultBox.innerHTML = '<div style="padding:40px 20px;color:#c0392b;">이미지 생성에 실패했습니다: ' + e.message + '</div>';
+  }
+}
+<\/script>
 
 </body>
 </html>`;
