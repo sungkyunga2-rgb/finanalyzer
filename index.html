@@ -349,24 +349,24 @@
           <input type="text" id="m-biz" placeholder="예: 123-45-67890" />
         </div>
         <div class="field">
-          <label>매출금액 <span style="color:var(--danger);font-size:11px;">필수</span></label>
-          <input type="number" id="m-sales" placeholder="예: 120000000" />
+          <label>매출금액 (원) <span style="color:var(--danger);font-size:11px;">필수</span></label>
+          <input type="text" inputmode="numeric" id="m-sales" placeholder="예: 120,000,000" oninput="formatMoneyInput(this)" />
         </div>
         <div class="field">
-          <label>부채금액 <span style="color:var(--danger);font-size:11px;">필수</span></label>
-          <input type="number" id="m-debt" placeholder="예: 50000000" />
+          <label>부채금액 (원) <span style="color:var(--danger);font-size:11px;">필수</span></label>
+          <input type="text" inputmode="numeric" id="m-debt" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" />
         </div>
         <div class="field">
-          <label>총 자산 <span style="color:var(--danger);font-size:11px;">필수 (부동산·차량·현금 등)</span></label>
-          <input type="number" id="m-assets" placeholder="예: 200000000" />
+          <label>총 자산 (원) <span style="color:var(--danger);font-size:11px;">필수 (부동산·차량·현금 등)</span></label>
+          <input type="text" inputmode="numeric" id="m-assets" placeholder="예: 200,000,000" oninput="formatMoneyInput(this)" />
         </div>
         <div class="field">
-          <label>월 이자비용 <span style="color:var(--text3);font-size:11px;">선택</span></label>
-          <input type="number" id="m-interest" placeholder="예: 300000" />
+          <label>월 이자비용 (원) <span style="color:var(--text3);font-size:11px;">선택</span></label>
+          <input type="text" inputmode="numeric" id="m-interest" placeholder="예: 300,000" oninput="formatMoneyInput(this)" />
         </div>
         <div class="field" style="grid-column:1/-1;">
-          <label>월 순수익 <span style="color:var(--text3);font-size:11px;">선택</span></label>
-          <input type="number" id="m-profit" placeholder="예: 5000000" />
+          <label>월 순수익 (원) <span style="color:var(--text3);font-size:11px;">선택</span></label>
+          <input type="text" inputmode="numeric" id="m-profit" placeholder="예: 5,000,000" oninput="formatMoneyInput(this)" />
         </div>
       </div>
       <p style="font-size:11px;color:var(--text3);margin-top:2px;margin-bottom:1rem;">전부 입력해주실수록 정확하게 분석이 가능합니다.</p>
@@ -539,7 +539,7 @@
       <br/>
       <p><strong>제5조 (준거법)</strong><br/>본 약관은 대한민국 법률에 따라 해석되며, 분쟁 발생 시 회사 소재지를 관할하는 법원을 전속 관할로 합니다.</p>
     </div>
-    <button class="btn mt1" onclick="history.back()">← 돌아가기</button>
+    <button class="btn mt1" onclick="showPage('landing')">← 돌아가기</button>
   </div>
 </div>
 
@@ -582,9 +582,9 @@
       <br/>
       <p><strong>8. 개인정보 관리책임자</strong></p>
       <p>회사는 개인정보에 대한 의견수렴 및 불만처리의 정책을 담당하는 개인정보정책 담당 관리책임자를 지정하고 있습니다. 본 정책에 대한 불만사항이 있으시다면 아래 연락처로 문의 하시면 친절히 처리하여 드리겠습니다.<br/>
-      대표전화 : 1555-3830 · 이메일 : cngpartners123@gmail.com</p>
+      이메일 : cngpartners123@gmail.com</p>
     </div>
-    <button class="btn mt1" onclick="history.back()">← 돌아가기</button>
+    <button class="btn mt1" onclick="showPage('landing')">← 돌아가기</button>
   </div>
 </div>
 
@@ -974,17 +974,33 @@ function prefillManualFields() {
   if (repEl && !repEl.value) repEl.value = userRepName || "";
   if (bizEl && !bizEl.value) bizEl.value = userBizNumber || "";
 }
+
+// 금액 입력창에 1,000 단위 콤마를 실시간으로 표시
+function formatMoneyInput(el) {
+  const cursorFromEnd = el.value.length - el.selectionEnd;
+  const digitsOnly = el.value.replace(/[^0-9]/g, "");
+  el.value = digitsOnly ? Number(digitsOnly).toLocaleString("ko-KR") : "";
+  const newPos = el.value.length - cursorFromEnd;
+  el.setSelectionRange(newPos, newPos);
+}
+
+// 콤마가 포함된 금액 입력값을 숫자로 변환
+function parseMoneyInput(id) {
+  const raw = document.getElementById(id).value.replace(/,/g, "").trim();
+  return raw === "" ? NaN : parseFloat(raw);
+}
+
 function doManualAnalyze() {
   if (!token) { showPage("login"); return; }
 
   const companyName = document.getElementById("m-company").value.trim();
   const repName  = document.getElementById("m-rep").value.trim();
   const bizNum   = document.getElementById("m-biz").value.trim();
-  const sales    = parseFloat(document.getElementById("m-sales").value);
-  const debt     = parseFloat(document.getElementById("m-debt").value);
-  const assets   = parseFloat(document.getElementById("m-assets").value) || null;
-  const interest = parseFloat(document.getElementById("m-interest").value) || null;
-  const profit   = parseFloat(document.getElementById("m-profit").value) || null;
+  const sales    = parseMoneyInput("m-sales");
+  const debt     = parseMoneyInput("m-debt");
+  const assets   = parseMoneyInput("m-assets") || null;
+  const interest = parseMoneyInput("m-interest") || null;
+  const profit   = parseMoneyInput("m-profit") || null;
 
   if (!companyName || isNaN(sales) || isNaN(debt) || !assets) {
     toast("회사이름, 매출금액, 부채금액, 총 자산은 필수 입력 항목입니다.");
