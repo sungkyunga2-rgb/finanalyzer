@@ -55,7 +55,7 @@ COST_PER_ANALYSIS = 10  # 분석 1회당 차감 크레딧
 
 CREDIT_PACKAGES = {
     "single":   {"price": 9900,  "credits": 10,  "label": "1건"},
-    "standard": {"price": 49500, "credits": 50,  "label": "5건"},
+    "standard": {"price": 49500, "credits": 60,  "label": "5+1건 (총 6건)"},
     "mega":     {"price": 99000, "credits": 130, "label": "10+3건 (총 13건)"},
 }
 

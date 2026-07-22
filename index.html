@@ -453,9 +453,9 @@
         </div>
         <div class="pkg-card recommended" data-pkg="standard" onclick="selectPkg(this,'standard')">
           <div class="pkg-badge">추천</div>
-          <div class="pkg-name">5건</div>
+          <div class="pkg-name">5+1건</div>
           <div class="pkg-price">49,500원</div>
-          <div class="pkg-credits">분석 5회</div>
+          <div class="pkg-credits">분석 6회 <span style="color:var(--accent);font-size:11px;font-weight:600;">1건 보너스</span></div>
         </div>
         <div class="pkg-card" data-pkg="mega" onclick="selectPkg(this,'mega')">
           <div class="pkg-name">10+3건</div>
@@ -587,9 +587,9 @@
       </div>
       <div class="pkg-card recommended" data-pkg="standard" onclick="payFromModal('standard')">
         <div class="pkg-badge">추천</div>
-        <div class="pkg-name">5건</div>
+        <div class="pkg-name">5+1건</div>
         <div class="pkg-price">49,500원</div>
-        <div class="pkg-credits">분석 5회</div>
+        <div class="pkg-credits">분석 6회 <span style="color:var(--accent);font-size:11px;font-weight:600;">1건 보너스</span></div>
       </div>
       <div class="pkg-card" data-pkg="mega" onclick="payFromModal('mega')">
         <div class="pkg-name">10+3건</div>
@@ -1702,7 +1702,7 @@ function downloadResult() {
 // ── 결제 (포트원 V2) ───────────────────────────────────────────
 const PKGS = {
   single:   { price: 9900,  credits: 10,  label: "1건" },
-  standard: { price: 49500, credits: 50,  label: "5건" },
+  standard: { price: 49500, credits: 60,  label: "5+1건 (총 6건)" },
   mega:     { price: 99000, credits: 130, label: "10+3건 (총 13건)" },
 };
 
