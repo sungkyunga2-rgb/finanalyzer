@@ -294,6 +294,10 @@
         <label>비밀번호 <span style="color:var(--danger);font-size:11px;">필수</span></label>
         <input type="password" id="reg-pw" placeholder="8자 이상" />
       </div>
+      <div class="field">
+        <label>비밀번호 확인 <span style="color:var(--danger);font-size:11px;">필수</span></label>
+        <input type="password" id="reg-pw2" placeholder="비밀번호 다시 입력" />
+      </div>
       <div class="field" style="display:flex;align-items:flex-start;gap:8px;">
         <input type="checkbox" id="reg-agree" style="margin-top:3px;width:16px;height:16px;flex-shrink:0;" />
         <label for="reg-agree" style="font-size:13px;color:var(--text2);font-weight:400;">
@@ -581,13 +585,28 @@
       <div id="mi-analyses-table"></div>
     </div>
 
-    <!-- 회원탈퇴 -->
-    <div class="card hidden" id="myinfo-withdraw-card">
-      <div class="card-title" style="margin-bottom:.5rem;color:var(--danger);">회원 탈퇴</div>
-      <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;">탈퇴 시 계정 정보와 잔여횟수가 모두 삭제되며 복구할 수 없습니다.</p>
+    <!-- 회원탈퇴 링크 -->
+    <p class="text-center hidden" id="myinfo-withdraw-card" style="margin-top:1rem;">
+      <a href="#" onclick="showPage('withdraw')" style="font-size:12px;color:var(--danger);">회원 탈퇴</a>
+    </p>
+  </div>
+</div>
+
+<!-- ───────────────────────── 회원 탈퇴 ───────────────────────── -->
+<div id="page-withdraw" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <div class="header-right">
+      <button class="btn" onclick="showPage('myinfo')">← 돌아가기</button>
+    </div>
+  </header>
+  <div class="main" style="max-width:400px;">
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;color:var(--danger);">회원 탈퇴</h2>
+    <div class="card">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:1rem;">탈퇴 시 계정 정보와 잔여횟수가 모두 삭제되며 복구할 수 없습니다. 계속하시려면 비밀번호를 입력해주세요.</p>
       <div class="field">
         <label>비밀번호 확인</label>
-        <input type="password" id="withdraw-pw" placeholder="비밀번호 입력" />
+        <input type="password" id="withdraw-pw" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')doWithdraw()" />
       </div>
       <div id="withdraw-error" class="error-msg"></div>
       <button class="btn btn-full" style="background:var(--danger);color:#fff;" onclick="doWithdraw()">회원 탈퇴하기</button>
@@ -804,6 +823,10 @@ function showPage(name) {
     document.getElementById("myinfo-history-card").classList.add("hidden");
     document.getElementById("myinfo-withdraw-card").classList.add("hidden");
   }
+  if (name === "withdraw") {
+    document.getElementById("withdraw-pw").value = "";
+    document.getElementById("withdraw-error").style.display = "none";
+  }
 }
 
 function toast(msg) {
@@ -851,11 +874,17 @@ async function doRegister() {
   const biz     = document.getElementById("reg-biz").value.trim();
   const email   = document.getElementById("reg-email").value.trim();
   const pw      = document.getElementById("reg-pw").value;
+  const pw2     = document.getElementById("reg-pw2").value;
   const agreed  = document.getElementById("reg-agree").checked;
   const errEl   = document.getElementById("reg-error");
   errEl.style.display = "none";
-  if (!company || !name || !phone || !biz || !email || !pw) {
+  if (!company || !name || !phone || !biz || !email || !pw || !pw2) {
     errEl.textContent = "모든 필수 항목을 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (pw !== pw2) {
+    errEl.textContent = "비밀번호가 서로 일치하지 않습니다.";
     errEl.style.display = "block";
     return;
   }
