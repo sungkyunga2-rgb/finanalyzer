@@ -548,6 +548,45 @@ def admin_set_credits(body: AdminSetCreditsBody, _: bool = Depends(check_admin),
     return {"email": user.email, "credits": user.credits, "remaining_count": user.credits // COST_PER_ANALYSIS}
 
 
+class AdminUpdateUserBody(BaseModel):
+    email: str                       # 현재 이메일 (대상 식별자)
+    new_email: Optional[str] = None
+    new_phone: Optional[str] = None
+    new_password: Optional[str] = None
+
+@app.post("/admin/update-user")
+def admin_update_user(body: AdminUpdateUserBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    import re, hashlib
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
+
+    if body.new_email:
+        new_email = body.new_email.strip().lower()
+        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", new_email):
+            raise HTTPException(status_code=400, detail="올바른 이메일 형식이 아닙니다.")
+        if new_email != user.email:
+            existing = db.query(models.User).filter(models.User.email == new_email).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="이미 사용 중인 이메일입니다.")
+            user.email = new_email
+
+    if body.new_phone:
+        user.phone = body.new_phone.strip()
+
+    if body.new_password:
+        if len(body.new_password) < 4:
+            raise HTTPException(status_code=400, detail="비밀번호는 4자 이상이어야 합니다.")
+        user.password_hash = hashlib.sha256(body.new_password.encode()).hexdigest()
+
+    db.commit()
+    return {
+        "email": user.email,
+        "phone": user.phone,
+        "message": "회원 정보가 수정되었습니다.",
+    }
+
+
 # ══════════════════════════════════════════════════════════════
 # 아이디(이메일) 찾기 / 비밀번호 찾기 (임시비밀번호 이메일 발송)
 # ══════════════════════════════════════════════════════════════

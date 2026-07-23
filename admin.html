@@ -275,12 +275,52 @@ function renderResult(d) {
       <button class="btn-primary" onclick="setExact()">값으로 설정</button>
     </div>
 
+    <div class="section-title">✏️ 회원정보 수정</div>
+    <div class="field">
+      <label>이메일</label>
+      <input type="email" id="edit-email" value="${d.email}" />
+    </div>
+    <div class="field">
+      <label>휴대폰번호</label>
+      <input type="tel" id="edit-phone" value="${d.phone || ""}" />
+    </div>
+    <div class="field">
+      <label>새 비밀번호 (변경할 때만 입력, 4자 이상)</label>
+      <input type="text" id="edit-password" placeholder="비워두면 비밀번호는 그대로 유지" />
+    </div>
+    <div class="error-msg" id="edit-error"></div>
+    <button class="btn-primary btn-full" onclick="saveUserEdit()">회원정보 저장</button>
+
     <div class="section-title">💳 최근 결제 내역</div>
     <table><thead><tr><th>날짜</th><th>패키지</th><th>금액</th><th>지급건수</th></tr></thead><tbody>${paymentsRows}</tbody></table>
 
     <div class="section-title">📄 최근 분석 내역</div>
     <table><thead><tr><th>일시</th><th>사용건수</th></tr></thead><tbody>${analysesRows}</tbody></table>
   `;
+}
+
+async function saveUserEdit() {
+  const newEmail = document.getElementById("edit-email").value.trim();
+  const newPhone = document.getElementById("edit-phone").value.trim();
+  const newPassword = document.getElementById("edit-password").value;
+  const errEl = document.getElementById("edit-error");
+  errEl.style.display = "none";
+
+  const body = { email: currentEmail };
+  if (newEmail && newEmail !== currentEmail) body.new_email = newEmail;
+  if (newPhone) body.new_phone = newPhone;
+  if (newPassword) body.new_password = newPassword;
+
+  try {
+    const d = await api("POST", "/admin/update-user", body);
+    toast("회원 정보가 저장되었습니다.");
+    currentEmail = d.email;
+    document.getElementById("search-email").value = d.email;
+    searchUser();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+  }
 }
 
 async function adjust(delta) {
