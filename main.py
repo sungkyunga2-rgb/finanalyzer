@@ -263,6 +263,39 @@ def withdraw(
     db.commit()
     return {"message": "회원 탈퇴가 완료되었습니다."}
 
+# 환불 신청
+class RefundRequestBody(BaseModel):
+    reason: str = ""
+
+@app.post("/refund/request")
+def request_refund(
+    body: RefundRequestBody,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    r = models.RefundRequest(user_id=user.id, reason=body.reason.strip())
+    db.add(r)
+    db.commit()
+    return {"message": "환불 신청이 접수되었습니다. 영업일 기준 며칠 내로 처리될 예정입니다."}
+
+@app.get("/refund/my-requests")
+def my_refund_requests(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    reqs = db.query(models.RefundRequest).filter(models.RefundRequest.user_id == user.id).order_by(models.RefundRequest.created_at.desc()).all()
+    status_kr = {"pending": "처리 대기", "processed": "환불 완료", "rejected": "반려"}
+    return {
+        "requests": [
+            {
+                "reason": r.reason,
+                "status": status_kr.get(r.status, r.status),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in reqs
+        ]
+    }
+
 # 결제 검증 + 크레딧 지급 (포트원 V2)
 @app.post("/payments/confirm")
 async def confirm_payment(
@@ -650,6 +683,43 @@ def admin_update_user(body: AdminUpdateUserBody, _: bool = Depends(check_admin),
         "phone": user.phone,
         "message": "회원 정보가 수정되었습니다.",
     }
+
+
+@app.get("/admin/refund-requests")
+def admin_list_refund_requests(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    reqs = db.query(models.RefundRequest).order_by(models.RefundRequest.created_at.desc()).all()
+    result = []
+    for r in reqs:
+        user = db.query(models.User).filter(models.User.id == r.user_id).first()
+        result.append({
+            "id": r.id,
+            "email": user.email if user else "(탈퇴한 회원)",
+            "company_name": user.company_name if user else "",
+            "phone": user.phone if user else "",
+            "remaining_count": (user.credits // COST_PER_ANALYSIS) if user else None,
+            "reason": r.reason,
+            "status": r.status,
+            "admin_note": r.admin_note,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+    return {"count": len(result), "requests": result}
+
+class AdminResolveRefundBody(BaseModel):
+    status: str  # processed / rejected
+    admin_note: str = ""
+
+@app.post("/admin/refund-requests/{req_id}/resolve")
+def admin_resolve_refund(req_id: int, body: AdminResolveRefundBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    if body.status not in ("processed", "rejected"):
+        raise HTTPException(status_code=400, detail="status는 processed 또는 rejected여야 합니다.")
+    r = db.query(models.RefundRequest).filter(models.RefundRequest.id == req_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="해당 환불 신청을 찾을 수 없습니다.")
+    r.status = body.status
+    r.admin_note = body.admin_note.strip()
+    r.processed_at = datetime.utcnow()
+    db.commit()
+    return {"id": r.id, "status": r.status}
 
 
 # ══════════════════════════════════════════════════════════════

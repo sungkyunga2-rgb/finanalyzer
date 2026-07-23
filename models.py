@@ -35,3 +35,13 @@ class AnalysisLog(Base):
     user_id      = Column(Integer, ForeignKey("users.id"))
     credits_used = Column(Integer)
     created_at   = Column(DateTime, default=datetime.utcnow)
+
+class RefundRequest(Base):
+    __tablename__ = "refund_requests"
+    id           = Column(Integer, primary_key=True, index=True)
+    user_id      = Column(Integer, ForeignKey("users.id"))
+    reason       = Column(String, default="")
+    status       = Column(String, default="pending")  # pending / processed / rejected
+    admin_note   = Column(String, default="")
+    created_at   = Column(DateTime, default=datetime.utcnow)
+    processed_at = Column(DateTime, nullable=True)

@@ -98,10 +98,14 @@
     </div>
     <div class="error-msg" id="search-error"></div>
     <button class="btn-ghost btn-full" onclick="toggleUserList()" id="listToggleBtn" style="margin-top:12px;">📋 전체 가입자 목록 보기</button>
+    <button class="btn-ghost btn-full" onclick="toggleRefundList()" id="refundToggleBtn" style="margin-top:8px;">💸 환불 신청 내역 보기</button>
   </div>
 
   <!-- 전체 회원 목록 -->
   <div class="card hidden" id="userListCard"></div>
+
+  <!-- 환불 신청 목록 -->
+  <div class="card hidden" id="refundListCard"></div>
 
   <!-- 결과 -->
   <div class="card hidden" id="resultCard"></div>
@@ -168,6 +172,7 @@ async function searchUser() {
     const d = await api("GET", `/admin/user?email=${encodeURIComponent(email)}`);
     currentEmail = d.email;
     document.getElementById("userListCard").classList.add("hidden");
+    document.getElementById("refundListCard").classList.add("hidden");
     renderResult(d);
   } catch (e) {
     document.getElementById("resultCard").classList.add("hidden");
@@ -191,6 +196,7 @@ async function toggleUserList() {
     return;
   }
   document.getElementById("resultCard").classList.add("hidden");
+  document.getElementById("refundListCard").classList.add("hidden");
   btn.textContent = "불러오는 중...";
   try {
     const d = await api("GET", "/admin/users");
@@ -231,6 +237,65 @@ function renderUserList(d) {
 function jumpToUser(email) {
   document.getElementById("search-email").value = email;
   searchUser();
+}
+
+async function toggleRefundList() {
+  const card = document.getElementById("refundListCard");
+  const btn = document.getElementById("refundToggleBtn");
+  if (!card.classList.contains("hidden")) {
+    card.classList.add("hidden");
+    btn.textContent = "💸 환불 신청 내역 보기";
+    return;
+  }
+  document.getElementById("resultCard").classList.add("hidden");
+  document.getElementById("userListCard").classList.add("hidden");
+  btn.textContent = "불러오는 중...";
+  try {
+    const d = await api("GET", "/admin/refund-requests");
+    renderRefundList(d);
+    card.classList.remove("hidden");
+    btn.textContent = "💸 목록 닫기";
+  } catch (e) {
+    toast_admin_error(e.message);
+    btn.textContent = "💸 환불 신청 내역 보기";
+  }
+}
+
+const REFUND_STATUS_KR = { pending: "처리 대기", processed: "환불 완료", rejected: "반려" };
+
+function renderRefundList(d) {
+  const card = document.getElementById("refundListCard");
+  const rows = d.requests.map(r => `
+    <tr>
+      <td>${r.created_at ? r.created_at.slice(0,10) : "-"}</td>
+      <td>${r.company_name || "-"}<br><span style="color:#9aa7b8;">${r.email}</span></td>
+      <td style="max-width:220px;white-space:normal;">${r.reason || "-"}</td>
+      <td>${r.remaining_count !== null ? r.remaining_count + "건" : "-"}</td>
+      <td>${REFUND_STATUS_KR[r.status] || r.status}</td>
+      <td>
+        ${r.status === "pending" ? `
+          <button class="btn-primary" style="padding:4px 10px;font-size:11px;" onclick="resolveRefund(${r.id}, 'processed')">완료 처리</button>
+          <button class="btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="resolveRefund(${r.id}, 'rejected')">반려</button>
+        ` : `<span style="color:#9aa7b8;">${r.admin_note || ""}</span>`}
+      </td>
+    </tr>`).join("");
+  card.innerHTML = `
+    <div class="section-title">환불 신청 내역 (${d.count}건)</div>
+    <table>
+      <thead><tr><th>신청일</th><th>회원</th><th>사유</th><th>잔여횟수</th><th>상태</th><th>처리</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:#9aa7b8;">환불 신청이 없습니다.</td></tr>`}</tbody>
+    </table>`;
+}
+
+async function resolveRefund(id, status) {
+  const label = status === "processed" ? "환불 완료 처리" : "반려";
+  if (!confirm(`이 신청을 "${label}"로 처리하시겠습니까?`)) return;
+  try {
+    await api("POST", `/admin/refund-requests/${id}/resolve`, { status });
+    toast(`${label}되었습니다.`);
+    const d = await api("GET", "/admin/refund-requests");
+    renderRefundList(d);
+  } catch (e) { toast("오류: " + e.message); }
 }
 
 function renderResult(d) {
