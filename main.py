@@ -548,7 +548,7 @@ def mask_email(email: str) -> str:
 def send_temp_password_email(to_email: str, temp_password: str):
     if not BREVO_API_KEY:
         raise HTTPException(status_code=500, detail="이메일 발송 설정(BREVO_API_KEY)이 되어 있지 않습니다.")
-    body = f"""안녕하세요, 씨앤지파트너스 FinAnalyzer입니다.
+    body = f"""안녕하세요, FinAnalyzer입니다.
 
 요청하신 임시비밀번호가 발급되었습니다.
 
@@ -557,7 +557,7 @@ def send_temp_password_email(to_email: str, temp_password: str):
 로그인 후 [내 정보] 메뉴에서 새 비밀번호로 변경해주세요.
 본인이 요청하지 않았다면 이 메일을 무시하셔도 됩니다.
 
-- C&G Partners (씨앤지파트너스)"""
+- FinAnalyzer"""
     try:
         resp = httpx.post(
             "https://api.brevo.com/v3/smtp/email",
