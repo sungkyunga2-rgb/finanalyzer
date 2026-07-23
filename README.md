@@ -31,6 +31,7 @@ Render 배포 설정(analyze-1 → Settings):
 | `GEMINI_API_KEY` | Google AI Studio에서 발급받은 키 |
 | `PORTONE_SECRET_KEY` | `test_sk_d26DlbXAaV0xQbpa7y1VqY50Q9RB` (테스트키) |
 | `ADMIN_PASSWORD` | 관리자 페이지(`admin.html`) 접근 비밀번호. Render 환경변수에 직접 원하는 값으로 설정 |
+| `BREVO_API_KEY` | 비밀번호 찾기(임시비밀번호 발송)용 Brevo(구 Sendinblue) API 키. brevo.com 가입 후 발급 |
 
 ### 관리자 페이지
 - 경로: `admin.html` (예: `https://sungkyunga2-rgb.github.io/analyze/admin.html`)

@@ -51,8 +51,8 @@ PORTONE_SECRET_KEY = os.getenv("PORTONE_SECRET_KEY", "")   # 포트원 콘솔 > 
 PORTONE_API_BASE   = "https://api.portone.io"
 GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY", "")       # Google AI Studio > API 키
 ADMIN_PASSWORD     = os.getenv("ADMIN_PASSWORD", "")       # 관리자 페이지 접근 비밀번호 (Render 환경변수에 설정)
-GMAIL_ADDRESS      = "cngpartners123@gmail.com"             # 임시비밀번호 발송용 발신 계정
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")   # 위 계정의 앱 비밀번호 (Render 환경변수에 설정)
+SENDER_EMAIL       = "cngpartners123@gmail.com"             # 임시비밀번호 발송용 발신 계정 (Brevo에 발신자로 등록 필요)
+BREVO_API_KEY      = os.getenv("BREVO_API_KEY", "")         # Brevo(구 Sendinblue) API 키 (Render 환경변수에 설정)
 COST_PER_ANALYSIS = 10  # 분석 1회당 차감 크레딧
 
 CREDIT_PACKAGES = {
@@ -546,10 +546,8 @@ def mask_email(email: str) -> str:
         return "****"
 
 def send_temp_password_email(to_email: str, temp_password: str):
-    import smtplib
-    from email.mime.text import MIMEText
-    if not GMAIL_APP_PASSWORD:
-        raise HTTPException(status_code=500, detail="이메일 발송 설정(GMAIL_APP_PASSWORD)이 되어 있지 않습니다.")
+    if not BREVO_API_KEY:
+        raise HTTPException(status_code=500, detail="이메일 발송 설정(BREVO_API_KEY)이 되어 있지 않습니다.")
     body = f"""안녕하세요, 씨앤지파트너스 FinAnalyzer입니다.
 
 요청하신 임시비밀번호가 발급되었습니다.
@@ -560,14 +558,26 @@ def send_temp_password_email(to_email: str, temp_password: str):
 본인이 요청하지 않았다면 이 메일을 무시하셔도 됩니다.
 
 - C&G Partners (씨앤지파트너스)"""
-    msg = MIMEText(body)
-    msg["Subject"] = "[FinAnalyzer] 임시비밀번호 안내"
-    msg["From"] = GMAIL_ADDRESS
-    msg["To"] = to_email
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
-            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_ADDRESS, [to_email], msg.as_string())
+        resp = httpx.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": BREVO_API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={
+                "sender": {"name": "C&G Partners", "email": SENDER_EMAIL},
+                "to": [{"email": to_email}],
+                "subject": "[FinAnalyzer] 임시비밀번호 안내",
+                "textContent": body,
+            },
+            timeout=15,
+        )
+        if resp.status_code not in (200, 201):
+            raise HTTPException(status_code=500, detail=f"이메일 발송에 실패했습니다: {resp.text}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이메일 발송에 실패했습니다: {e}")
 
