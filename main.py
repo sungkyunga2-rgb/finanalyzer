@@ -25,6 +25,7 @@ def run_auto_migration():
         "rep_name": "VARCHAR DEFAULT ''",
         "phone": "VARCHAR DEFAULT ''",
         "business_number": "VARCHAR DEFAULT ''",
+        "terms_agreed_at": "TIMESTAMP",
     }
     with engine.connect() as conn:
         for col_name, col_def in required_columns.items():
@@ -70,6 +71,7 @@ class UserCreate(BaseModel):
     rep_name: str = ""
     phone: str = ""
     business_number: str = ""
+    terms_agreed: bool = False
 
 class UserLogin(BaseModel):
     email: str
@@ -116,6 +118,8 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
     import re
     if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", body.email):
         raise HTTPException(status_code=400, detail="올바른 이메일 형식이 아닙니다.")
+    if not body.terms_agreed:
+        raise HTTPException(status_code=400, detail="이용약관 및 개인정보처리방침에 동의해주세요.")
     existing = db.query(models.User).filter(models.User.email == body.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="이미 사용 중인 이메일입니다.")
@@ -125,7 +129,7 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
     user = models.User(
         email=body.email, password_hash=pw_hash, token=token, credits=0,
         company_name=body.company_name, rep_name=body.rep_name, phone=body.phone,
-        business_number=body.business_number
+        business_number=body.business_number, terms_agreed_at=datetime.utcnow()
     )
     db.add(user)
     db.commit()
@@ -197,6 +201,67 @@ def update_business_number(
     user.business_number = biz
     db.commit()
     return {"business_number": user.business_number}
+
+# 비밀번호 변경
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@app.post("/auth/change-password")
+def change_password(
+    body: PasswordChange,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    import hashlib
+    current_hash = hashlib.sha256(body.current_password.encode()).hexdigest()
+    if current_hash != user.password_hash:
+        raise HTTPException(status_code=401, detail="현재 비밀번호가 일치하지 않습니다.")
+    if len(body.new_password) < 4:
+        raise HTTPException(status_code=400, detail="새 비밀번호는 4자 이상이어야 합니다.")
+    user.password_hash = hashlib.sha256(body.new_password.encode()).hexdigest()
+    db.commit()
+    return {"message": "비밀번호가 변경되었습니다."}
+
+# 본인 결제/분석 내역 조회
+@app.get("/auth/my-history")
+def my_history(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    payments = db.query(models.Payment).filter(models.Payment.user_id == user.id).order_by(models.Payment.created_at.desc()).limit(50).all()
+    logs = db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).order_by(models.AnalysisLog.created_at.desc()).limit(50).all()
+    return {
+        "payments": [
+            {"order_id": p.order_id, "amount": p.amount, "credits": p.credits, "package_id": p.package_id,
+             "created_at": p.created_at.isoformat() if p.created_at else None}
+            for p in payments
+        ],
+        "recent_analyses": [
+            {"credits_used": l.credits_used, "created_at": l.created_at.isoformat() if l.created_at else None}
+            for l in logs
+        ],
+    }
+
+# 회원 탈퇴
+class WithdrawBody(BaseModel):
+    password: str
+
+@app.post("/auth/withdraw")
+def withdraw(
+    body: WithdrawBody,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    import hashlib
+    pw_hash = hashlib.sha256(body.password.encode()).hexdigest()
+    if pw_hash != user.password_hash:
+        raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
+    db.query(models.Payment).filter(models.Payment.user_id == user.id).delete()
+    db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).delete()
+    db.delete(user)
+    db.commit()
+    return {"message": "회원 탈퇴가 완료되었습니다."}
 
 # 결제 검증 + 크레딧 지급 (포트원 V2)
 @app.post("/payments/confirm")

@@ -294,6 +294,13 @@
         <label>비밀번호 <span style="color:var(--danger);font-size:11px;">필수</span></label>
         <input type="password" id="reg-pw" placeholder="8자 이상" />
       </div>
+      <div class="field" style="display:flex;align-items:flex-start;gap:8px;">
+        <input type="checkbox" id="reg-agree" style="margin-top:3px;width:16px;height:16px;flex-shrink:0;" />
+        <label for="reg-agree" style="font-size:13px;color:var(--text2);font-weight:400;">
+          <a href="#" onclick="event.stopPropagation();showPage('terms')" style="color:var(--accent);">이용약관</a> 및
+          <a href="#" onclick="event.stopPropagation();showPage('privacy')" style="color:var(--accent);">개인정보처리방침</a>에 동의합니다. <span style="color:var(--danger);">(필수)</span>
+        </label>
+      </div>
       <div id="reg-error" class="error-msg"></div>
       <button class="btn btn-primary btn-full mt1" onclick="doRegister()">가입하기</button>
     </div>
@@ -546,6 +553,45 @@
         <div class="diag-item"><div><div class="di-label">보유 크레딧</div></div><span id="mi-credits" style="font-size:14px;font-weight:500;"></span></div>
       </div>
     </div>
+
+    <!-- 비밀번호 변경 -->
+    <div class="card hidden" id="myinfo-pw-card">
+      <div class="card-title" style="margin-bottom:.75rem;">비밀번호 변경</div>
+      <div class="field">
+        <label>현재 비밀번호</label>
+        <input type="password" id="pwchange-current" placeholder="현재 비밀번호" />
+      </div>
+      <div class="field">
+        <label>새 비밀번호 (4자 이상)</label>
+        <input type="password" id="pwchange-new" placeholder="새 비밀번호" />
+      </div>
+      <div class="field">
+        <label>새 비밀번호 확인</label>
+        <input type="password" id="pwchange-new2" placeholder="새 비밀번호 확인" />
+      </div>
+      <div id="pwchange-error" class="error-msg"></div>
+      <button class="btn btn-primary btn-full" onclick="doChangePassword()">비밀번호 변경</button>
+    </div>
+
+    <!-- 결제 / 분석 내역 -->
+    <div class="card hidden" id="myinfo-history-card">
+      <div class="card-title" style="margin-bottom:.75rem;">결제 내역</div>
+      <div id="mi-payments-table"></div>
+      <div class="card-title" style="margin:1.25rem 0 .75rem;">분석 내역</div>
+      <div id="mi-analyses-table"></div>
+    </div>
+
+    <!-- 회원탈퇴 -->
+    <div class="card hidden" id="myinfo-withdraw-card">
+      <div class="card-title" style="margin-bottom:.5rem;color:var(--danger);">회원 탈퇴</div>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;">탈퇴 시 계정 정보와 잔여횟수가 모두 삭제되며 복구할 수 없습니다.</p>
+      <div class="field">
+        <label>비밀번호 확인</label>
+        <input type="password" id="withdraw-pw" placeholder="비밀번호 입력" />
+      </div>
+      <div id="withdraw-error" class="error-msg"></div>
+      <button class="btn btn-full" style="background:var(--danger);color:#fff;" onclick="doWithdraw()">회원 탈퇴하기</button>
+    </div>
   </div>
 </div>
 
@@ -604,7 +650,7 @@
       <br/>
       <p><strong>제1조 (서비스 이용)</strong><br/>서비스는 재무제표 이미지를 AI로 분석하여 주요 재무지표를 제공합니다. 분석 결과는 참고용이며 공인 회계사의 검토를 대체하지 않습니다.</p>
       <br/>
-      <p><strong>제2조 (결제 및 환불)</strong><br/>이용권 결제 후 서비스를 이용하지 않은 경우 7일 이내 환불을 요청할 수 있습니다. 분석 서비스를 1회 이상 이용한 경우 환불이 제한될 수 있습니다.</p>
+      <p><strong>제2조 (결제 및 환불)</strong><br/>분석 보고서(진단 결과)가 생성된 이후에는 환불이 불가합니다. 사용하지 않고 남은 금액에 한하여, 충전일로부터 7일 이내에 환불을 요청할 수 있습니다.</p>
       <br/>
       <p><strong>제3조 (서비스 제공기간)</strong><br/>분석된 재무제표 결과는 결제일로부터 3개월간 보관됩니다. 보관 기간 내 다운로드하여 보관하시기 바랍니다.</p>
       <br/>
@@ -754,6 +800,9 @@ function showPage(name) {
     document.getElementById("myinfo-error").style.display = "none";
     document.getElementById("myinfo-verify-card").classList.remove("hidden");
     document.getElementById("myinfo-detail-card").classList.add("hidden");
+    document.getElementById("myinfo-pw-card").classList.add("hidden");
+    document.getElementById("myinfo-history-card").classList.add("hidden");
+    document.getElementById("myinfo-withdraw-card").classList.add("hidden");
   }
 }
 
@@ -802,10 +851,16 @@ async function doRegister() {
   const biz     = document.getElementById("reg-biz").value.trim();
   const email   = document.getElementById("reg-email").value.trim();
   const pw      = document.getElementById("reg-pw").value;
+  const agreed  = document.getElementById("reg-agree").checked;
   const errEl   = document.getElementById("reg-error");
   errEl.style.display = "none";
   if (!company || !name || !phone || !biz || !email || !pw) {
     errEl.textContent = "모든 필수 항목을 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (!agreed) {
+    errEl.textContent = "이용약관 및 개인정보처리방침에 동의해주세요.";
     errEl.style.display = "block";
     return;
   }
@@ -817,7 +872,8 @@ async function doRegister() {
   try {
     const d = await api("POST", "/auth/register", {
       email, password: pw,
-      company_name: company, rep_name: name, phone, business_number: biz
+      company_name: company, rep_name: name, phone, business_number: biz,
+      terms_agreed: true
     });
     token = d.token; userEmail = d.email; userCredits = d.credits;
     userCompanyName = company;
@@ -932,7 +988,80 @@ async function verifyMyInfo() {
     document.getElementById("mi-credits").textContent = d.credits.toLocaleString() + " 크레딧";
     document.getElementById("myinfo-verify-card").classList.add("hidden");
     document.getElementById("myinfo-detail-card").classList.remove("hidden");
+    document.getElementById("myinfo-pw-card").classList.remove("hidden");
+    document.getElementById("myinfo-history-card").classList.remove("hidden");
+    document.getElementById("myinfo-withdraw-card").classList.remove("hidden");
+    loadMyHistory();
   } catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; }
+}
+
+async function loadMyHistory() {
+  try {
+    const d = await api("GET", "/auth/my-history");
+    const payRows = d.payments.length
+      ? d.payments.map(p => `<div class="diag-item"><div><div class="di-label">${p.created_at ? p.created_at.slice(0,10) : "-"}</div></div><span style="font-size:13px;">${p.package_id || "-"} · ${p.amount ? p.amount.toLocaleString()+"원" : "-"} · +${Math.floor((p.credits||0)/10)}건</span></div>`).join("")
+      : `<p style="font-size:13px;color:var(--text3);">결제 내역이 없습니다.</p>`;
+    const anaRows = d.recent_analyses.length
+      ? d.recent_analyses.map(l => `<div class="diag-item"><div><div class="di-label">${l.created_at ? l.created_at.slice(0,16).replace('T',' ') : "-"}</div></div><span style="font-size:13px;">-${Math.floor((l.credits_used||0)/10)}건</span></div>`).join("")
+      : `<p style="font-size:13px;color:var(--text3);">분석 내역이 없습니다.</p>`;
+    document.getElementById("mi-payments-table").innerHTML = payRows;
+    document.getElementById("mi-analyses-table").innerHTML = anaRows;
+  } catch (e) { /* 조용히 무시 */ }
+}
+
+// ── 비밀번호 변경 ────────────────────────────────────────────────
+async function doChangePassword() {
+  const cur = document.getElementById("pwchange-current").value;
+  const n1 = document.getElementById("pwchange-new").value;
+  const n2 = document.getElementById("pwchange-new2").value;
+  const errEl = document.getElementById("pwchange-error");
+  errEl.style.display = "none";
+  if (!cur || !n1 || !n2) {
+    errEl.textContent = "모든 항목을 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (n1.length < 4) {
+    errEl.textContent = "새 비밀번호는 4자 이상이어야 합니다.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (n1 !== n2) {
+    errEl.textContent = "새 비밀번호가 서로 일치하지 않습니다.";
+    errEl.style.display = "block";
+    return;
+  }
+  try {
+    await api("POST", "/auth/change-password", { current_password: cur, new_password: n1 });
+    toast("비밀번호가 변경되었습니다.");
+    document.getElementById("pwchange-current").value = "";
+    document.getElementById("pwchange-new").value = "";
+    document.getElementById("pwchange-new2").value = "";
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+  }
+}
+
+// ── 회원 탈퇴 ────────────────────────────────────────────────────
+async function doWithdraw() {
+  const pw = document.getElementById("withdraw-pw").value;
+  const errEl = document.getElementById("withdraw-error");
+  errEl.style.display = "none";
+  if (!pw) {
+    errEl.textContent = "비밀번호를 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  if (!confirm("정말로 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
+  try {
+    await api("POST", "/auth/withdraw", { password: pw });
+    toast("회원 탈퇴가 완료되었습니다.");
+    doLogout();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+  }
 }
 
 // ── 사업자등록번호 인라인 수정 ──────────────────────────────────
