@@ -2217,7 +2217,7 @@ async function executePayment(pkgId, fromModal) {
   }
 
   const pkg = PKGS[pkgId];
-  const orderId = "FA-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+  const orderId = "FA" + Date.now() + Math.random().toString(36).slice(2, 7).toUpperCase();
 
   try {
     const response = await window.PortOne.requestPayment({
