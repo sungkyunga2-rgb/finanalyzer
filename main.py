@@ -685,6 +685,22 @@ def admin_update_user(body: AdminUpdateUserBody, _: bool = Depends(check_admin),
     }
 
 
+class AdminDeleteUserBody(BaseModel):
+    email: str
+
+@app.post("/admin/delete-user")
+def admin_delete_user(body: AdminDeleteUserBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
+    db.query(models.Payment).filter(models.Payment.user_id == user.id).delete()
+    db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).delete()
+    db.query(models.RefundRequest).filter(models.RefundRequest.user_id == user.id).delete()
+    db.delete(user)
+    db.commit()
+    return {"message": f"{body.email} 회원이 탈퇴 처리되었습니다."}
+
+
 @app.get("/admin/refund-requests")
 def admin_list_refund_requests(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
     reqs = db.query(models.RefundRequest).order_by(models.RefundRequest.created_at.desc()).all()

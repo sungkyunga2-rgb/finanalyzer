@@ -361,6 +361,10 @@ function renderResult(d) {
 
     <div class="section-title">📄 최근 분석 내역</div>
     <table><thead><tr><th>일시</th><th>사용건수</th></tr></thead><tbody>${analysesRows}</tbody></table>
+
+    <div class="section-title" style="color:#A32D2D;">⚠️ 회원 탈퇴</div>
+    <p style="font-size:12px;color:#7a8ca3;margin-bottom:10px;">이 회원의 계정, 결제내역, 분석내역이 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.</p>
+    <button class="btn-full" style="background:#A32D2D;color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;" onclick="deleteUser()">회원 탈퇴시키기</button>
   `;
 }
 
@@ -385,6 +389,23 @@ async function saveUserEdit() {
   } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = "block";
+  }
+}
+
+async function deleteUser() {
+  if (!confirm(`정말로 ${currentEmail} 회원을 탈퇴시키겠습니까?\n계정, 결제내역, 분석내역이 모두 삭제되며 되돌릴 수 없습니다.`)) return;
+  const doubleCheck = prompt(`확인을 위해 회원 이메일(${currentEmail})을 정확히 입력해주세요.`);
+  if (doubleCheck !== currentEmail) {
+    toast("이메일이 일치하지 않아 취소되었습니다.");
+    return;
+  }
+  try {
+    const d = await api("POST", "/admin/delete-user", { email: currentEmail });
+    toast(d.message);
+    document.getElementById("resultCard").classList.add("hidden");
+    document.getElementById("search-email").value = "";
+  } catch (e) {
+    toast("오류: " + e.message);
   }
 }
 
