@@ -500,7 +500,7 @@
       </div>
       <p class="note">※ AI가 이미지에서 추출한 수치이므로 오인식 가능성이 있습니다. 특히 글씨가 작거나 화질이 낮은 이미지는 숫자나 항목이 다르게 인식될 수 있으니, 중요한 의사결정 전에 원문을 반드시 확인하세요.</p>
       <button class="btn btn-primary btn-full mt1" onclick="downloadResult()" style="display:flex;align-items:center;justify-content:center;gap:8px;">
-        📥 분석 결과 다운로드 (PDF)
+        📄 분석결과 확인하기
       </button>
       <p class="text-center" style="margin-top:8px;margin-bottom:24px;">
         <a href="#" onclick="event.preventDefault();window.open('print-guide.jpg','_blank')" style="font-size:12px;color:var(--text2);text-decoration:underline;">진단결과와 인쇄화면이 다를 경우</a>
@@ -2145,9 +2145,7 @@ async function saveAsImage() {
     const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
     const url  = URL.createObjectURL(blob);
     const win = window.open(url, "_blank");
-    if (win) {
-      setTimeout(() => { try { win.print(); } catch(e) {} }, 700);
-    } else {
+    if (!win) {
       const a = document.createElement("a");
       a.href = url;
       a.download = `${filenameBase}.html`;
