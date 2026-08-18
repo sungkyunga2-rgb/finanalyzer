@@ -326,7 +326,7 @@
         </div>
         <p class="note">※ AI가 이미지에서 추출한 수치이므로 오인식 가능성이 있습니다. 중요한 의사결정 전에 원문을 반드시 확인하세요.</p>
         <button class="btn btn-primary btn-full mt1" onclick="downloadResult()" style="display:flex;align-items:center;justify-content:center;gap:8px;">
-          📥 분석 결과 다운로드 (PDF)
+          📥 분석결과 전체 확인하기
         </button>
       </div>
     </div>
@@ -1173,6 +1173,7 @@ function downloadResult() {
   @media print {
     body { background:#fff; }
     @page { margin: 10mm; }
+    .no-print { display:none !important; }
   }
 </style>
 </head>
@@ -1182,7 +1183,10 @@ function downloadResult() {
 <div class="rh">
   <div class="rh-top">
     <div class="rh-brand">씨앤지파트너스 · C&G PARTNERS</div>
-    <div class="rh-badge">AI 재무분석 리포트</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="rh-badge">AI 재무분석 리포트</div>
+      <button class="no-print" onclick="window.print()" style="background:#fff;color:#0d3b7c;border:none;border-radius:20px;padding:4px 14px;font-size:11px;font-weight:700;cursor:pointer;">📥 분석결과 다운로드 (PDF)</button>
+    </div>
   </div>
   <div class="rh-title">재무상태 진단 결과</div>
   <div class="rh-sub">Financial Health Diagnostic Report</div>
@@ -1346,8 +1350,6 @@ function downloadResult() {
     rows += \`<tr><td>\${label}</td><td class="cat">\${cats[label]||''}</td><td class="val \${isEmpty?'empty':''}">\${value}</td></tr>\`;
   });
   document.getElementById('fin-table-body').innerHTML = rows;
-
-  setTimeout(() => window.print(), 800);
 <\/script>
 </body>
 </html>`;
