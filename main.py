@@ -789,6 +789,58 @@ def send_temp_password_email(to_email: str, temp_password: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이메일 발송에 실패했습니다: {e}")
 
+# ══════════════════════════════════════════════════════════════
+# 오류신고 (플로팅 버튼 → 관리자 이메일로 전달)
+# ══════════════════════════════════════════════════════════════
+class ErrorReportBody(BaseModel):
+    message: str
+    email: Optional[str] = None
+    page: Optional[str] = None
+    user_agent: Optional[str] = None
+
+@app.post("/support/report-error")
+def report_error(body: ErrorReportBody):
+    msg = body.message.strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="오류 내용을 입력해주세요.")
+
+    body_text = f"""FinAnalyzer 오류신고가 접수되었습니다.
+
+신고 내용:
+{msg}
+
+신고 페이지: {body.page or '-'}
+회신 이메일: {body.email or '(미입력)'}
+User-Agent: {body.user_agent or '-'}
+접수 시각: {datetime.utcnow().isoformat()} (UTC)
+"""
+    # BREVO_API_KEY가 설정되어 있지 않으면 이메일 발송은 건너뛰고 접수만 성공 처리
+    if BREVO_API_KEY:
+        try:
+            email_payload = {
+                "sender": {"name": "FinAnalyzer 오류신고", "email": SENDER_EMAIL},
+                "to": [{"email": SENDER_EMAIL}],
+                "subject": f"[FinAnalyzer 오류신고] {body.page or '알 수 없음'}",
+                "textContent": body_text,
+            }
+            if body.email:
+                email_payload["replyTo"] = {"email": body.email}
+            httpx.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": BREVO_API_KEY,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json=email_payload,
+                timeout=15,
+            )
+        except Exception as e:
+            print(f"오류신고 이메일 발송 실패: {e}")
+
+    return {"message": "오류 신고가 접수되었습니다."}
+
+
 class FindIdBody(BaseModel):
     phone: str
 
