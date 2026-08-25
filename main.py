@@ -815,7 +815,9 @@ User-Agent: {body.user_agent or '-'}
 접수 시각: {datetime.utcnow().isoformat()} (UTC)
 """
     # BREVO_API_KEY가 설정되어 있지 않으면 이메일 발송은 건너뛰고 접수만 성공 처리
-    if BREVO_API_KEY:
+    if not BREVO_API_KEY:
+        print("오류신고 이메일 미발송: BREVO_API_KEY 환경변수가 설정되어 있지 않음")
+    else:
         try:
             email_payload = {
                 "sender": {"name": "FinAnalyzer 오류신고", "email": SENDER_EMAIL},
@@ -825,7 +827,7 @@ User-Agent: {body.user_agent or '-'}
             }
             if body.email:
                 email_payload["replyTo"] = {"email": body.email}
-            httpx.post(
+            resp = httpx.post(
                 "https://api.brevo.com/v3/smtp/email",
                 headers={
                     "api-key": BREVO_API_KEY,
@@ -835,8 +837,12 @@ User-Agent: {body.user_agent or '-'}
                 json=email_payload,
                 timeout=15,
             )
+            if resp.status_code not in (200, 201):
+                print(f"오류신고 이메일 발송 실패 (status={resp.status_code}): {resp.text}")
+            else:
+                print("오류신고 이메일 발송 성공")
         except Exception as e:
-            print(f"오류신고 이메일 발송 실패: {e}")
+            print(f"오류신고 이메일 발송 중 예외 발생: {e}")
 
     return {"message": "오류 신고가 접수되었습니다."}
 
