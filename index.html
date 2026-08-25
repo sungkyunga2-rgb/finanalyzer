@@ -1398,7 +1398,7 @@ async function doPayment() {
   }
 
   const pkg = PKGS[selectedPkg];
-  const orderId = "FA-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+  const orderId = "FA" + Date.now() + Math.random().toString(36).slice(2, 7).toUpperCase(); // 영문/숫자만 허용 (하이픈 등 특수문자 금지)
 
   try {
     const response = await window.PortOne.requestPayment({
