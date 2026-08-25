@@ -427,8 +427,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
     # PDF/이미지 모두 지원
     import json, re
 
-    # 폴백 모델 순서 (정확도 우선 1차 → 속도우선 폴백 → 최신 GA)
-    # 2026-06-01에 gemini-2.0-flash 계열, 2025-11-18 이전에 이미 gemini-1.5-flash가 종료되어 404가 발생 → 현재(2026-08) 유효한 모델로 교체
+    # 폴백 모델 순서 (정확도 우선 1차 → 속도우선 폴백 → 최신 GA 모델)
     GEMINI_MODELS = [
         "gemini-2.5-flash",        # 1차: 표준 Flash — 정확도 우선
         "gemini-2.5-flash-lite",   # 2차: 1차 과부하/오류 시 가볍고 빠른 폴백
