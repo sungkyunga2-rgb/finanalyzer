@@ -192,6 +192,24 @@
   .text-center { text-align: center; }
   .mt1 { margin-top: 1rem; }
   .error-msg { color: var(--danger); font-size: 13px; margin-top: 6px; display: none; }
+
+  /* ── 오류신고 플로팅 버튼 ── */
+  .bugreport-fab {
+    position: fixed; right: 20px; bottom: 20px; z-index: 500;
+    display: flex; align-items: center; gap: 6px;
+    background: #1a1a18; color: #fff; border: none; border-radius: 999px;
+    padding: 12px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.22); font-family: inherit;
+  }
+  .bugreport-fab:hover { opacity: 0.88; }
+  @media (max-width: 640px) {
+    .bugreport-fab { right: 12px; bottom: 12px; padding: 10px 14px; font-size: 12px; }
+  }
+  .bugreport-modal textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+    font-size: 14px; font-family: inherit; resize: vertical; outline: none;
+  }
+  .bugreport-modal textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 </style>
 </head>
 <body>
@@ -806,6 +824,30 @@
 <!-- 토스트 컨테이너 -->
 <div class="toast-wrap" id="toastWrap"></div>
 
+<!-- 오류신고 플로팅 버튼 (모든 페이지 공통) -->
+<button class="bugreport-fab" onclick="openBugReport()">🐞 오류신고</button>
+
+<!-- 오류신고 모달 -->
+<div id="bugreport-modal" class="modal-overlay hidden" onclick="if(event.target===this) closeBugReport()">
+  <div class="modal-box bugreport-modal">
+    <div class="modal-header">
+      <div class="modal-title">오류 신고하기</div>
+      <button class="modal-close" onclick="closeBugReport()">✕</button>
+    </div>
+    <p class="modal-desc">어떤 화면에서 어떤 문제가 있었는지 알려주시면 빠르게 확인할게요.</p>
+    <div class="field">
+      <label>연락받으실 이메일 (선택)</label>
+      <input type="email" id="bugreport-email" placeholder="답변 받으실 이메일" />
+    </div>
+    <div class="field">
+      <label>오류 내용</label>
+      <textarea id="bugreport-message" rows="5" placeholder="예: 결제 화면에서 '다음' 버튼을 눌러도 넘어가지 않아요."></textarea>
+    </div>
+    <div id="bugreport-error" class="error-msg"></div>
+    <button class="btn btn-primary btn-full" id="bugreport-submit-btn" onclick="submitBugReport()">신고 접수하기</button>
+  </div>
+</div>
+
 <script>
 // ── 설정 ──────────────────────────────────────────────────────
 const API_BASE = "https://analyze-1-250m.onrender.com";
@@ -863,6 +905,54 @@ function toast(msg) {
 function fmt(n) {
   if (n === null || n === undefined || isNaN(n)) return "미인식";
   return new Intl.NumberFormat("ko-KR").format(Math.round(n)) + "원";
+}
+
+// ── 오류신고 ────────────────────────────────────────────────────
+function openBugReport() {
+  document.getElementById("bugreport-error").style.display = "none";
+  const emailEl = document.getElementById("bugreport-email");
+  if (!emailEl.value && userEmail) emailEl.value = userEmail;
+  document.getElementById("bugreport-modal").classList.remove("hidden");
+}
+
+function closeBugReport() {
+  document.getElementById("bugreport-modal").classList.add("hidden");
+}
+
+async function submitBugReport() {
+  const email = document.getElementById("bugreport-email").value.trim();
+  const message = document.getElementById("bugreport-message").value.trim();
+  const errEl = document.getElementById("bugreport-error");
+  errEl.style.display = "none";
+  if (!message) {
+    errEl.textContent = "오류 내용을 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  const activePage = document.querySelector(".page.active")?.id?.replace("page-", "") || "unknown";
+  const btn = document.getElementById("bugreport-submit-btn");
+  btn.disabled = true; btn.textContent = "접수 중...";
+  try {
+    const res = await fetch(API_BASE + "/support/report-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        email: email || null,
+        page: activePage,
+        user_agent: navigator.userAgent,
+      }),
+    });
+    if (!res.ok) throw new Error("failed");
+    toast("오류 신고가 접수되었습니다. 감사합니다!");
+    document.getElementById("bugreport-message").value = "";
+    closeBugReport();
+  } catch (e) {
+    errEl.textContent = "신고 접수 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.";
+    errEl.style.display = "block";
+  } finally {
+    btn.disabled = false; btn.textContent = "신고 접수하기";
+  }
 }
 
 function updateCreditBadges() {
