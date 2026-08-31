@@ -256,11 +256,10 @@
       <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
       <div class="header-right">
         <a class="btn" href="#" onclick="goCommunity()">커뮤니티</a>
-        <span id="landing-user-badge" class="hidden" style="background:var(--accent-bg);color:var(--accent);font-size:13px;font-weight:500;padding:4px 12px;border-radius:20px;"></span>
         <a class="btn" id="landing-login-btn" href="#" onclick="showPage('login')">로그인</a>
         <a class="btn btn-primary" id="landing-register-btn" href="#" onclick="showPage('register')">시작하기</a>
-        <button class="btn hidden" id="landing-dashboard-btn" onclick="showPage('dashboard')">대시보드</button>
-        <button class="btn hidden" id="landing-logout-btn" onclick="doLogout()">로그아웃</button>
+        <button class="btn hidden" id="landing-dashboard-btn" onclick="showPage('dashboard')">분석하기</button>
+        <button class="btn hidden" id="landing-user-btn" onclick="showPage('myinfo')" style="background:var(--accent-bg);color:var(--accent);font-weight:500;"></button>
       </div>
     </header>
     <div class="hero">
@@ -268,8 +267,7 @@
       <h1>재무제표 이미지 한 장으로<br/><em>즉시 재무 진단</em></h1>
       <p>재무제표를 첨부하면 부채비율·자본잠식·이자보상배수를 자동 계산합니다.</p>
       <div class="hero-btns">
-        <a class="btn btn-primary" href="#" onclick="showPage('register')">바로 시작하기</a>
-        <a class="btn" href="#" onclick="showPage('login')">로그인</a>
+        <a class="btn btn-primary" href="#" onclick="heroStart()">바로 시작하기</a>
         <a class="btn" href="#" onclick="goCommunity()">커뮤니티</a>
       </div>
     </div>
@@ -998,16 +996,23 @@ let selectedPkg = null;
 // ── 유틸 ──────────────────────────────────────────────────────
 function updateLandingHeader() {
   const loggedIn = !!token;
-  const badge = document.getElementById("landing-user-badge");
+  const userBtn = document.getElementById("landing-user-btn");
   document.getElementById("landing-login-btn").classList.toggle("hidden", loggedIn);
   document.getElementById("landing-register-btn").classList.toggle("hidden", loggedIn);
   document.getElementById("landing-dashboard-btn").classList.toggle("hidden", !loggedIn);
-  document.getElementById("landing-logout-btn").classList.toggle("hidden", !loggedIn);
   if (loggedIn) {
-    badge.textContent = userCompanyName || userEmail || "회원";
-    badge.classList.remove("hidden");
+    userBtn.textContent = userCompanyName || userEmail || "회원";
+    userBtn.classList.remove("hidden");
   } else {
-    badge.classList.add("hidden");
+    userBtn.classList.add("hidden");
+  }
+}
+
+function heroStart() {
+  if (token) {
+    showPage("dashboard");
+  } else {
+    showPage("login");
   }
 }
 
