@@ -57,9 +57,9 @@ BREVO_API_KEY      = os.getenv("BREVO_API_KEY", "")         # Brevo(구 Sendinbl
 COST_PER_ANALYSIS = 10  # 분석 1회당 차감 크레딧
 
 CREDIT_PACKAGES = {
-    "single":   {"price": 9900,  "credits": 10,  "label": "1건"},
-    "standard": {"price": 49500, "credits": 60,  "label": "5+1건 (총 6건)"},
-    "mega":     {"price": 99000, "credits": 130, "label": "10+3건 (총 13건)"},
+    "single":   {"price": 5500,  "credits": 10,  "label": "1건"},
+    "standard": {"price": 27500, "credits": 60,  "label": "5+1건 (총 6건)"},
+    "mega":     {"price": 55000, "credits": 130, "label": "10+3건 (총 13건)"},
 }
 
 
@@ -549,6 +549,20 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 
     return {"data": data, "credits_used": COST_PER_ANALYSIS, "remaining_credits": user.credits}
 
+# 직접 입력(수동) 분석 — AI 호출 없이 프론트에서 계산하지만, 크레딧 차감은 서버에서 검증
+@app.post("/analyze/manual")
+def analyze_manual(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if user.credits < COST_PER_ANALYSIS:
+        raise HTTPException(status_code=402, detail=f"크레딧이 부족합니다. 현재 {user.credits}크레딧 (필요: {COST_PER_ANALYSIS}크레딧)")
+    user.credits -= COST_PER_ANALYSIS
+    log = models.AnalysisLog(user_id=user.id, credits_used=COST_PER_ANALYSIS)
+    db.add(log)
+    db.commit()
+    return {"credits_used": COST_PER_ANALYSIS, "remaining_credits": user.credits}
+
 
 # ══════════════════════════════════════════════════════════════
 # 관리자 API — 회원 검색 / 잔여횟수(크레딧) 조정 / 결제내역 조회
@@ -736,58 +750,6 @@ def admin_resolve_refund(req_id: int, body: AdminResolveRefundBody, _: bool = De
     db.commit()
     return {"id": r.id, "status": r.status}
 
-
-# ══════════════════════════════════════════════════════════════
-# 아이디(이메일) 찾기 / 비밀번호 찾기 (임시비밀번호 이메일 발송)
-# ══════════════════════════════════════════════════════════════
-def mask_email(email: str) -> str:
-    """이메일 앞부분을 일부만 남기고 마스킹 (예: honggildong@gmail.com -> hon********@gmail.com)"""
-    try:
-        local, domain = email.split("@", 1)
-        if len(local) <= 2:
-            masked = local[0] + "*" * (len(local) - 1)
-        else:
-            visible = max(2, len(local) // 3)
-            masked = local[:visible] + "*" * (len(local) - visible)
-        return f"{masked}@{domain}"
-    except Exception:
-        return "****"
-
-def send_temp_password_email(to_email: str, temp_password: str):
-    if not BREVO_API_KEY:
-        raise HTTPException(status_code=500, detail="이메일 발송 설정(BREVO_API_KEY)이 되어 있지 않습니다.")
-    body = f"""안녕하세요, FinAnalyzer입니다.
-
-요청하신 임시비밀번호가 발급되었습니다.
-
-임시비밀번호: {temp_password}
-
-로그인 후 [내 정보] 메뉴에서 새 비밀번호로 변경해주세요.
-본인이 요청하지 않았다면 이 메일을 무시하셔도 됩니다.
-
-- FinAnalyzer"""
-    try:
-        resp = httpx.post(
-            "https://api.brevo.com/v3/smtp/email",
-            headers={
-                "api-key": BREVO_API_KEY,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            json={
-                "sender": {"name": "C&G Partners", "email": SENDER_EMAIL},
-                "to": [{"email": to_email}],
-                "subject": "[FinAnalyzer] 임시비밀번호 안내",
-                "textContent": body,
-            },
-            timeout=15,
-        )
-        if resp.status_code not in (200, 201):
-            raise HTTPException(status_code=500, detail=f"이메일 발송에 실패했습니다: {resp.text}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"이메일 발송에 실패했습니다: {e}")
 
 # ══════════════════════════════════════════════════════════════
 # 오류신고 (플로팅 버튼 → 관리자 이메일로 전달)
@@ -1029,6 +991,58 @@ def admin_delete_community_comment(comment_id: int, _: bool = Depends(check_admi
     db.commit()
     return {"message": "댓글이 삭제되었습니다."}
 
+
+# ══════════════════════════════════════════════════════════════
+# 아이디(이메일) 찾기 / 비밀번호 찾기 (임시비밀번호 이메일 발송)
+# ══════════════════════════════════════════════════════════════
+def mask_email(email: str) -> str:
+    """이메일 앞부분을 일부만 남기고 마스킹 (예: honggildong@gmail.com -> hon********@gmail.com)"""
+    try:
+        local, domain = email.split("@", 1)
+        if len(local) <= 2:
+            masked = local[0] + "*" * (len(local) - 1)
+        else:
+            visible = max(2, len(local) // 3)
+            masked = local[:visible] + "*" * (len(local) - visible)
+        return f"{masked}@{domain}"
+    except Exception:
+        return "****"
+
+def send_temp_password_email(to_email: str, temp_password: str):
+    if not BREVO_API_KEY:
+        raise HTTPException(status_code=500, detail="이메일 발송 설정(BREVO_API_KEY)이 되어 있지 않습니다.")
+    body = f"""안녕하세요, FinAnalyzer입니다.
+
+요청하신 임시비밀번호가 발급되었습니다.
+
+임시비밀번호: {temp_password}
+
+로그인 후 [내 정보] 메뉴에서 새 비밀번호로 변경해주세요.
+본인이 요청하지 않았다면 이 메일을 무시하셔도 됩니다.
+
+- FinAnalyzer"""
+    try:
+        resp = httpx.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": BREVO_API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={
+                "sender": {"name": "C&G Partners", "email": SENDER_EMAIL},
+                "to": [{"email": to_email}],
+                "subject": "[FinAnalyzer] 임시비밀번호 안내",
+                "textContent": body,
+            },
+            timeout=15,
+        )
+        if resp.status_code not in (200, 201):
+            raise HTTPException(status_code=500, detail=f"이메일 발송에 실패했습니다: {resp.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"이메일 발송에 실패했습니다: {e}")
 
 class FindIdBody(BaseModel):
     phone: str

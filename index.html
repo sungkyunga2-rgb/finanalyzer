@@ -276,7 +276,7 @@
     <div class="feature">
       <div class="feature-icon">💳</div>
       <h3>건당 결제 방식</h3>
-      <p>필요한 만큼만 결제해서 사용하세요. 분석 1회당 9,900원부터.</p>
+      <p>필요한 만큼만 결제해서 사용하세요. 분석 1회당 5,500원부터.</p>
     </div>
   </div>
 </div>
@@ -474,7 +474,7 @@
         </div>
       </div>
       <p style="font-size:11px;color:var(--text3);margin-top:2px;margin-bottom:1rem;">전부 입력해주실수록 정확하게 분석이 가능합니다.</p>
-      <button class="btn btn-primary btn-full" onclick="doManualAnalyze()">입력 정보로 분석하기</button>
+      <button class="btn btn-primary btn-full" id="manualAnalyzeBtn" onclick="doManualAnalyze()">입력 정보로 분석하기</button>
     </div>
 
     <!-- 분석 상태/결과 영역 (분석 방식에 따라 해당 카드 바로 아래로 이동) -->
@@ -729,18 +729,18 @@
       <div class="packages" id="packages">
         <div class="pkg-card" data-pkg="single" onclick="selectPkg(this,'single')">
           <div class="pkg-name">1건</div>
-          <div class="pkg-price">9,900원</div>
+          <div class="pkg-price">5,500원</div>
           <div class="pkg-credits">분석 1회</div>
         </div>
         <div class="pkg-card recommended" data-pkg="standard" onclick="selectPkg(this,'standard')">
           <div class="pkg-badge">추천</div>
           <div class="pkg-name">5+1건</div>
-          <div class="pkg-price">49,500원</div>
+          <div class="pkg-price">27,500원</div>
           <div class="pkg-credits">분석 6회 <span style="color:var(--accent);font-size:11px;font-weight:600;">1건 보너스</span></div>
         </div>
         <div class="pkg-card" data-pkg="mega" onclick="selectPkg(this,'mega')">
           <div class="pkg-name">10+3건</div>
-          <div class="pkg-price">99,000원</div>
+          <div class="pkg-price">55,000원</div>
           <div class="pkg-credits">분석 13회 <span style="color:var(--accent);font-size:11px;font-weight:600;">3건 보너스</span></div>
         </div>
       </div>
@@ -869,18 +869,18 @@
     <div class="packages" id="modal-packages">
       <div class="pkg-card" data-pkg="single" onclick="payFromModal('single')">
         <div class="pkg-name">1건</div>
-        <div class="pkg-price">9,900원</div>
+        <div class="pkg-price">5,500원</div>
         <div class="pkg-credits">분석 1회</div>
       </div>
       <div class="pkg-card recommended" data-pkg="standard" onclick="payFromModal('standard')">
         <div class="pkg-badge">추천</div>
         <div class="pkg-name">5+1건</div>
-        <div class="pkg-price">49,500원</div>
+        <div class="pkg-price">27,500원</div>
         <div class="pkg-credits">분석 6회 <span style="color:var(--accent);font-size:11px;font-weight:600;">1건 보너스</span></div>
       </div>
       <div class="pkg-card" data-pkg="mega" onclick="payFromModal('mega')">
         <div class="pkg-name">10+3건</div>
-        <div class="pkg-price">99,000원</div>
+        <div class="pkg-price">55,000원</div>
         <div class="pkg-credits">분석 13회 <span style="color:var(--accent);font-size:11px;font-weight:600;">3건 보너스</span></div>
       </div>
     </div>
@@ -972,194 +972,6 @@ function toast(msg) {
 function fmt(n) {
   if (n === null || n === undefined || isNaN(n)) return "미인식";
   return new Intl.NumberFormat("ko-KR").format(Math.round(n)) + "원";
-}
-
-// ── 커뮤니티 ────────────────────────────────────────────────────
-let currentCommunityPostId = null;
-
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str || "";
-  return div.innerHTML;
-}
-
-function goCommunity() {
-  if (!token) { showPage("login"); return; }
-  showPage("community");
-  loadCommunityPosts();
-}
-
-async function loadCommunityPosts() {
-  const listEl = document.getElementById("community-list");
-  listEl.innerHTML = `<p style="font-size:13px;color:var(--text3);">불러오는 중...</p>`;
-  try {
-    const d = await api("GET", "/community/posts");
-    if (!d.posts.length) {
-      listEl.innerHTML = `<p style="font-size:13px;color:var(--text3);text-align:center;padding:2rem 0;">아직 등록된 글이 없습니다. 첫 글을 남겨보세요!</p>`;
-      return;
-    }
-    listEl.innerHTML = d.posts.map(p => `
-      <div class="card" style="cursor:pointer;" onclick="openCommunityDetail(${p.id})">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-          <div style="font-size:15px;font-weight:600;">${escapeHtml(p.title)}</div>
-          <div style="font-size:12px;color:var(--text3);white-space:nowrap;">💬 ${p.comment_count}</div>
-        </div>
-        <div style="font-size:13px;color:var(--text2);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.content)}</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:8px;">${escapeHtml(p.author)} · ${p.created_at ? p.created_at.slice(0,10) : ""}</div>
-      </div>
-    `).join("");
-  } catch (e) {
-    listEl.innerHTML = `<p style="font-size:13px;color:var(--danger);">${e.message}</p>`;
-  }
-}
-
-async function submitCommunityPost() {
-  const title = document.getElementById("cw-title").value.trim();
-  const content = document.getElementById("cw-content").value.trim();
-  const errEl = document.getElementById("cw-error");
-  errEl.style.display = "none";
-  if (!title || !content) {
-    errEl.textContent = "제목과 내용을 모두 입력해주세요.";
-    errEl.style.display = "block";
-    return;
-  }
-  try {
-    await api("POST", "/community/posts", { title, content });
-    document.getElementById("cw-title").value = "";
-    document.getElementById("cw-content").value = "";
-    toast("글이 등록되었습니다.");
-    goCommunity();
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.style.display = "block";
-  }
-}
-
-async function openCommunityDetail(id) {
-  currentCommunityPostId = id;
-  showPage("communityDetail");
-  await loadCommunityDetail();
-}
-
-async function loadCommunityDetail() {
-  const detailEl = document.getElementById("community-detail");
-  const commentsEl = document.getElementById("community-comments");
-  detailEl.innerHTML = `<p style="font-size:13px;color:var(--text3);">불러오는 중...</p>`;
-  commentsEl.innerHTML = "";
-  try {
-    const d = await api("GET", `/community/posts/${currentCommunityPostId}`);
-    const isMine = d.author_email && d.author_email === userEmail;
-    detailEl.innerHTML = `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-          <div style="font-size:18px;font-weight:700;">${escapeHtml(d.title)}</div>
-          ${isMine ? `<button class="btn" style="padding:4px 10px;font-size:12px;color:var(--danger);" onclick="deleteCommunityPost()">삭제</button>` : ""}
-        </div>
-        <div style="font-size:12px;color:var(--text3);margin-top:6px;">${escapeHtml(d.author)} · ${d.created_at ? d.created_at.slice(0,10) : ""}</div>
-        <div style="font-size:14px;color:var(--text);margin-top:14px;white-space:pre-wrap;line-height:1.7;">${escapeHtml(d.content)}</div>
-      </div>`;
-    commentsEl.innerHTML = d.comments.length
-      ? d.comments.map(c => `
-        <div class="diag-item" style="align-items:flex-start;flex-direction:column;gap:4px;">
-          <div style="display:flex;justify-content:space-between;width:100%;">
-            <span style="font-size:12px;color:var(--text3);">${escapeHtml(c.author)} · ${c.created_at ? c.created_at.slice(0,10) : ""}</span>
-            ${c.author_email && c.author_email === userEmail ? `<button class="btn" style="padding:2px 8px;font-size:11px;color:var(--danger);" onclick="deleteCommunityComment(${c.id})">삭제</button>` : ""}
-          </div>
-          <div style="font-size:14px;">${escapeHtml(c.content)}</div>
-        </div>
-      `).join("")
-      : `<p style="font-size:13px;color:var(--text3);">아직 댓글이 없습니다.</p>`;
-  } catch (e) {
-    detailEl.innerHTML = `<p style="font-size:13px;color:var(--danger);">${e.message}</p>`;
-  }
-}
-
-async function submitCommunityComment() {
-  const content = document.getElementById("cc-content").value.trim();
-  const errEl = document.getElementById("cc-error");
-  errEl.style.display = "none";
-  if (!content) {
-    errEl.textContent = "댓글 내용을 입력해주세요.";
-    errEl.style.display = "block";
-    return;
-  }
-  try {
-    await api("POST", `/community/posts/${currentCommunityPostId}/comments`, { content });
-    document.getElementById("cc-content").value = "";
-    loadCommunityDetail();
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.style.display = "block";
-  }
-}
-
-async function deleteCommunityPost() {
-  if (!confirm("이 글을 삭제하시겠습니까?")) return;
-  try {
-    await api("DELETE", `/community/posts/${currentCommunityPostId}`);
-    toast("글이 삭제되었습니다.");
-    goCommunity();
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-async function deleteCommunityComment(id) {
-  if (!confirm("이 댓글을 삭제하시겠습니까?")) return;
-  try {
-    await api("DELETE", `/community/comments/${id}`);
-    loadCommunityDetail();
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-// ── 오류신고 ────────────────────────────────────────────────────
-function openBugReport() {
-  document.getElementById("bugreport-error").style.display = "none";
-  const emailEl = document.getElementById("bugreport-email");
-  if (!emailEl.value && userEmail) emailEl.value = userEmail;
-  document.getElementById("bugreport-modal").classList.remove("hidden");
-}
-
-function closeBugReport() {
-  document.getElementById("bugreport-modal").classList.add("hidden");
-}
-
-async function submitBugReport() {
-  const email = document.getElementById("bugreport-email").value.trim();
-  const message = document.getElementById("bugreport-message").value.trim();
-  const errEl = document.getElementById("bugreport-error");
-  errEl.style.display = "none";
-  if (!message) {
-    errEl.textContent = "오류 내용을 입력해주세요.";
-    errEl.style.display = "block";
-    return;
-  }
-  const activePage = document.querySelector(".page.active")?.id?.replace("page-", "") || "unknown";
-  const btn = document.getElementById("bugreport-submit-btn");
-  btn.disabled = true; btn.textContent = "접수 중...";
-  try {
-    const res = await fetch(API_BASE + "/support/report-error", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        email: email || null,
-        page: activePage,
-        user_agent: navigator.userAgent,
-      }),
-    });
-    if (!res.ok) throw new Error("failed");
-    toast("오류 신고가 접수되었습니다. 감사합니다!");
-    document.getElementById("bugreport-message").value = "";
-    closeBugReport();
-  } catch (e) {
-    errEl.textContent = "신고 접수 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.";
-    errEl.style.display = "block";
-  } finally {
-    btn.disabled = false; btn.textContent = "신고 접수하기";
-  }
 }
 
 function updateCreditBadges() {
@@ -1632,7 +1444,7 @@ function parseMoneyInput(id) {
   return raw === "" ? NaN : parseFloat(raw);
 }
 
-function doManualAnalyze() {
+async function doManualAnalyze() {
   if (!token) { showPage("login"); return; }
 
   const companyName = document.getElementById("m-company").value.trim();
@@ -1648,6 +1460,25 @@ function doManualAnalyze() {
     toast("회사이름, 매출금액, 부채금액, 총 자산은 필수 입력 항목입니다.");
     return;
   }
+
+  // 크레딧 확인 — 부족하면 결제 팝업으로 안내 (직접입력도 이미지 분석과 동일하게 유료)
+  if (userCredits < 10) { openPaymentModal(); return; }
+
+  // 서버에서 크레딧을 검증하고 차감 (클라이언트 체크만으로는 우회 가능하므로 반드시 서버 확인)
+  const btn = document.getElementById("manualAnalyzeBtn");
+  btn.disabled = true; btn.textContent = "분석 중...";
+  try {
+    const deductResult = await api("POST", "/analyze/manual");
+    userCredits = deductResult.remaining_credits;
+    localStorage.setItem("fa_credits", userCredits);
+    updateCreditBadges();
+  } catch (e) {
+    toast(e.message);
+    if (e.message.includes("부족")) openPaymentModal();
+    btn.disabled = false; btn.textContent = "입력 정보로 분석하기";
+    return;
+  }
+  btn.disabled = false; btn.textContent = "입력 정보로 분석하기";
 
   // 직접 입력값으로 재무 데이터 구성 (연간 환산)
   const annualInterest  = interest ? interest * 12 : null;
@@ -1676,7 +1507,7 @@ function doManualAnalyze() {
   document.getElementById("results").classList.remove("hidden");
   renderResults(d);
   document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
-  toast("입력 정보로 분석 완료");
+  toast(`입력 정보로 분석 완료 · 잔여횟수 ${Math.floor(userCredits / 10)}건`);
 }
 
 function renderResults(d) {
@@ -1996,6 +1827,194 @@ function applyEditedFields() {
   renderResults(updated);
   document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
   toast("수정한 값으로 다시 계산했습니다.");
+}
+
+// ── 커뮤니티 ────────────────────────────────────────────────────
+let currentCommunityPostId = null;
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
+
+function goCommunity() {
+  if (!token) { showPage("login"); return; }
+  showPage("community");
+  loadCommunityPosts();
+}
+
+async function loadCommunityPosts() {
+  const listEl = document.getElementById("community-list");
+  listEl.innerHTML = `<p style="font-size:13px;color:var(--text3);">불러오는 중...</p>`;
+  try {
+    const d = await api("GET", "/community/posts");
+    if (!d.posts.length) {
+      listEl.innerHTML = `<p style="font-size:13px;color:var(--text3);text-align:center;padding:2rem 0;">아직 등록된 글이 없습니다. 첫 글을 남겨보세요!</p>`;
+      return;
+    }
+    listEl.innerHTML = d.posts.map(p => `
+      <div class="card" style="cursor:pointer;" onclick="openCommunityDetail(${p.id})">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div style="font-size:15px;font-weight:600;">${escapeHtml(p.title)}</div>
+          <div style="font-size:12px;color:var(--text3);white-space:nowrap;">💬 ${p.comment_count}</div>
+        </div>
+        <div style="font-size:13px;color:var(--text2);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.content)}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:8px;">${escapeHtml(p.author)} · ${p.created_at ? p.created_at.slice(0,10) : ""}</div>
+      </div>
+    `).join("");
+  } catch (e) {
+    listEl.innerHTML = `<p style="font-size:13px;color:var(--danger);">${e.message}</p>`;
+  }
+}
+
+async function submitCommunityPost() {
+  const title = document.getElementById("cw-title").value.trim();
+  const content = document.getElementById("cw-content").value.trim();
+  const errEl = document.getElementById("cw-error");
+  errEl.style.display = "none";
+  if (!title || !content) {
+    errEl.textContent = "제목과 내용을 모두 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  try {
+    await api("POST", "/community/posts", { title, content });
+    document.getElementById("cw-title").value = "";
+    document.getElementById("cw-content").value = "";
+    toast("글이 등록되었습니다.");
+    goCommunity();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+  }
+}
+
+async function openCommunityDetail(id) {
+  currentCommunityPostId = id;
+  showPage("communityDetail");
+  await loadCommunityDetail();
+}
+
+async function loadCommunityDetail() {
+  const detailEl = document.getElementById("community-detail");
+  const commentsEl = document.getElementById("community-comments");
+  detailEl.innerHTML = `<p style="font-size:13px;color:var(--text3);">불러오는 중...</p>`;
+  commentsEl.innerHTML = "";
+  try {
+    const d = await api("GET", `/community/posts/${currentCommunityPostId}`);
+    const isMine = d.author_email && d.author_email === userEmail;
+    detailEl.innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div style="font-size:18px;font-weight:700;">${escapeHtml(d.title)}</div>
+          ${isMine ? `<button class="btn" style="padding:4px 10px;font-size:12px;color:var(--danger);" onclick="deleteCommunityPost()">삭제</button>` : ""}
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-top:6px;">${escapeHtml(d.author)} · ${d.created_at ? d.created_at.slice(0,10) : ""}</div>
+        <div style="font-size:14px;color:var(--text);margin-top:14px;white-space:pre-wrap;line-height:1.7;">${escapeHtml(d.content)}</div>
+      </div>`;
+    commentsEl.innerHTML = d.comments.length
+      ? d.comments.map(c => `
+        <div class="diag-item" style="align-items:flex-start;flex-direction:column;gap:4px;">
+          <div style="display:flex;justify-content:space-between;width:100%;">
+            <span style="font-size:12px;color:var(--text3);">${escapeHtml(c.author)} · ${c.created_at ? c.created_at.slice(0,10) : ""}</span>
+            ${c.author_email && c.author_email === userEmail ? `<button class="btn" style="padding:2px 8px;font-size:11px;color:var(--danger);" onclick="deleteCommunityComment(${c.id})">삭제</button>` : ""}
+          </div>
+          <div style="font-size:14px;">${escapeHtml(c.content)}</div>
+        </div>
+      `).join("")
+      : `<p style="font-size:13px;color:var(--text3);">아직 댓글이 없습니다.</p>`;
+  } catch (e) {
+    detailEl.innerHTML = `<p style="font-size:13px;color:var(--danger);">${e.message}</p>`;
+  }
+}
+
+async function submitCommunityComment() {
+  const content = document.getElementById("cc-content").value.trim();
+  const errEl = document.getElementById("cc-error");
+  errEl.style.display = "none";
+  if (!content) {
+    errEl.textContent = "댓글 내용을 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  try {
+    await api("POST", `/community/posts/${currentCommunityPostId}/comments`, { content });
+    document.getElementById("cc-content").value = "";
+    loadCommunityDetail();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+  }
+}
+
+async function deleteCommunityPost() {
+  if (!confirm("이 글을 삭제하시겠습니까?")) return;
+  try {
+    await api("DELETE", `/community/posts/${currentCommunityPostId}`);
+    toast("글이 삭제되었습니다.");
+    goCommunity();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function deleteCommunityComment(id) {
+  if (!confirm("이 댓글을 삭제하시겠습니까?")) return;
+  try {
+    await api("DELETE", `/community/comments/${id}`);
+    loadCommunityDetail();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+// ── 오류신고 ────────────────────────────────────────────────────
+function openBugReport() {
+  document.getElementById("bugreport-error").style.display = "none";
+  const emailEl = document.getElementById("bugreport-email");
+  if (!emailEl.value && userEmail) emailEl.value = userEmail;
+  document.getElementById("bugreport-modal").classList.remove("hidden");
+}
+
+function closeBugReport() {
+  document.getElementById("bugreport-modal").classList.add("hidden");
+}
+
+async function submitBugReport() {
+  const email = document.getElementById("bugreport-email").value.trim();
+  const message = document.getElementById("bugreport-message").value.trim();
+  const errEl = document.getElementById("bugreport-error");
+  errEl.style.display = "none";
+  if (!message) {
+    errEl.textContent = "오류 내용을 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  const activePage = document.querySelector(".page.active")?.id?.replace("page-", "") || "unknown";
+  const btn = document.getElementById("bugreport-submit-btn");
+  btn.disabled = true; btn.textContent = "접수 중...";
+  try {
+    const res = await fetch(API_BASE + "/support/report-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        email: email || null,
+        page: activePage,
+        user_agent: navigator.userAgent,
+      }),
+    });
+    if (!res.ok) throw new Error("failed");
+    toast("오류 신고가 접수되었습니다. 감사합니다!");
+    document.getElementById("bugreport-message").value = "";
+    closeBugReport();
+  } catch (e) {
+    errEl.textContent = "신고 접수 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.";
+    errEl.style.display = "block";
+  } finally {
+    btn.disabled = false; btn.textContent = "신고 접수하기";
+  }
 }
 
 // ── 분석 결과 다운로드 ──────────────────────────────────────────
@@ -2473,9 +2492,9 @@ function isMobileDevice() {
 
 // ── 결제 (포트원 V2) ───────────────────────────────────────────
 const PKGS = {
-  single:   { price: 9900,  credits: 10,  label: "1건" },
-  standard: { price: 49500, credits: 60,  label: "5+1건 (총 6건)" },
-  mega:     { price: 99000, credits: 130, label: "10+3건 (총 13건)" },
+  single:   { price: 5500,  credits: 10,  label: "1건" },
+  standard: { price: 27500, credits: 60,  label: "5+1건 (총 6건)" },
+  mega:     { price: 55000, credits: 130, label: "10+3건 (총 13건)" },
 };
 
 function selectPkg(el, pkgId) {
@@ -2579,8 +2598,8 @@ async function handlePaymentCallback() {
     const paymentId = params.get("paymentId");
     const amount    = parseInt(params.get("totalAmount") || "0");
     let pkgId = "single";
-    if (amount === 49500) pkgId = "standard";
-    if (amount === 99000) pkgId = "mega";
+    if (amount === 27500) pkgId = "standard";
+    if (amount === 55000) pkgId = "mega";
     await confirmPayment(paymentId, pkgId, amount);
     history.replaceState({}, "", window.location.pathname);
   }
@@ -2600,3 +2619,4 @@ window.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
