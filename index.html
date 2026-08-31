@@ -210,6 +210,14 @@
     font-size: 14px; font-family: inherit; resize: vertical; outline: none;
   }
   .bugreport-modal textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+
+  /* ── 대시보드 2열 레이아웃 (우측 예시 리포트) ── */
+  .dashboard-grid { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: start; }
+  .sample-report-card { position: sticky; top: 72px; }
+  @media (max-width: 900px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .sample-report-card { position: static; }
+  }
 </style>
 </head>
 <body>
@@ -248,8 +256,11 @@
       <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
       <div class="header-right">
         <a class="btn" href="#" onclick="goCommunity()">커뮤니티</a>
-        <a class="btn" href="#" onclick="showPage('login')">로그인</a>
-        <a class="btn btn-primary" href="#" onclick="showPage('register')">시작하기</a>
+        <span id="landing-user-badge" class="hidden" style="background:var(--accent-bg);color:var(--accent);font-size:13px;font-weight:500;padding:4px 12px;border-radius:20px;"></span>
+        <a class="btn" id="landing-login-btn" href="#" onclick="showPage('login')">로그인</a>
+        <a class="btn btn-primary" id="landing-register-btn" href="#" onclick="showPage('register')">시작하기</a>
+        <button class="btn hidden" id="landing-dashboard-btn" onclick="showPage('dashboard')">대시보드</button>
+        <button class="btn hidden" id="landing-logout-btn" onclick="doLogout()">로그아웃</button>
       </div>
     </header>
     <div class="hero">
@@ -416,8 +427,11 @@
       <button class="btn" onclick="doLogout()">로그아웃</button>
     </div>
   </header>
-  <div class="main">
+  <div class="main" style="max-width:1080px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">재무제표 분석</h2>
+
+    <div class="dashboard-grid">
+    <div class="dashboard-main-col">
 
     <!-- 이미지 업로드 -->
     <div class="card" id="imageCard">
@@ -527,6 +541,46 @@
       </p>
     </div>
     </div>
+
+    </div><!-- /.dashboard-main-col -->
+
+    <!-- 우측: 분석리포트 예시 -->
+    <div class="card sample-report-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div class="card-title" style="margin:0;">분석리포트 예시</div>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--accent);background:var(--accent-bg);padding:2px 8px;border-radius:10px;">SAMPLE</span>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;">
+        <div style="background:linear-gradient(135deg,var(--accent) 0%,#1e3a8a 100%);color:#fff;padding:14px;">
+          <div style="font-size:11px;opacity:.85;">재무제표 분석 리포트</div>
+          <div style="font-size:15px;font-weight:700;margin-top:2px;">(주)씨앤지파트너스</div>
+        </div>
+        <div style="padding:12px;">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">핵심 지표</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+            <div style="background:var(--accent-bg);border-radius:8px;padding:8px;">
+              <div style="font-size:10px;color:var(--text3);">부채비율</div>
+              <div style="font-size:14px;font-weight:700;color:var(--accent);">42%</div>
+            </div>
+            <div style="background:#f0fdf4;border-radius:8px;padding:8px;">
+              <div style="font-size:10px;color:var(--text3);">신용등급</div>
+              <div style="font-size:14px;font-weight:700;color:#16a34a;">우수</div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">진단 결과</div>
+          <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);"><span style="color:#16a34a;">●</span> 매출 대비 부채 안정적</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);"><span style="color:#16a34a;">●</span> 자산 건전성 양호</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#d97706;"><span style="color:#d97706;">●</span> 월 이자비용 다소 높음</div>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">종합 분석 의견</div>
+          <p style="font-size:11px;color:var(--text2);line-height:1.5;">전반적으로 안정적인 재무구조를 보이고 있으며, 대출 심사 시 긍정적으로 평가될 가능성이 높습니다...</p>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5;">분석이 완료되면 이와 같은 형태의 리포트를 확인하실 수 있어요. 위 내용은 예시이며 실제 결과와 다를 수 있습니다.</p>
+    </div>
+
+    </div><!-- /.dashboard-grid -->
   </div>
 </div>
 
@@ -933,10 +987,28 @@ let uploadedImages = []; // {data, mime, name, isPdf} — 최대 10장
 let selectedPkg = null;
 
 // ── 유틸 ──────────────────────────────────────────────────────
+function updateLandingHeader() {
+  const loggedIn = !!token;
+  const badge = document.getElementById("landing-user-badge");
+  document.getElementById("landing-login-btn").classList.toggle("hidden", loggedIn);
+  document.getElementById("landing-register-btn").classList.toggle("hidden", loggedIn);
+  document.getElementById("landing-dashboard-btn").classList.toggle("hidden", !loggedIn);
+  document.getElementById("landing-logout-btn").classList.toggle("hidden", !loggedIn);
+  if (loggedIn) {
+    badge.textContent = userCompanyName || userEmail || "회원";
+    badge.classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+  }
+}
+
 function showPage(name) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.getElementById("page-" + name).classList.add("active");
   window.scrollTo(0, 0);
+  if (name === "landing") {
+    updateLandingHeader();
+  }
   if (name === "dashboard") {
     const mCompany = document.getElementById("m-company");
     if (mCompany && userCompanyName && !mCompany.value) mCompany.value = userCompanyName;
@@ -2619,4 +2691,3 @@ window.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
-
