@@ -847,6 +847,189 @@ User-Agent: {body.user_agent or '-'}
     return {"message": "오류 신고가 접수되었습니다."}
 
 
+# ══════════════════════════════════════════════════════════════
+# 커뮤니티 게시판 (로그인 회원만 열람/작성, 댓글 지원)
+# ══════════════════════════════════════════════════════════════
+def display_name(user: models.User) -> str:
+    return user.company_name or user.rep_name or user.email.split("@")[0]
+
+class CommunityPostCreate(BaseModel):
+    title: str
+    content: str
+
+class CommunityCommentCreate(BaseModel):
+    content: str
+
+@app.get("/community/posts")
+def list_community_posts(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    posts = db.query(models.CommunityPost).order_by(models.CommunityPost.created_at.desc()).limit(200).all()
+    result = []
+    for p in posts:
+        author = db.query(models.User).filter(models.User.id == p.user_id).first()
+        comment_count = db.query(models.CommunityComment).filter(models.CommunityComment.post_id == p.id).count()
+        result.append({
+            "id": p.id,
+            "title": p.title,
+            "content": p.content,
+            "author": display_name(author) if author else "(탈퇴한 회원)",
+            "author_email": author.email if author else None,
+            "comment_count": comment_count,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+    return {"count": len(result), "posts": result}
+
+@app.post("/community/posts")
+def create_community_post(
+    body: CommunityPostCreate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    title = body.title.strip()
+    content = body.content.strip()
+    if not title or not content:
+        raise HTTPException(status_code=400, detail="제목과 내용을 모두 입력해주세요.")
+    post = models.CommunityPost(user_id=user.id, title=title, content=content)
+    db.add(post)
+    db.commit()
+    db.refresh(post)
+    return {"id": post.id, "message": "글이 등록되었습니다."}
+
+@app.get("/community/posts/{post_id}")
+def get_community_post(
+    post_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    post = db.query(models.CommunityPost).filter(models.CommunityPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="해당 글을 찾을 수 없습니다.")
+    author = db.query(models.User).filter(models.User.id == post.user_id).first()
+    comments = db.query(models.CommunityComment).filter(models.CommunityComment.post_id == post.id).order_by(models.CommunityComment.created_at.asc()).all()
+    comment_list = []
+    for c in comments:
+        c_author = db.query(models.User).filter(models.User.id == c.user_id).first()
+        comment_list.append({
+            "id": c.id,
+            "content": c.content,
+            "author": display_name(c_author) if c_author else "(탈퇴한 회원)",
+            "author_email": c_author.email if c_author else None,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+    return {
+        "id": post.id,
+        "title": post.title,
+        "content": post.content,
+        "author": display_name(author) if author else "(탈퇴한 회원)",
+        "author_email": author.email if author else None,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+        "comments": comment_list,
+    }
+
+@app.delete("/community/posts/{post_id}")
+def delete_community_post(
+    post_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    post = db.query(models.CommunityPost).filter(models.CommunityPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="해당 글을 찾을 수 없습니다.")
+    if post.user_id != user.id:
+        raise HTTPException(status_code=403, detail="본인이 작성한 글만 삭제할 수 있습니다.")
+    db.query(models.CommunityComment).filter(models.CommunityComment.post_id == post.id).delete()
+    db.delete(post)
+    db.commit()
+    return {"message": "글이 삭제되었습니다."}
+
+@app.post("/community/posts/{post_id}/comments")
+def create_community_comment(
+    post_id: int,
+    body: CommunityCommentCreate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    post = db.query(models.CommunityPost).filter(models.CommunityPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="해당 글을 찾을 수 없습니다.")
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="댓글 내용을 입력해주세요.")
+    comment = models.CommunityComment(post_id=post_id, user_id=user.id, content=content)
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    return {"id": comment.id, "message": "댓글이 등록되었습니다."}
+
+@app.delete("/community/comments/{comment_id}")
+def delete_community_comment(
+    comment_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    comment = db.query(models.CommunityComment).filter(models.CommunityComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="해당 댓글을 찾을 수 없습니다.")
+    if comment.user_id != user.id:
+        raise HTTPException(status_code=403, detail="본인이 작성한 댓글만 삭제할 수 있습니다.")
+    db.delete(comment)
+    db.commit()
+    return {"message": "댓글이 삭제되었습니다."}
+
+# ── 관리자: 커뮤니티 게시판 모더레이션 ──
+@app.get("/admin/community/posts")
+def admin_list_community_posts(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    posts = db.query(models.CommunityPost).order_by(models.CommunityPost.created_at.desc()).limit(500).all()
+    result = []
+    for p in posts:
+        author = db.query(models.User).filter(models.User.id == p.user_id).first()
+        comment_count = db.query(models.CommunityComment).filter(models.CommunityComment.post_id == p.id).count()
+        result.append({
+            "id": p.id,
+            "title": p.title,
+            "content": p.content,
+            "author_email": author.email if author else "(탈퇴한 회원)",
+            "comment_count": comment_count,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+    return {"count": len(result), "posts": result}
+
+@app.delete("/admin/community/posts/{post_id}")
+def admin_delete_community_post(post_id: int, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    post = db.query(models.CommunityPost).filter(models.CommunityPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="해당 글을 찾을 수 없습니다.")
+    db.query(models.CommunityComment).filter(models.CommunityComment.post_id == post.id).delete()
+    db.delete(post)
+    db.commit()
+    return {"message": "글이 삭제되었습니다."}
+
+@app.get("/admin/community/posts/{post_id}/comments")
+def admin_list_community_comments(post_id: int, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    comments = db.query(models.CommunityComment).filter(models.CommunityComment.post_id == post_id).order_by(models.CommunityComment.created_at.asc()).all()
+    result = []
+    for c in comments:
+        author = db.query(models.User).filter(models.User.id == c.user_id).first()
+        result.append({
+            "id": c.id,
+            "content": c.content,
+            "author_email": author.email if author else "(탈퇴한 회원)",
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        })
+    return {"count": len(result), "comments": result}
+
+@app.delete("/admin/community/comments/{comment_id}")
+def admin_delete_community_comment(comment_id: int, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    comment = db.query(models.CommunityComment).filter(models.CommunityComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="해당 댓글을 찾을 수 없습니다.")
+    db.delete(comment)
+    db.commit()
+    return {"message": "댓글이 삭제되었습니다."}
+
+
 class FindIdBody(BaseModel):
     phone: str
 

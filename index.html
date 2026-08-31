@@ -247,6 +247,7 @@
     <header>
       <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
       <div class="header-right">
+        <a class="btn" href="#" onclick="goCommunity()">커뮤니티</a>
         <a class="btn" href="#" onclick="showPage('login')">로그인</a>
         <a class="btn btn-primary" href="#" onclick="showPage('register')">시작하기</a>
       </div>
@@ -409,6 +410,7 @@
     <div class="header-right">
       <span class="credit-badge" id="header-credits">잔여횟수 0건</span>
       <button class="btn" onclick="showPage('landing')">홈</button>
+      <button class="btn" onclick="goCommunity()">커뮤니티</button>
       <button class="btn" onclick="showPage('myinfo')">내 정보</button>
       <button class="btn" onclick="showPage('charge')">충전</button>
       <button class="btn" onclick="doLogout()">로그아웃</button>
@@ -524,6 +526,71 @@
         <a href="#" onclick="event.preventDefault();window.open('print-guide.jpg','_blank')" style="font-size:12px;color:var(--text2);text-decoration:underline;">진단결과와 인쇄화면이 다를 경우</a>
       </p>
     </div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 커뮤니티 ───────────────────────── -->
+<div id="page-community" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <div class="header-right">
+      <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
+      <button class="btn" onclick="doLogout()">로그아웃</button>
+    </div>
+  </header>
+  <div class="main" style="max-width:640px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+      <h2 style="font-size:20px;font-weight:600;letter-spacing:-0.02em;">커뮤니티</h2>
+      <button class="btn btn-primary" onclick="showPage('communityWrite')">✏️ 글쓰기</button>
+    </div>
+    <div id="community-list"></div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 커뮤니티 글쓰기 ───────────────────────── -->
+<div id="page-communityWrite" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <div class="header-right">
+      <button class="btn" onclick="goCommunity()">← 목록으로</button>
+    </div>
+  </header>
+  <div class="main" style="max-width:640px;">
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">글쓰기</h2>
+    <div class="card">
+      <div class="field">
+        <label>제목</label>
+        <input type="text" id="cw-title" placeholder="제목을 입력해주세요" />
+      </div>
+      <div class="field">
+        <label>내용</label>
+        <textarea id="cw-content" rows="10" placeholder="내용을 입력해주세요" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:14px;font-family:inherit;resize:vertical;"></textarea>
+      </div>
+      <div id="cw-error" class="error-msg"></div>
+      <button class="btn btn-primary btn-full" onclick="submitCommunityPost()">등록하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 커뮤니티 글 상세 ───────────────────────── -->
+<div id="page-communityDetail" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <div class="header-right">
+      <button class="btn" onclick="goCommunity()">← 목록으로</button>
+    </div>
+  </header>
+  <div class="main" style="max-width:640px;">
+    <div id="community-detail"></div>
+    <div class="card">
+      <div class="card-title">댓글</div>
+      <div id="community-comments"></div>
+      <div class="field" style="margin-top:1rem;">
+        <textarea id="cc-content" rows="3" placeholder="댓글을 입력해주세요" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:14px;font-family:inherit;resize:vertical;"></textarea>
+      </div>
+      <div id="cc-error" class="error-msg"></div>
+      <button class="btn btn-primary" onclick="submitCommunityComment()">댓글 등록</button>
     </div>
   </div>
 </div>
@@ -905,6 +972,146 @@ function toast(msg) {
 function fmt(n) {
   if (n === null || n === undefined || isNaN(n)) return "미인식";
   return new Intl.NumberFormat("ko-KR").format(Math.round(n)) + "원";
+}
+
+// ── 커뮤니티 ────────────────────────────────────────────────────
+let currentCommunityPostId = null;
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
+
+function goCommunity() {
+  if (!token) { showPage("login"); return; }
+  showPage("community");
+  loadCommunityPosts();
+}
+
+async function loadCommunityPosts() {
+  const listEl = document.getElementById("community-list");
+  listEl.innerHTML = `<p style="font-size:13px;color:var(--text3);">불러오는 중...</p>`;
+  try {
+    const d = await api("GET", "/community/posts");
+    if (!d.posts.length) {
+      listEl.innerHTML = `<p style="font-size:13px;color:var(--text3);text-align:center;padding:2rem 0;">아직 등록된 글이 없습니다. 첫 글을 남겨보세요!</p>`;
+      return;
+    }
+    listEl.innerHTML = d.posts.map(p => `
+      <div class="card" style="cursor:pointer;" onclick="openCommunityDetail(${p.id})">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div style="font-size:15px;font-weight:600;">${escapeHtml(p.title)}</div>
+          <div style="font-size:12px;color:var(--text3);white-space:nowrap;">💬 ${p.comment_count}</div>
+        </div>
+        <div style="font-size:13px;color:var(--text2);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.content)}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:8px;">${escapeHtml(p.author)} · ${p.created_at ? p.created_at.slice(0,10) : ""}</div>
+      </div>
+    `).join("");
+  } catch (e) {
+    listEl.innerHTML = `<p style="font-size:13px;color:var(--danger);">${e.message}</p>`;
+  }
+}
+
+async function submitCommunityPost() {
+  const title = document.getElementById("cw-title").value.trim();
+  const content = document.getElementById("cw-content").value.trim();
+  const errEl = document.getElementById("cw-error");
+  errEl.style.display = "none";
+  if (!title || !content) {
+    errEl.textContent = "제목과 내용을 모두 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  try {
+    await api("POST", "/community/posts", { title, content });
+    document.getElementById("cw-title").value = "";
+    document.getElementById("cw-content").value = "";
+    toast("글이 등록되었습니다.");
+    goCommunity();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+  }
+}
+
+async function openCommunityDetail(id) {
+  currentCommunityPostId = id;
+  showPage("communityDetail");
+  await loadCommunityDetail();
+}
+
+async function loadCommunityDetail() {
+  const detailEl = document.getElementById("community-detail");
+  const commentsEl = document.getElementById("community-comments");
+  detailEl.innerHTML = `<p style="font-size:13px;color:var(--text3);">불러오는 중...</p>`;
+  commentsEl.innerHTML = "";
+  try {
+    const d = await api("GET", `/community/posts/${currentCommunityPostId}`);
+    const isMine = d.author_email && d.author_email === userEmail;
+    detailEl.innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div style="font-size:18px;font-weight:700;">${escapeHtml(d.title)}</div>
+          ${isMine ? `<button class="btn" style="padding:4px 10px;font-size:12px;color:var(--danger);" onclick="deleteCommunityPost()">삭제</button>` : ""}
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-top:6px;">${escapeHtml(d.author)} · ${d.created_at ? d.created_at.slice(0,10) : ""}</div>
+        <div style="font-size:14px;color:var(--text);margin-top:14px;white-space:pre-wrap;line-height:1.7;">${escapeHtml(d.content)}</div>
+      </div>`;
+    commentsEl.innerHTML = d.comments.length
+      ? d.comments.map(c => `
+        <div class="diag-item" style="align-items:flex-start;flex-direction:column;gap:4px;">
+          <div style="display:flex;justify-content:space-between;width:100%;">
+            <span style="font-size:12px;color:var(--text3);">${escapeHtml(c.author)} · ${c.created_at ? c.created_at.slice(0,10) : ""}</span>
+            ${c.author_email && c.author_email === userEmail ? `<button class="btn" style="padding:2px 8px;font-size:11px;color:var(--danger);" onclick="deleteCommunityComment(${c.id})">삭제</button>` : ""}
+          </div>
+          <div style="font-size:14px;">${escapeHtml(c.content)}</div>
+        </div>
+      `).join("")
+      : `<p style="font-size:13px;color:var(--text3);">아직 댓글이 없습니다.</p>`;
+  } catch (e) {
+    detailEl.innerHTML = `<p style="font-size:13px;color:var(--danger);">${e.message}</p>`;
+  }
+}
+
+async function submitCommunityComment() {
+  const content = document.getElementById("cc-content").value.trim();
+  const errEl = document.getElementById("cc-error");
+  errEl.style.display = "none";
+  if (!content) {
+    errEl.textContent = "댓글 내용을 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  try {
+    await api("POST", `/community/posts/${currentCommunityPostId}/comments`, { content });
+    document.getElementById("cc-content").value = "";
+    loadCommunityDetail();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = "block";
+  }
+}
+
+async function deleteCommunityPost() {
+  if (!confirm("이 글을 삭제하시겠습니까?")) return;
+  try {
+    await api("DELETE", `/community/posts/${currentCommunityPostId}`);
+    toast("글이 삭제되었습니다.");
+    goCommunity();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function deleteCommunityComment(id) {
+  if (!confirm("이 댓글을 삭제하시겠습니까?")) return;
+  try {
+    await api("DELETE", `/community/comments/${id}`);
+    loadCommunityDetail();
+  } catch (e) {
+    toast(e.message);
+  }
 }
 
 // ── 오류신고 ────────────────────────────────────────────────────

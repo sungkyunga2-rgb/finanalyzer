@@ -45,3 +45,19 @@ class RefundRequest(Base):
     admin_note   = Column(String, default="")
     created_at   = Column(DateTime, default=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
+
+class CommunityPost(Base):
+    __tablename__ = "community_posts"
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"))
+    title      = Column(String, nullable=False)
+    content    = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class CommunityComment(Base):
+    __tablename__ = "community_comments"
+    id         = Column(Integer, primary_key=True, index=True)
+    post_id    = Column(Integer, ForeignKey("community_posts.id"))
+    user_id    = Column(Integer, ForeignKey("users.id"))
+    content    = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

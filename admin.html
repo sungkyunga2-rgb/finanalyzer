@@ -99,6 +99,7 @@
     <div class="error-msg" id="search-error"></div>
     <button class="btn-ghost btn-full" onclick="toggleUserList()" id="listToggleBtn" style="margin-top:12px;">📋 전체 가입자 목록 보기</button>
     <button class="btn-ghost btn-full" onclick="toggleRefundList()" id="refundToggleBtn" style="margin-top:8px;">💸 환불 신청 내역 보기</button>
+    <button class="btn-ghost btn-full" onclick="toggleCommunityList()" id="communityToggleBtn" style="margin-top:8px;">🗨️ 커뮤니티 게시글 관리</button>
   </div>
 
   <!-- 전체 회원 목록 -->
@@ -106,6 +107,9 @@
 
   <!-- 환불 신청 목록 -->
   <div class="card hidden" id="refundListCard"></div>
+
+  <!-- 커뮤니티 게시글 목록 -->
+  <div class="card hidden" id="communityListCard"></div>
 
   <!-- 결과 -->
   <div class="card hidden" id="resultCard"></div>
@@ -173,6 +177,7 @@ async function searchUser() {
     currentEmail = d.email;
     document.getElementById("userListCard").classList.add("hidden");
     document.getElementById("refundListCard").classList.add("hidden");
+    document.getElementById("communityListCard").classList.add("hidden");
     renderResult(d);
   } catch (e) {
     document.getElementById("resultCard").classList.add("hidden");
@@ -197,6 +202,7 @@ async function toggleUserList() {
   }
   document.getElementById("resultCard").classList.add("hidden");
   document.getElementById("refundListCard").classList.add("hidden");
+  document.getElementById("communityListCard").classList.add("hidden");
   btn.textContent = "불러오는 중...";
   try {
     const d = await api("GET", "/admin/users");
@@ -249,6 +255,7 @@ async function toggleRefundList() {
   }
   document.getElementById("resultCard").classList.add("hidden");
   document.getElementById("userListCard").classList.add("hidden");
+  document.getElementById("communityListCard").classList.add("hidden");
   btn.textContent = "불러오는 중...";
   try {
     const d = await api("GET", "/admin/refund-requests");
@@ -295,6 +302,103 @@ async function resolveRefund(id, status) {
     toast(`${label}되었습니다.`);
     const d = await api("GET", "/admin/refund-requests");
     renderRefundList(d);
+  } catch (e) { toast("오류: " + e.message); }
+}
+
+// ── 커뮤니티 게시글 관리 ──
+async function toggleCommunityList() {
+  const card = document.getElementById("communityListCard");
+  const btn = document.getElementById("communityToggleBtn");
+  if (!card.classList.contains("hidden")) {
+    card.classList.add("hidden");
+    btn.textContent = "🗨️ 커뮤니티 게시글 관리";
+    return;
+  }
+  document.getElementById("resultCard").classList.add("hidden");
+  document.getElementById("userListCard").classList.add("hidden");
+  document.getElementById("refundListCard").classList.add("hidden");
+  btn.textContent = "불러오는 중...";
+  try {
+    const d = await api("GET", "/admin/community/posts");
+    renderCommunityList(d);
+    card.classList.remove("hidden");
+    btn.textContent = "🗨️ 목록 닫기";
+  } catch (e) {
+    toast_admin_error(e.message);
+    btn.textContent = "🗨️ 커뮤니티 게시글 관리";
+  }
+}
+
+function communityAdminEscape(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
+
+function renderCommunityList(d) {
+  const card = document.getElementById("communityListCard");
+  const rows = d.posts.map(p => `
+    <div style="border-bottom:1px solid var(--border);padding:10px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div>
+          <div style="font-size:13px;font-weight:700;">${communityAdminEscape(p.title)}</div>
+          <div style="font-size:11px;color:#9aa7b8;margin-top:2px;">${p.author_email} · 댓글 ${p.comment_count} · ${p.created_at ? p.created_at.slice(0,10) : "-"}</div>
+          <div style="font-size:12px;color:#6b7a8d;margin-top:4px;white-space:pre-wrap;">${communityAdminEscape(p.content)}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+          <button class="btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="toggleCommunityComments(${p.id})">댓글보기</button>
+          <button style="padding:4px 10px;font-size:11px;background:var(--danger);color:#fff;" onclick="adminDeleteCommunityPost(${p.id})">글삭제</button>
+        </div>
+      </div>
+      <div id="community-comments-${p.id}" class="hidden" style="margin-top:8px;padding-left:10px;border-left:2px solid var(--border);"></div>
+    </div>`).join("");
+  card.innerHTML = `
+    <div class="section-title">커뮤니티 게시글 (${d.count}건)</div>
+    ${rows || `<p style="text-align:center;color:#9aa7b8;font-size:13px;padding:12px 0;">등록된 글이 없습니다.</p>`}`;
+}
+
+async function toggleCommunityComments(postId) {
+  const el = document.getElementById(`community-comments-${postId}`);
+  if (!el.classList.contains("hidden")) {
+    el.classList.add("hidden");
+    return;
+  }
+  el.classList.remove("hidden");
+  el.innerHTML = `<p style="font-size:12px;color:#9aa7b8;">불러오는 중...</p>`;
+  try {
+    const d = await api("GET", `/admin/community/posts/${postId}/comments`);
+    el.innerHTML = d.comments.length
+      ? d.comments.map(c => `
+        <div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:12px;">
+          <div>
+            <div style="color:#9aa7b8;">${c.author_email} · ${c.created_at ? c.created_at.slice(0,10) : "-"}</div>
+            <div style="margin-top:2px;">${communityAdminEscape(c.content)}</div>
+          </div>
+          <button style="padding:3px 8px;font-size:10px;background:var(--danger);color:#fff;flex-shrink:0;" onclick="adminDeleteCommunityComment(${c.id}, ${postId})">삭제</button>
+        </div>`).join("")
+      : `<p style="font-size:12px;color:#9aa7b8;">댓글이 없습니다.</p>`;
+  } catch (e) {
+    el.innerHTML = `<p style="font-size:12px;color:var(--danger);">${e.message}</p>`;
+  }
+}
+
+async function adminDeleteCommunityPost(postId) {
+  if (!confirm("이 게시글을 삭제하시겠습니까? 댓글도 함께 삭제됩니다.")) return;
+  try {
+    await api("DELETE", `/admin/community/posts/${postId}`);
+    toast("게시글이 삭제되었습니다.");
+    const d = await api("GET", "/admin/community/posts");
+    renderCommunityList(d);
+  } catch (e) { toast("오류: " + e.message); }
+}
+
+async function adminDeleteCommunityComment(commentId, postId) {
+  if (!confirm("이 댓글을 삭제하시겠습니까?")) return;
+  try {
+    await api("DELETE", `/admin/community/comments/${commentId}`);
+    toast("댓글이 삭제되었습니다.");
+    toggleCommunityComments(postId);
+    toggleCommunityComments(postId);
   } catch (e) { toast("오류: " + e.message); }
 }
 
