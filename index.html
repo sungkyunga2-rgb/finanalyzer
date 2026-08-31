@@ -551,40 +551,56 @@
 
     </div><!-- /.dashboard-main-col -->
 
-    <!-- 우측: 분석리포트 예시 -->
+    <!-- 우측: 분석리포트 예시 (실제 결과 화면과 동일한 스타일) -->
     <div class="card sample-report-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div class="card-title" style="margin:0;">분석리포트 예시</div>
         <span style="font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--accent);background:var(--accent-bg);padding:2px 8px;border-radius:10px;">SAMPLE</span>
       </div>
-      <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;">
-        <div style="background:linear-gradient(135deg,var(--accent) 0%,#1e3a8a 100%);color:#fff;padding:14px;">
-          <div style="font-size:11px;opacity:.85;">재무제표 분석 리포트</div>
-          <div style="font-size:15px;font-weight:700;margin-top:2px;">(주)씨앤지파트너스</div>
+
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:10px;">(주)한빛테크</div>
+
+      <!-- 핵심 지표 -->
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;">핵심 지표</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+        <div style="background:#fff;border-radius:12px;padding:10px;border:1px solid #e5e4e0;border-top:3px solid #0F6E56;">
+          <div style="font-size:10px;color:#9b9a95;margin-bottom:4px;font-weight:500;">📊 부채비율</div>
+          <div style="font-size:20px;font-weight:700;color:#0F6E56;letter-spacing:-0.02em;">78.5%</div>
+          <div style="display:inline-block;background:#E1F5EE;color:#0F6E56;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-top:4px;">✅ 양호</div>
         </div>
-        <div style="padding:12px;">
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">핵심 지표</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
-            <div style="background:var(--accent-bg);border-radius:8px;padding:8px;">
-              <div style="font-size:10px;color:var(--text3);">부채비율</div>
-              <div style="font-size:14px;font-weight:700;color:var(--accent);">42%</div>
-            </div>
-            <div style="background:#f0fdf4;border-radius:8px;padding:8px;">
-              <div style="font-size:10px;color:var(--text3);">신용등급</div>
-              <div style="font-size:14px;font-weight:700;color:#16a34a;">우수</div>
-            </div>
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">진단 결과</div>
-          <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
-            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);"><span style="color:#16a34a;">●</span> 매출 대비 부채 안정적</div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);"><span style="color:#16a34a;">●</span> 자산 건전성 양호</div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#d97706;"><span style="color:#d97706;">●</span> 월 이자비용 다소 높음</div>
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">종합 분석 의견</div>
-          <p style="font-size:11px;color:var(--text2);line-height:1.5;">전반적으로 안정적인 재무구조를 보이고 있으며, 대출 심사 시 긍정적으로 평가될 가능성이 높습니다...</p>
+        <div style="background:#fff;border-radius:12px;padding:10px;border:1px solid #e5e4e0;border-top:3px solid #0F6E56;">
+          <div style="font-size:10px;color:#9b9a95;margin-bottom:4px;font-weight:500;">💰 이자보상배수</div>
+          <div style="font-size:20px;font-weight:700;color:#0F6E56;letter-spacing:-0.02em;">4.20배</div>
+          <div style="display:inline-block;background:#E1F5EE;color:#0F6E56;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-top:4px;">✅ 양호</div>
         </div>
       </div>
-      <p style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5;">분석이 완료되면 이와 같은 형태의 리포트를 확인하실 수 있어요. 위 내용은 예시이며 실제 결과와 다를 수 있습니다.</p>
+
+      <!-- 진단 결과 -->
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;">진단 결과</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div style="background:#E1F5EE;border-radius:10px;padding:8px;border:1px solid #0F6E5633;">
+          <div style="font-size:10px;color:#6b6a65;margin-bottom:3px;font-weight:500;">🏢 자본잠식</div>
+          <div style="font-size:13px;font-weight:700;color:#0F6E56;">✅ 정상</div>
+        </div>
+        <div style="background:#E1F5EE;border-radius:10px;padding:8px;border:1px solid #0F6E5633;">
+          <div style="font-size:10px;color:#6b6a65;margin-bottom:3px;font-weight:500;">📈 결손 여부</div>
+          <div style="font-size:13px;font-weight:700;color:#0F6E56;">✅ 이익 발생</div>
+        </div>
+      </div>
+      <div style="background:#E1F5EE;border-radius:10px;padding:8px;border:1px solid #0F6E5633;margin-bottom:14px;">
+        <div style="font-size:10px;color:#6b6a65;margin-bottom:3px;font-weight:500;">💳 매출 대비 대출 비율</div>
+        <div style="font-size:13px;font-weight:700;color:#0F6E56;">✅ 12.4% (적정)</div>
+      </div>
+
+      <!-- 종합 분석 의견 -->
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;">종합 분석 의견</div>
+      <div style="background:#f0f4f8;border-radius:10px;padding:.75rem .9rem;border-left:3px solid #185FA5;margin-bottom:10px;">
+        <div style="font-size:11px;color:#2d3748;line-height:1.7;margin-bottom:4px;">📌 부채비율이 78.5%로 양호한 수준입니다. 안정적인 재무구조를 유지하고 있습니다.</div>
+        <div style="font-size:11px;color:#2d3748;line-height:1.7;margin-bottom:4px;">📌 이자보상배수가 4.20배로 양호합니다. 영업이익이 이자비용을 충분히 커버하고 있어 재무안정성이 높은 편입니다.</div>
+        <div style="font-size:11px;color:#2d3748;line-height:1.7;">📌 당기순이익이 발생하여 수익성은 양호한 상태입니다.</div>
+      </div>
+
+      <p style="font-size:11px;color:var(--text3);line-height:1.5;">분석이 완료되면 이와 같은 형태의 리포트를 확인하실 수 있어요. 위 내용은 가상의 예시이며 실제 결과와 다를 수 있습니다.</p>
     </div>
 
     </div><!-- /.dashboard-grid -->
