@@ -563,6 +563,94 @@ def analyze_manual(
     db.commit()
     return {"credits_used": COST_PER_ANALYSIS, "remaining_credits": user.credits}
 
+# 부가세과세표준증명원 / 소득금액증명원 등 국세청 서류에서 매출·소득 자동 인식
+# (재무제표가 없는 개인사업자용 "직접 입력" 보조 기능 — 크레딧 차감 없음, 대출/자산은 서류에 없어 여전히 직접 입력 필요)
+class IncomeDocExtractRequest(BaseModel):
+    images: list[ImageItem] = []
+
+@app.post("/extract/income-doc")
+async def extract_income_doc(
+    body: IncomeDocExtractRequest,
+    user: models.User = Depends(get_current_user),
+):
+    import json, re
+
+    if not body.images:
+        raise HTTPException(status_code=400, detail="분석할 서류 이미지가 없습니다.")
+    if len(body.images) > 5:
+        raise HTTPException(status_code=400, detail="서류는 최대 5장까지 첨부할 수 있습니다.")
+
+    image_parts = [
+        {"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}}
+        for img in body.images
+    ]
+
+    prompt = """이 문서는 한국 국세청 홈택스에서 발급한 "부가가치세과세표준증명원" 또는 "소득금액증명원" 중 하나입니다 (여러 장이 첨부된 경우 같은 서류의 여러 페이지이거나, 두 서류가 함께 첨부되었을 수 있습니다). 첨부된 모든 이미지를 함께 확인해 아래 항목을 추출하세요.
+
+━━━ 서류별 추출 방법 ━━━
+[부가가치세과세표준증명원]
+- 상단에 상호(회사/사업체명), 성명(대표자명), 사업자등록번호가 표기됩니다.
+- 표에는 보통 과세기간(예: 2025년 제1기, 2025년 제2기 등)별로 "과세표준액"(공급가액) 금액이 나열됩니다.
+- 표에 나온 가장 최근 4개 과세기간(1년치, 분기 신고면 4개/반기 신고면 2개)의 과세표준액을 모두 더한 값을 revenue(연 매출액 추정치)로 반환하세요. 과세기간이 1년치가 안 되면 있는 만큼만 더하세요.
+
+[소득금액증명원]
+- 상단에 상호 또는 성명(대표자명), 사업자등록번호가 표기됩니다.
+- 표에는 귀속연도별로 "소득금액"이 나열됩니다. 가장 최근 귀속연도의 소득금액을 income_amount로 반환하세요.
+
+두 서류 모두 대출·부채·자산 정보는 포함하지 않으므로 추출 대상이 아닙니다.
+
+아래 JSON 형식으로만 응답하세요. 문서에서 찾을 수 없는 항목은 null:
+{"doc_type":"부가세과세표준증명원" 또는 "소득금액증명원" 또는 "불명","company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"income_amount":숫자또는null,"comment":"인식 관련 메모 1문장"}"""
+
+    GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.7-flash"]
+
+    async def call_gemini(client: httpx.AsyncClient):
+        import asyncio
+        last_err = None
+        for model in GEMINI_MODELS:
+            for attempt in range(2):
+                try:
+                    resp = await client.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}",
+                        headers={"Content-Type": "application/json"},
+                        json={
+                            "contents": [{"parts": [*image_parts, {"text": prompt}]}],
+                            "generationConfig": {"temperature": 0, "maxOutputTokens": 2000}
+                        }
+                    )
+                    if resp.status_code in (503, 429):
+                        last_err = resp.text
+                        if attempt == 0:
+                            await asyncio.sleep(0.8)
+                            continue
+                        break
+                    if resp.status_code != 200:
+                        last_err = resp.text
+                        break
+                    try:
+                        candidate_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        candidate_clean = re.sub(r"```json|```", "", candidate_text).strip()
+                        start = candidate_clean.find("{")
+                        end = candidate_clean.rfind("}")
+                        if start == -1 or end == -1:
+                            raise ValueError("JSON 객체를 찾을 수 없음")
+                        return json.loads(candidate_clean[start:end + 1]), None
+                    except Exception as parse_err:
+                        last_err = f"JSON 파싱 실패: {parse_err}"
+                        break
+                except Exception as e:
+                    last_err = str(e)
+                    break
+        return None, last_err
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        data, last_error = await call_gemini(client)
+
+    if data is None:
+        raise HTTPException(status_code=500, detail=f"AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
+
+    return {"data": data}
+
 
 # ══════════════════════════════════════════════════════════════
 # 관리자 API — 회원 검색 / 잔여횟수(크레딧) 조정 / 결제내역 조회
