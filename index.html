@@ -614,6 +614,8 @@
     <!-- 우측: 분석리포트 예시 (실제 다운로드 리포트와 동일한 스타일) -->
     <div class="card sample-report-card">
 
+      <p style="font-size:13px;font-weight:600;color:var(--text);line-height:1.5;padding:16px 16px 0;margin-bottom:-2px;">재무제표 분석을 통해 기업등급을 확인하고 정책자금 연계 여부까지 확인할 수 있습니다</p>
+
       <!-- 헤더 -->
       <div class="srp-header">
         <span class="srp-sample-tag" style="font-size:9px;font-weight:700;letter-spacing:.04em;color:#0d3b7c;background:#fff;padding:2px 8px;border-radius:10px;">SAMPLE</span>
@@ -681,6 +683,10 @@
             <div class="srp-ar-label">자본총계</div>
             <div class="srp-ar-value" style="color:#0F6E56;">1,165,000,000원</div>
           </div>
+        </div>
+        <div class="srp-diag" style="background:#f0faf6;border-color:#a8dcc8;margin-bottom:0;">
+          <div class="srp-diag-label">🏛 정책자금 연계 여부</div>
+          <div class="srp-diag-value" style="color:#0F6E56;">✅ 연계 가능</div>
         </div>
 
         <!-- 사업 안정성 종합점수 -->
@@ -2369,6 +2375,15 @@ function downloadResult() {
   const deficitOk = !isDeficit;
   const policyOk = !(isEroded || (drOk === false) || (iceOk === false));
 
+  // 정책자금 연계 불가능 사유를 조건별로 구체적으로 안내
+  const policyFailReasons = [];
+  if (isEroded) policyFailReasons.push('자본잠식 상태');
+  if (drOk === false) policyFailReasons.push('부채비율 400% 초과');
+  if (iceOk === false) policyFailReasons.push('이자보상배수 1배 미만');
+  const policyFailText = policyFailReasons.length > 0
+    ? `정책자금 연계 불가능 (${policyFailReasons.join(', ')})`
+    : '정책자금 연계 불가능 (재무 기준 미충족)';
+
   const checkItems = [
     { ok: true,  text: '사업자등록 및 법인 설립 여부 확인 완료' },
     { ok: true,  text: '재무제표 AI 자동 인식 및 수치 추출 완료' },
@@ -2377,7 +2392,7 @@ function downloadResult() {
     { ok: erosionOk, text: erosionOk ? '자본잠식 없음 (자본총계 > 자본금)' : '현재 자본잠식 상태' },
     { ok: profitOk,  text: profitOk ? '당기순이익 흑자 유지 (수익성 확보)' : '당기순이익 적자 (수익성 미확보)' },
     { ok: deficitOk, text: deficitOk ? '결손 없음 (누적 손실 미발생)' : '결손 발생 (누적 손실 존재)' },
-    { ok: policyOk,  text: policyOk ? '정책자금 연계 가능' : '정책자금 연계 불가능 (재무 기준 미충족)' },
+    { ok: policyOk,  text: policyOk ? '정책자금 연계 가능' : policyFailText },
   ];
   const checklistHTML = checkItems.map(item => {
     const icon = item.ok === true ? '✅' : item.ok === false ? '❌' : '⚪';
