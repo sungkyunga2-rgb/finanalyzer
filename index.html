@@ -220,7 +220,9 @@
   }
 
   /* ── 분석리포트 예시 카드 (실제 PDF 리포트와 동일한 축소 스타일) ── */
-  .srp-lead { font-size: 13.5px; font-weight: 500; color: var(--text); line-height: 1.6; letter-spacing: -.01em; padding: 18px 18px 16px; margin: 0; }
+  .srp-lead { display: flex; align-items: center; gap: 10px; background: linear-gradient(135deg,#EBF2FA,#f4f8fc); padding: 16px 18px; }
+  .srp-lead-icon { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 1px 3px rgba(13,59,124,0.12); }
+  .srp-lead p { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.55; letter-spacing: -.01em; margin: 0; }
   .srp-header { background: linear-gradient(135deg, #0d3b7c 0%, #185FA5 60%, #2e80d8 100%); color: #fff; padding: 18px 18px 16px; position: relative; }
   .srp-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
   .srp-brand { font-size: 9.5px; font-weight: 600; opacity: .85; letter-spacing: .04em; }
@@ -614,7 +616,10 @@
     <!-- 우측: 분석리포트 예시 (실제 다운로드 리포트와 동일한 스타일) -->
     <div class="card sample-report-card">
 
-      <p class="srp-lead">재무제표 분석을 통해 기업등급을 확인하고<br>정책자금 연계 여부까지 확인할 수 있습니다</p>
+      <div class="srp-lead">
+        <span class="srp-lead-icon">✨</span>
+        <p>재무제표 분석을 통해 기업등급을 확인하고<br>정책자금 연계 여부까지 확인할 수 있습니다</p>
+      </div>
 
       <!-- 헤더 -->
       <div class="srp-header">
@@ -639,12 +644,12 @@
         </div>
         <div class="srp-kpi-grid">
           <div class="srp-kpi" style="border-left-color:#B8860B;">
-            <div class="srp-kpi-label">부채비율</div>
+            <div class="srp-kpi-label">📊 부채비율</div>
             <div class="srp-kpi-value" style="color:#B8860B;">168.4%</div>
             <span class="srp-kpi-badge" style="background:#FEF6D8;color:#B8860B;">⚠️ 주의</span>
           </div>
           <div class="srp-kpi" style="border-left-color:#0F6E56;">
-            <div class="srp-kpi-label">이자보상배수</div>
+            <div class="srp-kpi-label">💰 이자보상배수</div>
             <div class="srp-kpi-value" style="color:#0F6E56;">5.80배</div>
             <span class="srp-kpi-badge" style="background:#E1F5EE;color:#0F6E56;">✅ 양호</span>
           </div>
@@ -672,15 +677,15 @@
         </div>
         <div class="srp-asset-row">
           <div>
-            <div class="srp-ar-label">총자산</div>
+            <div class="srp-ar-label">💼 총자산</div>
             <div class="srp-ar-value">2,150,000,000원</div>
           </div>
           <div>
-            <div class="srp-ar-label">부채총계</div>
+            <div class="srp-ar-label">📉 부채총계</div>
             <div class="srp-ar-value" style="color:#A32D2D;">985,000,000원</div>
           </div>
           <div>
-            <div class="srp-ar-label">자본총계</div>
+            <div class="srp-ar-label">📦 자본총계</div>
             <div class="srp-ar-value" style="color:#0F6E56;">1,165,000,000원</div>
           </div>
         </div>
@@ -737,7 +742,7 @@
         </div>
       </div>
 
-      <div class="srp-footnote">분석이 완료되면 이와 같은 형태의 리포트를 확인하실 수 있어요. 위 내용은 가상의 예시이며 실제 결과와 다를 수 있습니다.</div>
+      <div class="srp-footnote">💡 분석이 완료되면 이와 같은 형태의 리포트를 확인하실 수 있어요. 위 내용은 가상의 예시이며 실제 결과와 다를 수 있습니다.</div>
     </div>
 
     </div><!-- /.dashboard-grid -->
