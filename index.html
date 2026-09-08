@@ -2525,18 +2525,15 @@ function downloadResult() {
   // 이자비용이 0원인 경우 = 무차입(이자 부담 자체가 없음) → "미산정"이 아니라 "이자비용 없음"으로 별도 표기
   const noInterest = cad.interest_expense === 0 && cad.operating_income !== null && cad.operating_income !== undefined;
 
-  // 차입상환 능력 등급 (이자보상배수 + 차입상환기간 종합)
+  // 차입상환 능력 등급 — 리포트 내 다른 곳(핵심 재무지표 카드)과 동일하게, 이자보상배수 기준으로만 판정해 의견이 서로 어긋나지 않게 함
+  // (이자보상배수: 3배 이상 우수 · 2배 이상 양호 · 1배 이상 보통 · 1배 미만 열위 — 핵심 재무지표 카드의 "양호/주의/위험" 판정 기준과 동일 계열)
   let repayGrade = "자료미비", repayCls = "muted";
-  if (noInterest && repayYears !== null) {
-    // 이자비용이 없으면 이자 상환 부담이 없는 것이므로 차입상환기간만으로 등급 판정
-    if (repayYears <= 5) { repayGrade = "우수"; repayCls = "safe"; }
-    else if (repayYears <= 10) { repayGrade = "양호"; repayCls = "safe"; }
-    else if (repayYears <= 20) { repayGrade = "보통"; repayCls = "warn"; }
-    else { repayGrade = "열위"; repayCls = "danger"; }
-  } else if (stabIce !== null && repayYears !== null) {
-    if (stabIce >= 3 && repayYears <= 5) { repayGrade = "우수"; repayCls = "safe"; }
-    else if (stabIce >= 2 && repayYears <= 10) { repayGrade = "양호"; repayCls = "safe"; }
-    else if (stabIce >= 1 && repayYears <= 20) { repayGrade = "보통"; repayCls = "warn"; }
+  if (noInterest) {
+    repayGrade = "우수"; repayCls = "safe"; // 이자비용이 없으면 이자 상환 부담이 없는 것이므로 최우수 등급
+  } else if (stabIce !== null) {
+    if (stabIce >= 3) { repayGrade = "우수"; repayCls = "safe"; }
+    else if (stabIce >= 2) { repayGrade = "양호"; repayCls = "safe"; }
+    else if (stabIce >= 1) { repayGrade = "보통"; repayCls = "warn"; }
     else { repayGrade = "열위"; repayCls = "danger"; }
   }
   const repayOptions = ["우수","양호","보통","열위"];
@@ -2608,7 +2605,8 @@ function downloadResult() {
         </table>
         <div style="font-size:9px;color:#9b9a95;line-height:1.6;">
           ※ 이자보상배수(배) : 영업이익/이자비용<br>
-          ※ 차입상환기간(연) : 영업이익으로 총부채를 전액 상환하는데 소요될 것으로 예상되는 기간 (세부 차입금 항목이 없어 총부채 기준으로 근사 계산)
+          ※ 차입상환기간(연) : 영업이익으로 총부채를 전액 상환하는데 소요될 것으로 예상되는 기간 (세부 차입금 항목이 없어 총부채 기준으로 근사 계산) — 참고 지표이며 등급 산정에는 반영되지 않음<br>
+          ※ 차입상환 능력 종합등급은 이자보상배수를 기준으로 산정되어, 상단 핵심 재무지표의 판정과 동일합니다.
         </div>
       </div>
       <div>
