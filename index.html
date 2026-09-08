@@ -42,11 +42,11 @@
   /* ── 레이아웃 ── */
   .page { display: none; min-height: 100vh; }
   .page.active { display: block; }
-  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 1.5rem; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 1.5rem; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
   header .logo { display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; text-decoration: none; line-height: 1; }
-  header .logo .logo-en { font-size: 9px; font-weight: 600; color: var(--text3); letter-spacing: 0.04em; line-height: 1; }
+  header .logo .logo-en { font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.04em; line-height: 1; }
   header .logo .logo-en .accent { color: var(--accent); }
-  header .logo .logo-kr { font-family: 'Nanum Pen Script', cursive !important; font-weight: 400; font-size: 26px; line-height: 1; }
+  header .logo .logo-kr { font-family: 'Nanum Pen Script', cursive !important; font-weight: 400; font-size: 38px; line-height: 1; }
   header .logo .logo-kr .c1 { color: var(--accent) !important; }
   header .logo .logo-kr .c2 { color: #B8860B !important; }
   .hero-band header .logo .logo-kr .c1 { color: #FFD166 !important; }
@@ -634,7 +634,7 @@
       <div class="srp-header">
         <span class="srp-sample-tag" style="font-size:9px;font-weight:700;letter-spacing:.04em;color:#0d3b7c;background:#fff;padding:2px 8px;border-radius:10px;">SAMPLE</span>
         <div class="srp-top">
-          <div class="srp-brand">씨앤지파트너스 · C&amp;G PARTNERS</div>
+          <div class="srp-brand">피나 · FinAnalyzer</div>
         </div>
         <div class="srp-title">재무상태 진단 결과</div>
         <div class="srp-sub">Financial Health Diagnostic Report</div>
@@ -2437,7 +2437,7 @@ function downloadResult() {
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
-<title>재무분석 리포트 — 씨앤지파트너스</title>
+<title>재무분석 리포트 — 피나(FinAnalyzer)</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2601,8 +2601,8 @@ function downloadResult() {
 <div class="cover">
   <div class="cover-brandbar">
     <div class="cover-brand-mark">
-      <div class="cover-brand-logo">C&amp;G</div>
-      <div class="cover-brand-name">C&amp;G PARTNERS<span>씨앤지파트너스</span></div>
+      <div class="cover-brand-logo">FN</div>
+      <div class="cover-brand-name">피나<span>FinAnalyzer</span></div>
     </div>
     <div class="cover-doc-badge">AI 재무분석 리포트</div>
   </div>
@@ -2649,7 +2649,7 @@ function downloadResult() {
   </div>
   <div class="cover-footer">
     <div>
-      <div class="cover-footer-brand">C&amp;G PARTNERS</div>
+      <div class="cover-footer-brand">피나 FinAnalyzer</div>
       <div class="cover-footer-tagline">AI 기반 재무제표 자동진단 서비스</div>
     </div>
     <div class="cover-footer-note">본 문서는 재무건전성 참고자료이며<br>공인 회계사의 검토를 대체하지 않습니다.</div>
@@ -2659,7 +2659,7 @@ function downloadResult() {
 <!-- 헤더 -->
 <div class="rh">
   <div class="rh-top">
-    <div class="rh-brand">씨앤지파트너스 · C&G PARTNERS</div>
+    <div class="rh-brand">피나 · FinAnalyzer</div>
     <div class="rh-badge">AI 재무분석 리포트</div>
   </div>
   <div class="rh-title">재무상태 진단 결과</div>
@@ -2667,7 +2667,7 @@ function downloadResult() {
   <div class="rh-meta">
     ${window.lastCompanyName ? `<div class="rh-meta-item"><strong>분석대상</strong>${window.lastCompanyName}</div>` : ""}
     <div class="rh-meta-item"><strong>분석일자</strong>${dateStr}</div>
-    <div class="rh-meta-item"><strong>발행기관</strong>씨앤지파트너스</div>
+    <div class="rh-meta-item"><strong>발행기관</strong>피나 (FinAnalyzer)</div>
   </div>
 </div>
 
