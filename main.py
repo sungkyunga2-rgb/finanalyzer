@@ -38,6 +38,7 @@ def run_auto_migration():
         "phone": "VARCHAR DEFAULT ''",
         "business_number": "VARCHAR DEFAULT ''",
         "terms_agreed_at": "TIMESTAMP",
+        "nickname": "VARCHAR DEFAULT ''",
     })
     # 커뮤니티 글/댓글 수정 기능을 위한 updated_at 컬럼 추가
     add_missing_columns("community_posts", {"updated_at": "TIMESTAMP"})
@@ -76,6 +77,7 @@ class UserCreate(BaseModel):
     password: str
     company_name: str = ""
     rep_name: str = ""
+    nickname: str = ""
     phone: str = ""
     business_number: str = ""
     terms_agreed: bool = False
@@ -127,6 +129,8 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="올바른 이메일 형식이 아닙니다.")
     if not body.terms_agreed:
         raise HTTPException(status_code=400, detail="이용약관 및 개인정보처리방침에 동의해주세요.")
+    if not body.nickname.strip():
+        raise HTTPException(status_code=400, detail="별명을 입력해주세요.")
     existing = db.query(models.User).filter(models.User.email == body.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="이미 사용 중인 이메일입니다.")
@@ -135,7 +139,7 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
     token = str(uuid.uuid4())
     user = models.User(
         email=body.email, password_hash=pw_hash, token=token, credits=0,
-        company_name=body.company_name, rep_name=body.rep_name, phone=body.phone,
+        company_name=body.company_name, rep_name=body.rep_name, nickname=body.nickname.strip(), phone=body.phone,
         business_number=body.business_number, terms_agreed_at=datetime.utcnow()
     )
     db.add(user)
@@ -143,7 +147,7 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
     db.refresh(user)
     return {
         "token": token, "email": user.email, "credits": user.credits,
-        "company_name": user.company_name, "rep_name": user.rep_name,
+        "company_name": user.company_name, "rep_name": user.rep_name, "nickname": user.nickname,
         "business_number": user.business_number
     }
 
@@ -160,7 +164,7 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 틀렸습니다.")
     return {
         "token": user.token, "email": user.email, "credits": user.credits,
-        "company_name": user.company_name, "rep_name": user.rep_name,
+        "company_name": user.company_name, "rep_name": user.rep_name, "nickname": user.nickname,
         "business_number": user.business_number
     }
 
@@ -187,6 +191,7 @@ def verify_password(
         "email": user.email,
         "company_name": user.company_name,
         "rep_name": user.rep_name,
+        "nickname": user.nickname,
         "phone": user.phone,
         "business_number": user.business_number,
         "credits": user.credits
@@ -208,6 +213,23 @@ def update_business_number(
     user.business_number = biz
     db.commit()
     return {"business_number": user.business_number}
+
+# 별명 수정 (커뮤니티에서 사용되는 이름)
+class NicknameUpdate(BaseModel):
+    nickname: str
+
+@app.post("/auth/update-nickname")
+def update_nickname(
+    body: NicknameUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    nickname = body.nickname.strip()
+    if not nickname:
+        raise HTTPException(status_code=400, detail="별명을 입력해주세요.")
+    user.nickname = nickname
+    db.commit()
+    return {"nickname": user.nickname}
 
 # 비밀번호 변경
 class PasswordChange(BaseModel):
@@ -966,7 +988,7 @@ User-Agent: {body.user_agent or '-'}
 # 커뮤니티 게시판 (로그인 회원만 열람/작성, 댓글 지원)
 # ══════════════════════════════════════════════════════════════
 def display_name(user: models.User) -> str:
-    return user.company_name or user.rep_name or user.email.split("@")[0]
+    return user.nickname or user.company_name or user.rep_name or user.email.split("@")[0]
 
 class CommunityPostCreate(BaseModel):
     title: str

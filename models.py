@@ -13,6 +13,7 @@ class User(Base):
     credits       = Column(Integer, default=0)
     company_name  = Column(String, default="")
     rep_name      = Column(String, default="")
+    nickname      = Column(String, default="")
     phone         = Column(String, default="")
     business_number = Column(String, default="")
     terms_agreed_at = Column(DateTime, nullable=True)
