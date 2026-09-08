@@ -2472,9 +2472,12 @@ function downloadResult() {
     ['부채비율', derivedDr !== null ? derivedDr.toFixed(1) + '%' : '미산정'],
     ['매출 대비 부채 비율', derivedLoanRatio !== null ? derivedLoanRatio.toFixed(1) + '%' : '미산정'],
   ];
-  derivedRows.forEach(([label, value]) => {
-    finTableRows += `<tr style="background:#f7faff;"><td style="font-weight:700;color:#0d3b7c;">${label}</td><td class="cat">산출지표</td><td class="val" style="font-weight:700;color:#0d3b7c;">${value}</td></tr>`;
-  });
+  // 표 행으로 4개를 더 쌓으면 세로 길이가 커지므로, 한 줄짜리 요약 스트립으로 압축해 표시
+  const derivedStripHTML = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">${derivedRows.map(([label, value]) => `
+    <div style="background:#f7faff;border:1px solid #e2ecf9;border-radius:7px;padding:6px 8px;text-align:center;">
+      <div style="font-size:8.5px;color:#6b7a8d;margin-bottom:2px;">${label}</div>
+      <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;">${value}</div>
+    </div>`).join('')}</div>`;
 
   // ── 6. 재무분석(재무안정성) — 단일 연도 데이터 기반 ──
   const stabTl = (cad.current_liabilities || 0) + (cad.noncurrent_liabilities || 0);
@@ -2500,9 +2503,18 @@ function downloadResult() {
   }
   const compareOptions = ["우수","양호","보통","열위","취약"];
 
+  // 이자비용이 0원인 경우 = 무차입(이자 부담 자체가 없음) → "미산정"이 아니라 "이자비용 없음"으로 별도 표기
+  const noInterest = cad.interest_expense === 0 && cad.operating_income !== null && cad.operating_income !== undefined;
+
   // 차입상환 능력 등급 (이자보상배수 + 차입상환기간 종합)
   let repayGrade = "자료미비", repayCls = "muted";
-  if (stabIce !== null && repayYears !== null) {
+  if (noInterest && repayYears !== null) {
+    // 이자비용이 없으면 이자 상환 부담이 없는 것이므로 차입상환기간만으로 등급 판정
+    if (repayYears <= 5) { repayGrade = "우수"; repayCls = "safe"; }
+    else if (repayYears <= 10) { repayGrade = "양호"; repayCls = "safe"; }
+    else if (repayYears <= 20) { repayGrade = "보통"; repayCls = "warn"; }
+    else { repayGrade = "열위"; repayCls = "danger"; }
+  } else if (stabIce !== null && repayYears !== null) {
     if (stabIce >= 3 && repayYears <= 5) { repayGrade = "우수"; repayCls = "safe"; }
     else if (stabIce >= 2 && repayYears <= 10) { repayGrade = "양호"; repayCls = "safe"; }
     else if (stabIce >= 1 && repayYears <= 20) { repayGrade = "보통"; repayCls = "warn"; }
@@ -2514,7 +2526,7 @@ function downloadResult() {
   const barMax = Math.max(stabTa, stabTl, 1);
   const taBarPct = Math.round(stabTa / barMax * 100);
   const tlBarPct = Math.round(stabTl / barMax * 100);
-  const iceBarPct = stabIce !== null ? Math.min(Math.round(stabIce / 5 * 100), 100) : 0;
+  const iceBarPct = noInterest ? 100 : (stabIce !== null ? Math.min(Math.round(stabIce / 5 * 100), 100) : 0);
 
   const compareRow = compareOptions.map(opt => {
     const active = opt === compareLabel;
@@ -2571,7 +2583,7 @@ function downloadResult() {
           <tbody>
             <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;">이자비용(연)</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;text-align:right;font-weight:600;">${fmt(cad.interest_expense)}</td></tr>
             <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;">영업이익</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;text-align:right;font-weight:600;">${fmt(cad.operating_income)}</td></tr>
-            <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;">이자보상배수(배)</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;text-align:right;font-weight:600;">${stabIce !== null ? stabIce.toFixed(1)+"배" : "미산정"}</td></tr>
+            <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;">이자보상배수(배)</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;text-align:right;font-weight:600;">${noInterest ? '이자비용 없음' : (stabIce !== null ? stabIce.toFixed(1)+"배" : "미산정")}</td></tr>
             <tr><td style="padding:6px 8px;">차입상환기간(연)</td><td style="padding:6px 8px;text-align:right;font-weight:600;">${repayYears !== null ? repayYears.toFixed(1)+"년" : "미산정"}</td></tr>
           </tbody>
         </table>
@@ -2584,9 +2596,9 @@ function downloadResult() {
         <div style="background:#fff;border:1px solid #e5e4e0;border-radius:10px;padding:12px;margin-bottom:8px;">
           <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">차입상환 능력 종합등급</div>
           <div style="display:flex;gap:3px;margin-bottom:10px;">${repayRow}</div>
-          <div style="font-size:10px;color:#9b9a95;margin-bottom:4px;">이자보상배수(배)</div>
+          <div style="font-size:10px;color:#9b9a95;margin-bottom:4px;">이자보상배수(배)${noInterest ? ' <span style="color:#0F6E56;font-weight:600;">· 이자비용 없음</span>' : ''}</div>
           <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;">
-            <div style="height:100%;width:${iceBarPct}%;background:${stabIce !== null ? stabColor[repayCls] : stabColor.muted};border-radius:20px;"></div>
+            <div style="height:100%;width:${iceBarPct}%;background:${(noInterest || stabIce !== null) ? stabColor[repayCls] : stabColor.muted};border-radius:20px;"></div>
           </div>
         </div>
       </div>
@@ -2637,7 +2649,7 @@ function downloadResult() {
   .body { padding: 16px 28px; }
 
   /* 섹션 헤더 */
-  .sh { display:flex; align-items:center; gap:8px; margin-bottom:12px; margin-top:20px; page-break-after:avoid; break-after:avoid; page-break-inside:avoid; break-inside:avoid; }
+  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:15px; page-break-after:avoid; break-after:avoid; page-break-inside:avoid; break-inside:avoid; }
   .sh:first-child { margin-top:0; }
   .sh-num { width:20px; height:20px; background:#185FA5; color:#fff; border-radius:50%; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .sh-title { font-size:12px; font-weight:700; color:#0d3b7c; }
@@ -2692,27 +2704,27 @@ function downloadResult() {
   .si-badge { font-size:9px; font-weight:600; padding:1px 6px; border-radius:10px; margin-top:2px; display:inline-block; }
 
   /* 분석의견 */
-  .opinion { background:#f0f4f8; border-radius:8px; padding:16px 20px; border-left:3px solid #185FA5; margin-bottom:14px; page-break-inside:avoid; }
-  .opinion-title { font-size:12.5px; font-weight:700; color:#0d3b7c; margin-bottom:10px; }
-  .opinion-item { font-size:12px; color:#2d3748; line-height:2.05; margin-bottom:5px; }
-  .opinion-note { font-size:9.5px; color:#9b9a95; margin-top:8px; }
+  .opinion { background:#f0f4f8; border-radius:8px; padding:12px 16px; border-left:3px solid #185FA5; margin-bottom:10px; page-break-inside:avoid; }
+  .opinion-title { font-size:11.5px; font-weight:700; color:#0d3b7c; margin-bottom:7px; }
+  .opinion-item { font-size:11.5px; color:#2d3748; line-height:1.8; margin-bottom:3px; }
+  .opinion-note { font-size:9px; color:#9b9a95; margin-top:6px; }
 
   /* 재무수치 테이블 */
-  .fin-table { width:100%; border-collapse:collapse; margin-bottom:12px; }
+  .fin-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
   .fin-table tr { page-break-inside:avoid; break-inside:avoid; }
   .fin-table thead { display:table-header-group; }
-  .fin-table th { background:#f0f4f8; color:#0d3b7c; font-size:10.5px; font-weight:700; padding:9px 12px; text-align:left; }
-  .fin-table td { padding:9px 12px; font-size:12px; border-bottom:1px solid #eef2f7; }
+  .fin-table th { background:#f0f4f8; color:#0d3b7c; font-size:10px; font-weight:700; padding:7px 11px; text-align:left; }
+  .fin-table td { padding:7px 11px; font-size:11px; border-bottom:1px solid #eef2f7; }
   .fin-table tr:last-child td { border-bottom:none; }
   .fin-table .val { font-weight:600; text-align:right; }
   .fin-table .val.empty { color:#b8c4cc; font-weight:400; }
-  .fin-table .cat { color:#6b7a8d; font-size:10.5px; }
+  .fin-table .cat { color:#6b7a8d; font-size:10px; }
 
   /* 재무건전성 체크리스트 */
-  .checklist { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+  .checklist { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-bottom:10px; }
   .checklist > * { page-break-inside:avoid; break-inside:avoid; }
-  .cl-item { display:flex; align-items:flex-start; gap:8px; background:#f9f9f8; border-radius:7px; padding:12px 14px; font-size:11px; color:#2d3748; line-height:1.7; }
-  .cl-icon { flex-shrink:0; font-size:13px; }
+  .cl-item { display:flex; align-items:flex-start; gap:6px; background:#f9f9f8; border-radius:7px; padding:9px 11px; font-size:10.5px; color:#2d3748; line-height:1.55; }
+  .cl-icon { flex-shrink:0; font-size:12px; }
 
   /* 면책고지 */
   .disclaimer-box { background:#f8f9fa; border-radius:8px; padding:10px 14px; border:1px solid #e5e4e0; margin-bottom:8px; page-break-inside:avoid; break-inside:avoid; }
@@ -2910,6 +2922,7 @@ function downloadResult() {
     <thead><tr><th>항목</th><th class="cat">구분</th><th style="text-align:right;">금액</th></tr></thead>
     <tbody id="fin-table-body">${finTableRows}</tbody>
   </table>
+  ${derivedStripHTML}
   ${comment ? `<p style="font-size:10px;color:#6b7a8d;background:#f0f4f8;padding:8px 12px;border-radius:7px;border-left:3px solid #185FA5;margin-bottom:8px;">${comment}</p>` : ""}
 
   <!-- 6. 재무분석(재무안정성) : 페이지가 잘리지 않도록 새 페이지에서 시작 -->
