@@ -2454,6 +2454,138 @@ function downloadResult() {
     finTableRows += `<tr><td>${label}</td><td class="cat">${cats[label]||''}</td><td class="val ${isEmpty?'empty':''}">${value}</td></tr>`;
   });
 
+  // ── 6. 재무분석(재무안정성) — 단일 연도 데이터 기반 ──
+  const cad = window.currentAnalysisData || {};
+  const stabTl = (cad.current_liabilities || 0) + (cad.noncurrent_liabilities || 0);
+  const stabTa = (cad.current_assets || 0) + (cad.noncurrent_assets || 0);
+  const stabEroded = cad.total_equity !== null && cad.total_equity !== undefined && cad.total_equity <= 0;
+  const stabDr = (cad.total_equity && cad.total_equity > 0) ? stabTl / cad.total_equity * 100 : null;
+  const stabIce = (cad.interest_expense > 0 && cad.operating_income !== null && cad.operating_income !== undefined) ? cad.operating_income / cad.interest_expense : null;
+  const debtAssetRatio = stabTa > 0 ? stabTl / stabTa * 100 : null;
+  const repayYears = (cad.operating_income > 0 && stabTl > 0) ? stabTl / cad.operating_income : null;
+
+  const stabColor = { safe:"#0F6E56", warn:"#B8860B", danger:"#A32D2D", muted:"#9b9a95" };
+  const stabBg    = { safe:"#E1F5EE", warn:"#FEF6D8", danger:"#FCEBEB", muted:"#f1f1ee" };
+
+  // 안정성 비교 (재무 기준 대비, 5단계)
+  let compareLabel = "자료미비", compareCls = "muted";
+  if (stabEroded) { compareLabel = "취약"; compareCls = "danger"; }
+  else if (stabDr !== null) {
+    if (stabDr <= 200) { compareLabel = "우수"; compareCls = "safe"; }
+    else if (stabDr <= 300) { compareLabel = "양호"; compareCls = "safe"; }
+    else if (stabDr <= 400) { compareLabel = "보통"; compareCls = "warn"; }
+    else if (stabDr <= 500) { compareLabel = "열위"; compareCls = "danger"; }
+    else { compareLabel = "취약"; compareCls = "danger"; }
+  }
+  const compareOptions = ["우수","양호","보통","열위","취약"];
+
+  // 차입상환 능력 등급 (이자보상배수 + 차입상환기간 종합)
+  let repayGrade = "자료미비", repayCls = "muted";
+  if (stabIce !== null && repayYears !== null) {
+    if (stabIce >= 3 && repayYears <= 5) { repayGrade = "우수"; repayCls = "safe"; }
+    else if (stabIce >= 2 && repayYears <= 10) { repayGrade = "양호"; repayCls = "safe"; }
+    else if (stabIce >= 1 && repayYears <= 20) { repayGrade = "보통"; repayCls = "warn"; }
+    else { repayGrade = "열위"; repayCls = "danger"; }
+  }
+  const repayOptions = ["우수","양호","보통","열위"];
+
+  const period = window.lastCompanyName ? dateStr : dateStr;
+  const barMax = Math.max(stabTa, stabTl, 1);
+  const taBarPct = Math.round(stabTa / barMax * 100);
+  const tlBarPct = Math.round(stabTl / barMax * 100);
+  const iceBarPct = stabIce !== null ? Math.min(Math.round(stabIce / 5 * 100), 100) : 0;
+
+  const compareRow = compareOptions.map(opt => {
+    const active = opt === compareLabel;
+    const cls = (opt === "우수" || opt === "양호") ? "safe" : opt === "보통" ? "warn" : "danger";
+    return `<div style="flex:1;text-align:center;padding:8px 4px;font-size:10px;font-weight:700;border-radius:6px;${active ? `background:${stabColor[cls]};color:#fff;` : `background:#f4f3ee;color:#9b9a95;`}">${opt}</div>`;
+  }).join("");
+
+  const repayRow = repayOptions.map(opt => {
+    const active = opt === repayGrade;
+    const cls = (opt === "우수" || opt === "양호") ? "safe" : opt === "보통" ? "warn" : "danger";
+    return `<div style="flex:1;text-align:center;padding:8px 4px;font-size:10px;font-weight:700;border-radius:6px;${active ? `background:${stabColor[cls]};color:#fff;` : `background:#f4f3ee;color:#9b9a95;`}">${opt}</div>`;
+  }).join("");
+
+  const stabilitySectionHTML = `
+    <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:14px;margin-bottom:10px;">
+      <div style="background:#fff;border:1px solid #e5e4e0;border-radius:10px;padding:14px;">
+        <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:10px;">재무안정성 (단일 연도 기준 · ${period})</div>
+        <div style="display:flex;align-items:flex-end;gap:16px;height:110px;margin-bottom:6px;">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">
+            <div style="font-size:10px;font-weight:600;color:#185FA5;margin-bottom:4px;">${fmt(stabTa)}</div>
+            <div style="width:60%;height:${Math.max(taBarPct,4)}%;background:#378ADD;border-radius:4px 4px 0 0;"></div>
+            <div style="font-size:9px;color:#9b9a95;margin-top:4px;">총자산</div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">
+            <div style="font-size:10px;font-weight:600;color:#D85A30;margin-bottom:4px;">${fmt(stabTl)}</div>
+            <div style="width:60%;height:${Math.max(tlBarPct,4)}%;background:#D85A30;border-radius:4px 4px 0 0;"></div>
+            <div style="font-size:9px;color:#9b9a95;margin-top:4px;">총부채</div>
+          </div>
+        </div>
+        <div style="text-align:center;font-size:11px;color:#6b7a8d;margin-top:8px;">부채비율 <strong style="color:${stabColor[compareCls]};">${stabEroded ? "자본잠식" : (stabDr !== null ? stabDr.toFixed(1)+"%" : "미산정")}</strong></div>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e4e0;border-radius:10px;padding:12px;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">안정성 비교 <span style="font-weight:400;">(재무 기준 대비)</span></div>
+        <div style="display:flex;gap:3px;">${compareRow}</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div style="background:#f9f9f8;border-radius:10px;padding:12px;border:1px solid #e5e4e0;">
+        <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;margin-bottom:4px;">■ 부채비율 <span style="font-weight:400;color:#9b9a95;">[(총부채/자본총계)×100]</span></div>
+        <div style="font-size:10px;color:#6b7a8d;line-height:1.6;">타인자본과 자기자본의 구성 관계를 나타내는 지표로, 일반적 표준비율인 200% 이하가 양호하다고 판단됩니다.</div>
+      </div>
+      <div style="background:#f9f9f8;border-radius:10px;padding:12px;border:1px solid #e5e4e0;">
+        <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;margin-bottom:4px;">■ 부채자산비율 <span style="font-weight:400;color:#9b9a95;">[(총부채/총자산)×100]</span></div>
+        <div style="font-size:10px;color:#6b7a8d;line-height:1.6;">총자산 중 부채의 비중을 나타내며 낮을수록 양호합니다. 현재 값: <strong>${debtAssetRatio !== null ? debtAssetRatio.toFixed(1)+"%" : "미산정"}</strong> (※ 세부 차입금 항목이 없어 총부채 기준으로 근사 계산했습니다.)</div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:#0d3b7c;margin-bottom:8px;">■ 차입상환 능력 분석</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px;">
+      <div>
+        <table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:8px;">
+          <thead><tr><th style="background:#f0f4f8;color:#0d3b7c;padding:6px 8px;text-align:left;font-size:10px;">구분</th><th style="background:#f0f4f8;color:#0d3b7c;padding:6px 8px;text-align:right;font-size:10px;">${period}</th></tr></thead>
+          <tbody>
+            <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;">이자비용(연)</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;text-align:right;font-weight:600;">${fmt(cad.interest_expense)}</td></tr>
+            <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;">영업이익</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;text-align:right;font-weight:600;">${fmt(cad.operating_income)}</td></tr>
+            <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;">이자보상배수(배)</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;text-align:right;font-weight:600;">${stabIce !== null ? stabIce.toFixed(1)+"배" : "미산정"}</td></tr>
+            <tr><td style="padding:6px 8px;">차입상환기간(연)</td><td style="padding:6px 8px;text-align:right;font-weight:600;">${repayYears !== null ? repayYears.toFixed(1)+"년" : "미산정"}</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size:9px;color:#9b9a95;line-height:1.6;">
+          ※ 이자보상배수(배) : 영업이익/이자비용<br>
+          ※ 차입상환기간(연) : 영업이익으로 총부채를 전액 상환하는데 소요될 것으로 예상되는 기간 (세부 차입금 항목이 없어 총부채 기준으로 근사 계산)
+        </div>
+      </div>
+      <div>
+        <div style="background:#fff;border:1px solid #e5e4e0;border-radius:10px;padding:12px;margin-bottom:8px;">
+          <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">차입상환 능력 종합등급</div>
+          <div style="display:flex;gap:3px;margin-bottom:10px;">${repayRow}</div>
+          <div style="font-size:10px;color:#9b9a95;margin-bottom:4px;">이자보상배수(배)</div>
+          <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;">
+            <div style="height:100%;width:${iceBarPct}%;background:${stabIce !== null ? stabColor[repayCls] : stabColor.muted};border-radius:20px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:8px;">
+      <thead><tr>
+        <th style="background:#f0f4f8;color:#0d3b7c;padding:6px 8px;text-align:left;width:16%;">차입상환 능력</th>
+        <th style="background:#f0f4f8;color:#0d3b7c;padding:6px 8px;text-align:left;">설명</th>
+      </tr></thead>
+      <tbody>
+        <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;font-weight:700;color:#0F6E56;">우수</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;color:#6b7a8d;">영업이익으로 이자비용을 부담할 수 있는 능력이 충분하고, 단기간 내에 차입상환이 가능한 수준으로 채무상환 능력이 우수함.</td></tr>
+        <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;font-weight:700;color:#0F6E56;">양호</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;color:#6b7a8d;">영업이익으로 이자비용을 부담할 수 있는 능력이 양호하고, 차입상환에 필요한 기간이 적절한 수준으로 채무상환 능력이 양호함.</td></tr>
+        <tr><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;font-weight:700;color:#B8860B;">보통</td><td style="padding:6px 8px;border-bottom:1px solid #eef2f7;color:#6b7a8d;">영업이익으로 이자비용을 부담할 수 있는 능력이 크지 않으며, 차입상환에 걸리는 기간이 상당히 소요되어 채무상환 능력이 보통임.</td></tr>
+        <tr><td style="padding:6px 8px;font-weight:700;color:#A32D2D;">열위</td><td style="padding:6px 8px;color:#6b7a8d;">영업이익으로 이자비용을 부담할 수 있는 능력이 부족하며, 차입상환에 장기간이 소요될 것으로 예상되어 채무상환 능력이 열위임.</td></tr>
+      </tbody>
+    </table>
+    <div style="font-size:9px;color:#9b9a95;">※ 차입상환 능력은 영업이익으로 이자비용을 충당하는 능력과 총부채를 상환하는 데 걸리는 기간에 따른 위험 수준을 종합해 분석함.</div>
+  `;
+
   const filenameBase = `재무분석리포트_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
   // 화면 전용 안내문구(값 수정하기 안내)는 리포트 파일에 포함하지 않음
   const comment = "";
@@ -2758,6 +2890,14 @@ function downloadResult() {
     <tbody id="fin-table-body">${finTableRows}</tbody>
   </table>
   ${comment ? `<p style="font-size:10px;color:#6b7a8d;background:#f0f4f8;padding:8px 12px;border-radius:7px;border-left:3px solid #185FA5;margin-bottom:8px;">${comment}</p>` : ""}
+
+  <!-- 6. 재무분석(재무안정성) -->
+  <div class="sh" style="margin-top:14px;">
+    <div class="sh-num">6</div>
+    <div class="sh-title">재무분석 (재무안정성)</div>
+    <div class="sh-line"></div>
+  </div>
+  ${stabilitySectionHTML}
 
   <!-- 면책 고지 -->
   <div class="disclaimer-box">
