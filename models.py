@@ -53,6 +53,7 @@ class CommunityPost(Base):
     title      = Column(String, nullable=False)
     content    = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True)
 
 class CommunityComment(Base):
     __tablename__ = "community_comments"
@@ -61,3 +62,4 @@ class CommunityComment(Base):
     user_id    = Column(Integer, ForeignKey("users.id"))
     content    = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True)
