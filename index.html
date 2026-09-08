@@ -2438,6 +2438,12 @@ function downloadResult() {
     return `<div class="cl-item"><div class="cl-icon">${icon}</div><div>${item.text}</div></div>`;
   }).join('');
 
+  // 종합 분석 의견 하단 요약 — 체크리스트 충족 항목 수를 근거로 한 줄 추가 (섹션 3 내용 보강)
+  if (opinionSectionHTML) {
+    const passCount = checkItems.filter(it => it.ok === true).length;
+    opinionSectionHTML += `<div class="opinion-item" style="margin-top:8px;font-weight:700;">📌 종합 평가: 재무건전성 체크리스트 총 ${checkItems.length}개 항목 중 <strong>${passCount}개</strong> 항목을 충족하고 있습니다.</div>`;
+  }
+
   // ── 인식된 재무 수치 테이블 ──
   const items = document.querySelectorAll('#extractedGrid > div');
   const cats = {
@@ -2454,8 +2460,23 @@ function downloadResult() {
     finTableRows += `<tr><td>${label}</td><td class="cat">${cats[label]||''}</td><td class="val ${isEmpty?'empty':''}">${value}</td></tr>`;
   });
 
-  // ── 6. 재무분석(재무안정성) — 단일 연도 데이터 기반 ──
+  // 산출지표(총자산/총부채/부채비율/매출대비부채비율) — 5. 재무 수치 표에 함께 표기하여 내용 보강
   const cad = window.currentAnalysisData || {};
+  const derivedTa = (cad.current_assets || 0) + (cad.noncurrent_assets || 0);
+  const derivedTl = (cad.current_liabilities || 0) + (cad.noncurrent_liabilities || 0);
+  const derivedDr = (cad.total_equity && cad.total_equity > 0) ? derivedTl / cad.total_equity * 100 : null;
+  const derivedLoanRatio = (cad.revenue && cad.revenue > 0) ? derivedTl / cad.revenue * 100 : null;
+  const derivedRows = [
+    ['총자산', fmt(derivedTa)],
+    ['총부채', fmt(derivedTl)],
+    ['부채비율', derivedDr !== null ? derivedDr.toFixed(1) + '%' : '미산정'],
+    ['매출 대비 부채 비율', derivedLoanRatio !== null ? derivedLoanRatio.toFixed(1) + '%' : '미산정'],
+  ];
+  derivedRows.forEach(([label, value]) => {
+    finTableRows += `<tr style="background:#f7faff;"><td style="font-weight:700;color:#0d3b7c;">${label}</td><td class="cat">산출지표</td><td class="val" style="font-weight:700;color:#0d3b7c;">${value}</td></tr>`;
+  });
+
+  // ── 6. 재무분석(재무안정성) — 단일 연도 데이터 기반 ──
   const stabTl = (cad.current_liabilities || 0) + (cad.noncurrent_liabilities || 0);
   const stabTa = (cad.current_assets || 0) + (cad.noncurrent_assets || 0);
   const stabEroded = cad.total_equity !== null && cad.total_equity !== undefined && cad.total_equity <= 0;
@@ -2616,7 +2637,7 @@ function downloadResult() {
   .body { padding: 16px 28px; }
 
   /* 섹션 헤더 */
-  .sh { display:flex; align-items:center; gap:8px; margin-bottom:10px; margin-top:14px; page-break-after:avoid; break-after:avoid; page-break-inside:avoid; break-inside:avoid; }
+  .sh { display:flex; align-items:center; gap:8px; margin-bottom:12px; margin-top:20px; page-break-after:avoid; break-after:avoid; page-break-inside:avoid; break-inside:avoid; }
   .sh:first-child { margin-top:0; }
   .sh-num { width:20px; height:20px; background:#185FA5; color:#fff; border-radius:50%; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .sh-title { font-size:12px; font-weight:700; color:#0d3b7c; }
@@ -2671,27 +2692,27 @@ function downloadResult() {
   .si-badge { font-size:9px; font-weight:600; padding:1px 6px; border-radius:10px; margin-top:2px; display:inline-block; }
 
   /* 분석의견 */
-  .opinion { background:#f0f4f8; border-radius:8px; padding:10px 14px; border-left:3px solid #185FA5; margin-bottom:8px; page-break-inside:avoid; }
-  .opinion-title { font-size:11px; font-weight:700; color:#0d3b7c; margin-bottom:6px; }
-  .opinion-item { font-size:11px; color:#2d3748; line-height:1.7; margin-bottom:2px; }
-  .opinion-note { font-size:9px; color:#9b9a95; margin-top:5px; }
+  .opinion { background:#f0f4f8; border-radius:8px; padding:16px 20px; border-left:3px solid #185FA5; margin-bottom:14px; page-break-inside:avoid; }
+  .opinion-title { font-size:12.5px; font-weight:700; color:#0d3b7c; margin-bottom:10px; }
+  .opinion-item { font-size:12px; color:#2d3748; line-height:2.05; margin-bottom:5px; }
+  .opinion-note { font-size:9.5px; color:#9b9a95; margin-top:8px; }
 
   /* 재무수치 테이블 */
-  .fin-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+  .fin-table { width:100%; border-collapse:collapse; margin-bottom:12px; }
   .fin-table tr { page-break-inside:avoid; break-inside:avoid; }
   .fin-table thead { display:table-header-group; }
-  .fin-table th { background:#f0f4f8; color:#0d3b7c; font-size:10px; font-weight:700; padding:6px 10px; text-align:left; }
-  .fin-table td { padding:6px 10px; font-size:11px; border-bottom:1px solid #eef2f7; }
+  .fin-table th { background:#f0f4f8; color:#0d3b7c; font-size:10.5px; font-weight:700; padding:9px 12px; text-align:left; }
+  .fin-table td { padding:9px 12px; font-size:12px; border-bottom:1px solid #eef2f7; }
   .fin-table tr:last-child td { border-bottom:none; }
   .fin-table .val { font-weight:600; text-align:right; }
   .fin-table .val.empty { color:#b8c4cc; font-weight:400; }
-  .fin-table .cat { color:#6b7a8d; font-size:10px; }
+  .fin-table .cat { color:#6b7a8d; font-size:10.5px; }
 
   /* 재무건전성 체크리스트 */
-  .checklist { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
+  .checklist { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
   .checklist > * { page-break-inside:avoid; break-inside:avoid; }
-  .cl-item { display:flex; align-items:flex-start; gap:6px; background:#f9f9f8; border-radius:7px; padding:8px 10px; font-size:10px; color:#2d3748; line-height:1.5; }
-  .cl-icon { flex-shrink:0; font-size:12px; }
+  .cl-item { display:flex; align-items:flex-start; gap:8px; background:#f9f9f8; border-radius:7px; padding:12px 14px; font-size:11px; color:#2d3748; line-height:1.7; }
+  .cl-icon { flex-shrink:0; font-size:13px; }
 
   /* 면책고지 */
   .disclaimer-box { background:#f8f9fa; border-radius:8px; padding:10px 14px; border:1px solid #e5e4e0; margin-bottom:8px; page-break-inside:avoid; break-inside:avoid; }
@@ -2891,13 +2912,17 @@ function downloadResult() {
   </table>
   ${comment ? `<p style="font-size:10px;color:#6b7a8d;background:#f0f4f8;padding:8px 12px;border-radius:7px;border-left:3px solid #185FA5;margin-bottom:8px;">${comment}</p>` : ""}
 
-  <!-- 6. 재무분석(재무안정성) -->
-  <div class="sh" style="margin-top:14px;">
-    <div class="sh-num">6</div>
-    <div class="sh-title">재무분석 (재무안정성)</div>
-    <div class="sh-line"></div>
+  <!-- 6. 재무분석(재무안정성) : 페이지가 잘리지 않도록 새 페이지에서 시작 -->
+  <div style="page-break-before:always; break-before:always;">
+    <div class="sh" style="margin-top:0;">
+      <div class="sh-num">6</div>
+      <div class="sh-title">재무분석 (재무안정성)</div>
+      <div class="sh-line"></div>
+    </div>
+    <div style="page-break-inside:avoid; break-inside:avoid;">
+      ${stabilitySectionHTML}
+    </div>
   </div>
-  ${stabilitySectionHTML}
 
   <!-- 면책 고지 -->
   <div class="disclaimer-box">
