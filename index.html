@@ -1853,10 +1853,12 @@ function renderResults(d) {
   const dr  = d.total_equity ? tl / d.total_equity * 100 : null;
   const ice = (d.interest_expense > 0 && d.operating_income !== null) ? d.operating_income / d.interest_expense : null;
   const loanRatio = (d.revenue && d.revenue > 0) ? tl / d.revenue * 100 : null;
+  // 이자비용이 0원인 경우 = 무차입(이자 부담 자체가 없음) → 위험/주의가 아니라 가장 좋은 상태로 처리
+  const noInt = d.interest_expense === 0 && d.operating_income !== null && d.operating_income !== undefined;
 
   // 자본잠식 상태에서는 부채비율(자본총계 분모)이 음수/왜곡되어 나오므로 항상 위험으로 강제 처리
   const drClass  = capitalEroded ? "danger" : (dr  === null ? "warn" : dr  > 400 ? "danger" : dr  > 200 ? "warn" : "safe");
-  const iceClass = ice === null ? "warn" : ice < 1   ? "danger" : ice <  2  ? "warn" : "safe";
+  const iceClass = noInt ? "safe" : (ice === null ? "warn" : ice < 1   ? "danger" : ice <  2  ? "warn" : "safe");
   const loanClass = loanRatio === null ? "warn" : loanRatio >= 30 ? "danger" : loanRatio >= 15 ? "warn" : "safe";
   const loanLabel = loanRatio === null ? "미산정" : loanClass === "safe" ? "적정" : loanClass === "warn" ? "주의" : "과다";
 
@@ -1891,9 +1893,15 @@ function renderResults(d) {
       </div>
     </div>` : "";
 
-  // 이자보상배수 게이지 (최대 5배 기준)
-  const icePct = ice !== null ? Math.min(ice / 5 * 100, 100) : 0;
-  const iceGauge = ice !== null ? `
+  // 이자보상배수 게이지 (최대 5배 기준, 무차입인 경우 풀 게이지 + 전용 라벨)
+  const icePct = noInt ? 100 : (ice !== null ? Math.min(ice / 5 * 100, 100) : 0);
+  const iceGauge = noInt ? `
+    <div style="margin-top:12px;">
+      <div style="font-size:11px;color:#0F6E56;font-weight:600;margin-bottom:4px;">💎 이자비용이 없어 상환 부담이 전혀 없습니다</div>
+      <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;">
+        <div style="height:100%;width:100%;background:${clsColor.safe};border-radius:20px;"></div>
+      </div>
+    </div>` : (ice !== null ? `
     <div style="margin-top:12px;">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:#9b9a95;margin-bottom:4px;">
         <span>0배</span><span>1배</span><span>2배</span><span>5배+</span>
@@ -1901,7 +1909,7 @@ function renderResults(d) {
       <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;">
         <div style="height:100%;width:${icePct}%;background:${clsColor[iceClass]};border-radius:20px;transition:width 0.8s ease;"></div>
       </div>
-    </div>` : "";
+    </div>` : "");
 
   // 핵심 지표 카드
   document.getElementById("metricGrid").innerHTML = `
@@ -1914,10 +1922,10 @@ function renderResults(d) {
     </div>
     <div style="background:#fff;border-radius:14px;padding:1.25rem;border:1px solid #e5e4e0;border-top:4px solid ${clsColor[iceClass]};">
       <div style="font-size:12px;color:#9b9a95;margin-bottom:6px;font-weight:500;">💰 이자보상배수</div>
-      <div class="metric-value" style="font-size:32px;font-weight:700;color:${clsColor[iceClass]};letter-spacing:-0.02em;">${ice !== null ? ice.toFixed(2) + "배" : "N/A"}</div>
-      <div style="display:inline-block;background:${clsBg[iceClass]};color:${clsColor[iceClass]};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:6px;">${clsIcon[iceClass]} ${clsLabel[iceClass]}</div>
+      <div class="metric-value" style="font-size:${noInt ? 24 : 32}px;font-weight:700;color:${clsColor[iceClass]};letter-spacing:-0.02em;">${noInt ? "이자비용 없음" : (ice !== null ? ice.toFixed(2) + "배" : "N/A")}</div>
+      <div style="display:inline-block;background:${clsBg[iceClass]};color:${clsColor[iceClass]};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:6px;">${noInt ? "🎉 무차입" : `${clsIcon[iceClass]} ${clsLabel[iceClass]}`}</div>
       ${iceGauge}
-      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">1배 미만 위험 · 2배 이상 양호</div>
+      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">${noInt ? "이자비용이 없어 이자 상환 부담이 없는 상태입니다" : "1배 미만 위험 · 2배 이상 양호"}</div>
     </div>
   `;
 
@@ -1935,7 +1943,9 @@ function renderResults(d) {
   }
 
   // 이자보상배수 코멘트
-  if (ice !== null) {
+  if (noInt) {
+    comments.push(`📌 이자비용이 없는 무차입 상태로, 이자 상환에 대한 부담이 전혀 없어 재무안정성 측면에서 매우 긍정적입니다.`);
+  } else if (ice !== null) {
     if (ice < 1) comments.push(`📌 이자보상배수가 ${ice.toFixed(2)}배로 위험 수준입니다. 영업이익이 이자비용을 충당하지 못하고 있어 즉각적인 대응이 필요합니다.`);
     else if (ice < 2) comments.push(`📌 이자보상배수가 ${ice.toFixed(2)}배로 주의 수준입니다. 이자 부담이 상대적으로 높아 수익성 개선이 필요합니다.`);
     else comments.push(`📌 이자보상배수가 ${ice.toFixed(2)}배로 양호합니다. 영업이익이 이자비용을 충분히 커버하고 있어 재무안정성이 높은 편입니다.`);
@@ -1969,8 +1979,11 @@ function renderResults(d) {
     scoreTotal += s; scoreCnt++;
     scoreItems.push({ label: "부채비율", score: s, max: 30, comment: dr <= 200 ? "우수" : dr <= 400 ? "보통" : "위험" });
   }
-  // 이자보상배수 점수 (25점)
-  if (ice !== null) {
+  // 이자보상배수 점수 (25점) — 이자비용이 없는 무차입 상태는 만점 처리
+  if (noInt) {
+    scoreTotal += 25; scoreCnt++;
+    scoreItems.push({ label: "이자보상배수", score: 25, max: 25, comment: "우수" });
+  } else if (ice !== null) {
     const s = ice >= 3 ? 25 : ice >= 2 ? 20 : ice >= 1 ? 12 : 3;
     scoreTotal += s; scoreCnt++;
     scoreItems.push({ label: "이자보상배수", score: s, max: 25, comment: ice >= 2 ? "우수" : ice >= 1 ? "보통" : "위험" });
@@ -2401,14 +2414,16 @@ function downloadResult() {
 
   // ── 재무건전성 체크리스트 ──
   const drNum  = parseFloat((document.querySelectorAll('#metricGrid .metric-value')[0]?.innerText || '').replace('%',''));
-  const iceNum = parseFloat((document.querySelectorAll('#metricGrid .metric-value')[1]?.innerText || '').replace('배',''));
+  const iceText = document.querySelectorAll('#metricGrid .metric-value')[1]?.innerText || '';
+  const iceNum = parseFloat(iceText.replace('배',''));
+  const iceIsNoInterest = iceText.includes('이자비용 없음');
   const erosionText = document.querySelectorAll('#diagList [style*="font-size:16px"]')[0]?.innerText || '';
   const defText     = document.querySelectorAll('#diagList [style*="font-size:16px"]')[1]?.innerText || '';
   const isEroded = erosionText.includes('자본잠식');
   const isDeficit = defText.includes('손실');
 
   const drOk  = isEroded ? false : (!isNaN(drNum) ? drNum <= 400 : null);
-  const iceOk = !isNaN(iceNum) ? iceNum >= 1 : null;
+  const iceOk = iceIsNoInterest ? true : (!isNaN(iceNum) ? iceNum >= 1 : null);
   const erosionOk = !isEroded;
   const profitOk = !isDeficit;
   const deficitOk = !isDeficit;
