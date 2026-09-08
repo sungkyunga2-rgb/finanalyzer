@@ -2594,11 +2594,21 @@ function downloadResult() {
   .cover-footer-tagline { font-size:9px; color:#9aa7b8; margin-top:2px; }
   .cover-footer-note { font-size:9px; color:#9aa7b8; text-align:right; }
 
+  /* 인쇄 시 매 페이지 하단에 반복되는 푸터 */
+  .page-footer { display:none; }
   @media print {
     body { background:#fff; }
-    @page { margin: 10mm; }
+    @page { margin: 10mm 10mm 18mm; }
     .cover { page-break-after:always; }
     .save-pdf-bar { display:none; }
+    .page-footer {
+      display:flex; align-items:center; justify-content:space-between;
+      position:fixed; left:0; right:0; bottom:0;
+      padding:6mm 16mm 4mm; border-top:1px solid #e5ecf5; background:#fff;
+    }
+    .page-footer-brand { font-size:11px; font-weight:700; color:#0d3b7c; }
+    .page-footer-brand span { font-weight:500; color:#185fa5; margin-left:3px; }
+    .page-footer-tagline { font-size:9px; color:#9aa7b8; margin-top:1px; }
   }
   .save-pdf-bar {
     position: sticky; top: 0; z-index: 999;
@@ -2622,6 +2632,13 @@ function downloadResult() {
 </div>
 
 <div id="reportCaptureArea">
+<!-- 인쇄 시 매 페이지 하단에 반복 표시되는 푸터 -->
+<div class="page-footer">
+  <div>
+    <div class="page-footer-brand">피나<span>FinAnalyzer</span></div>
+    <div class="page-footer-tagline">AI 기반 재무제표 자동진단 서비스</div>
+  </div>
+</div>
 <!-- 0. 표지 -->
 <div class="cover">
   <div class="cover-brandbar">
