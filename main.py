@@ -17,24 +17,31 @@ models.Base.metadata.create_all(bind=engine)
 def run_auto_migration():
     from sqlalchemy import text, inspect
     inspector = inspect(engine)
-    if "users" not in inspector.get_table_names():
-        return
-    existing_columns = {col["name"] for col in inspector.get_columns("users")}
-    required_columns = {
+    tables = inspector.get_table_names()
+
+    def add_missing_columns(table_name, required_columns):
+        if table_name not in tables:
+            return
+        existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
+        with engine.connect() as conn:
+            for col_name, col_def in required_columns.items():
+                if col_name not in existing_columns:
+                    try:
+                        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"마이그레이션 오류 ({table_name}.{col_name}): {e}")
+
+    add_missing_columns("users", {
         "company_name": "VARCHAR DEFAULT ''",
         "rep_name": "VARCHAR DEFAULT ''",
         "phone": "VARCHAR DEFAULT ''",
         "business_number": "VARCHAR DEFAULT ''",
         "terms_agreed_at": "TIMESTAMP",
-    }
-    with engine.connect() as conn:
-        for col_name, col_def in required_columns.items():
-            if col_name not in existing_columns:
-                try:
-                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"))
-                    conn.commit()
-                except Exception as e:
-                    print(f"마이그레이션 오류 ({col_name}): {e}")
+    })
+    # 커뮤니티 글/댓글 수정 기능을 위한 updated_at 컬럼 추가
+    add_missing_columns("community_posts", {"updated_at": "TIMESTAMP"})
+    add_missing_columns("community_comments", {"updated_at": "TIMESTAMP"})
 
 run_auto_migration()
 
@@ -898,6 +905,64 @@ User-Agent: {body.user_agent or '-'}
 
 
 # ══════════════════════════════════════════════════════════════
+# 문의하기 (플로팅 버튼 → 관리자 이메일로 전달)
+# ══════════════════════════════════════════════════════════════
+class ContactUsBody(BaseModel):
+    message: str
+    email: Optional[str] = None
+    page: Optional[str] = None
+    user_agent: Optional[str] = None
+
+@app.post("/support/contact-us")
+def contact_us(body: ContactUsBody):
+    msg = body.message.strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="문의 내용을 입력해주세요.")
+
+    body_text = f"""FinAnalyzer 문의하기가 접수되었습니다.
+
+문의 내용:
+{msg}
+
+문의 페이지: {body.page or '-'}
+회신 이메일: {body.email or '(미입력)'}
+User-Agent: {body.user_agent or '-'}
+접수 시각: {datetime.utcnow().isoformat()} (UTC)
+"""
+    # BREVO_API_KEY가 설정되어 있지 않으면 이메일 발송은 건너뛰고 접수만 성공 처리
+    if not BREVO_API_KEY:
+        print("문의하기 이메일 미발송: BREVO_API_KEY 환경변수가 설정되어 있지 않음")
+    else:
+        try:
+            email_payload = {
+                "sender": {"name": "FinAnalyzer 문의하기", "email": SENDER_EMAIL},
+                "to": [{"email": SENDER_EMAIL}],
+                "subject": f"[FinAnalyzer 문의하기] {body.page or '알 수 없음'}",
+                "textContent": body_text,
+            }
+            if body.email:
+                email_payload["replyTo"] = {"email": body.email}
+            resp = httpx.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": BREVO_API_KEY,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json=email_payload,
+                timeout=15,
+            )
+            if resp.status_code not in (200, 201):
+                print(f"문의하기 이메일 발송 실패 (status={resp.status_code}): {resp.text}")
+            else:
+                print("문의하기 이메일 발송 성공")
+        except Exception as e:
+            print(f"문의하기 이메일 발송 중 예외 발생: {e}")
+
+    return {"message": "문의가 접수되었습니다."}
+
+
+# ══════════════════════════════════════════════════════════════
 # 커뮤니티 게시판 (로그인 회원만 열람/작성, 댓글 지원)
 # ══════════════════════════════════════════════════════════════
 def display_name(user: models.User) -> str:
@@ -908,6 +973,13 @@ class CommunityPostCreate(BaseModel):
     content: str
 
 class CommunityCommentCreate(BaseModel):
+    content: str
+
+class CommunityPostUpdate(BaseModel):
+    title: str
+    content: str
+
+class CommunityCommentUpdate(BaseModel):
     content: str
 
 @app.get("/community/posts")
@@ -928,6 +1000,7 @@ def list_community_posts(
             "author_email": author.email if author else None,
             "comment_count": comment_count,
             "created_at": p.created_at.isoformat() if p.created_at else None,
+            "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         })
     return {"count": len(result), "posts": result}
 
@@ -967,6 +1040,7 @@ def get_community_post(
             "author": display_name(c_author) if c_author else "(탈퇴한 회원)",
             "author_email": c_author.email if c_author else None,
             "created_at": c.created_at.isoformat() if c.created_at else None,
+            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
         })
     return {
         "id": post.id,
@@ -975,8 +1049,31 @@ def get_community_post(
         "author": display_name(author) if author else "(탈퇴한 회원)",
         "author_email": author.email if author else None,
         "created_at": post.created_at.isoformat() if post.created_at else None,
+        "updated_at": post.updated_at.isoformat() if post.updated_at else None,
         "comments": comment_list,
     }
+
+@app.put("/community/posts/{post_id}")
+def update_community_post(
+    post_id: int,
+    body: CommunityPostUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    post = db.query(models.CommunityPost).filter(models.CommunityPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="해당 글을 찾을 수 없습니다.")
+    if post.user_id != user.id:
+        raise HTTPException(status_code=403, detail="본인이 작성한 글만 수정할 수 있습니다.")
+    title = body.title.strip()
+    content = body.content.strip()
+    if not title or not content:
+        raise HTTPException(status_code=400, detail="제목과 내용을 모두 입력해주세요.")
+    post.title = title
+    post.content = content
+    post.updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": "글이 수정되었습니다."}
 
 @app.delete("/community/posts/{post_id}")
 def delete_community_post(
@@ -1012,6 +1109,26 @@ def create_community_comment(
     db.commit()
     db.refresh(comment)
     return {"id": comment.id, "message": "댓글이 등록되었습니다."}
+
+@app.put("/community/comments/{comment_id}")
+def update_community_comment(
+    comment_id: int,
+    body: CommunityCommentUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    comment = db.query(models.CommunityComment).filter(models.CommunityComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="해당 댓글을 찾을 수 없습니다.")
+    if comment.user_id != user.id:
+        raise HTTPException(status_code=403, detail="본인이 작성한 댓글만 수정할 수 있습니다.")
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="댓글 내용을 입력해주세요.")
+    comment.content = content
+    comment.updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": "댓글이 수정되었습니다."}
 
 @app.delete("/community/comments/{comment_id}")
 def delete_community_comment(

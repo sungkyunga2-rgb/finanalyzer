@@ -221,7 +221,7 @@
   .mt1 { margin-top: 1rem; }
   .error-msg { color: var(--danger); font-size: 13px; margin-top: 6px; display: none; }
 
-  /* ── 오류신고 플로팅 버튼 ── */
+  /* ── 오류신고 / 문의하기 플로팅 버튼 ── */
   .bugreport-fab {
     position: fixed; right: 20px; bottom: 20px; z-index: 500;
     display: flex; align-items: center; gap: 6px;
@@ -230,14 +230,23 @@
     box-shadow: 0 6px 18px rgba(0,0,0,0.22); font-family: inherit;
   }
   .bugreport-fab:hover { opacity: 0.88; }
+  .contactus-fab {
+    position: fixed; right: 20px; bottom: 74px; z-index: 500;
+    display: flex; align-items: center; gap: 6px;
+    background: var(--accent); color: #fff; border: none; border-radius: 999px;
+    padding: 12px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(24,95,165,0.28); font-family: inherit;
+  }
+  .contactus-fab:hover { opacity: 0.88; }
   @media (max-width: 640px) {
     .bugreport-fab { right: 12px; bottom: 12px; padding: 10px 14px; font-size: 12px; }
+    .contactus-fab { right: 12px; bottom: 60px; padding: 10px 14px; font-size: 12px; }
   }
-  .bugreport-modal textarea {
+  .bugreport-modal textarea, .contactus-modal textarea {
     width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius);
     font-size: 14px; font-family: inherit; resize: vertical; outline: none;
   }
-  .bugreport-modal textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  .bugreport-modal textarea:focus, .contactus-modal textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 
   /* ── 대시보드 2열 레이아웃 (우측 예시 리포트) ── */
   .dashboard-grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
@@ -800,7 +809,7 @@
   <div class="main" style="max-width:640px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
       <h2 style="font-size:20px;font-weight:600;letter-spacing:-0.02em;">커뮤니티</h2>
-      <button class="btn btn-primary" onclick="showPage('communityWrite')">✏️ 글쓰기</button>
+      <button class="btn btn-primary" onclick="newCommunityPost()">✏️ 글쓰기</button>
     </div>
     <div id="community-list"></div>
   </div>
@@ -815,7 +824,7 @@
     </div>
   </header>
   <div class="main" style="max-width:640px;">
-    <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">글쓰기</h2>
+    <h2 id="cw-heading" style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">글쓰기</h2>
     <div class="card">
       <div class="field">
         <label>제목</label>
@@ -826,7 +835,7 @@
         <textarea id="cw-content" rows="10" placeholder="내용을 입력해주세요" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:14px;font-family:inherit;resize:vertical;"></textarea>
       </div>
       <div id="cw-error" class="error-msg"></div>
-      <button class="btn btn-primary btn-full" onclick="submitCommunityPost()">등록하기</button>
+      <button class="btn btn-primary btn-full" id="cw-submit-btn" onclick="submitCommunityPost()">등록하기</button>
     </div>
   </div>
 </div>
@@ -1152,6 +1161,9 @@
 <!-- 오류신고 플로팅 버튼 (모든 페이지 공통) -->
 <button class="bugreport-fab" onclick="openBugReport()">🐞 오류신고</button>
 
+<!-- 문의하기 플로팅 버튼 (모든 페이지 공통) -->
+<button class="contactus-fab" onclick="openContactUs()">💬 문의하기</button>
+
 <!-- 오류신고 모달 -->
 <div id="bugreport-modal" class="modal-overlay hidden" onclick="if(event.target===this) closeBugReport()">
   <div class="modal-box bugreport-modal">
@@ -1170,6 +1182,27 @@
     </div>
     <div id="bugreport-error" class="error-msg"></div>
     <button class="btn btn-primary btn-full" id="bugreport-submit-btn" onclick="submitBugReport()">신고 접수하기</button>
+  </div>
+</div>
+
+<!-- 문의하기 모달 -->
+<div id="contactus-modal" class="modal-overlay hidden" onclick="if(event.target===this) closeContactUs()">
+  <div class="modal-box contactus-modal">
+    <div class="modal-header">
+      <div class="modal-title">문의하기</div>
+      <button class="modal-close" onclick="closeContactUs()">✕</button>
+    </div>
+    <p class="modal-desc">궁금한 점이나 제안하고 싶은 내용을 남겨주시면 확인 후 답변드릴게요.</p>
+    <div class="field">
+      <label>연락받으실 이메일 (선택)</label>
+      <input type="email" id="contactus-email" placeholder="답변 받으실 이메일" />
+    </div>
+    <div class="field">
+      <label>문의 내용</label>
+      <textarea id="contactus-message" rows="5" placeholder="예: 정책자금 연계 관련해서 상담받고 싶어요."></textarea>
+    </div>
+    <div id="contactus-error" class="error-msg"></div>
+    <button class="btn btn-primary btn-full" id="contactus-submit-btn" onclick="submitContactUs()">문의 접수하기</button>
   </div>
 </div>
 
@@ -2178,6 +2211,8 @@ function applyEditedFields() {
 
 // ── 커뮤니티 ────────────────────────────────────────────────────
 let currentCommunityPostId = null;
+let communityEditPostId = null;   // null이면 새 글 작성, 값이 있으면 해당 글 수정 모드
+let editingCommentId = null;      // 인라인으로 수정 중인 댓글 id
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -2215,6 +2250,35 @@ async function loadCommunityPosts() {
   }
 }
 
+function newCommunityPost() {
+  communityEditPostId = null;
+  document.getElementById("cw-heading").textContent = "글쓰기";
+  document.getElementById("cw-submit-btn").textContent = "등록하기";
+  document.getElementById("cw-title").value = "";
+  document.getElementById("cw-content").value = "";
+  document.getElementById("cw-error").style.display = "none";
+  showPage("communityWrite");
+}
+
+async function editCommunityPost() {
+  try {
+    const d = await api("GET", `/community/posts/${currentCommunityPostId}`);
+    if (!d.author_email || d.author_email !== userEmail) {
+      toast("본인이 작성한 글만 수정할 수 있습니다.");
+      return;
+    }
+    communityEditPostId = currentCommunityPostId;
+    document.getElementById("cw-heading").textContent = "글 수정";
+    document.getElementById("cw-submit-btn").textContent = "수정 완료";
+    document.getElementById("cw-title").value = d.title;
+    document.getElementById("cw-content").value = d.content;
+    document.getElementById("cw-error").style.display = "none";
+    showPage("communityWrite");
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 async function submitCommunityPost() {
   const title = document.getElementById("cw-title").value.trim();
   const content = document.getElementById("cw-content").value.trim();
@@ -2226,11 +2290,19 @@ async function submitCommunityPost() {
     return;
   }
   try {
-    await api("POST", "/community/posts", { title, content });
-    document.getElementById("cw-title").value = "";
-    document.getElementById("cw-content").value = "";
-    toast("글이 등록되었습니다.");
-    goCommunity();
+    if (communityEditPostId) {
+      await api("PUT", `/community/posts/${communityEditPostId}`, { title, content });
+      toast("글이 수정되었습니다.");
+      currentCommunityPostId = communityEditPostId;
+      communityEditPostId = null;
+      openCommunityDetail(currentCommunityPostId);
+    } else {
+      await api("POST", "/community/posts", { title, content });
+      document.getElementById("cw-title").value = "";
+      document.getElementById("cw-content").value = "";
+      toast("글이 등록되었습니다.");
+      goCommunity();
+    }
   } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = "block";
@@ -2239,6 +2311,7 @@ async function submitCommunityPost() {
 
 async function openCommunityDetail(id) {
   currentCommunityPostId = id;
+  editingCommentId = null;
   showPage("communityDetail");
   await loadCommunityDetail();
 }
@@ -2255,21 +2328,42 @@ async function loadCommunityDetail() {
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
           <div style="font-size:18px;font-weight:700;">${escapeHtml(d.title)}</div>
-          ${isMine ? `<button class="btn" style="padding:4px 10px;font-size:12px;color:var(--danger);" onclick="deleteCommunityPost()">삭제</button>` : ""}
+          ${isMine ? `
+            <div style="display:flex;gap:6px;flex-shrink:0;">
+              <button class="btn" style="padding:4px 10px;font-size:12px;" onclick="editCommunityPost()">✏️ 수정</button>
+              <button class="btn" style="padding:4px 10px;font-size:12px;color:var(--danger);" onclick="deleteCommunityPost()">삭제</button>
+            </div>` : ""}
         </div>
-        <div style="font-size:12px;color:var(--text3);margin-top:6px;">${escapeHtml(d.author)} · ${d.created_at ? d.created_at.slice(0,10) : ""}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:6px;">${escapeHtml(d.author)} · ${d.created_at ? d.created_at.slice(0,10) : ""}${d.updated_at ? " · (수정됨)" : ""}</div>
         <div style="font-size:14px;color:var(--text);margin-top:14px;white-space:pre-wrap;line-height:1.7;">${escapeHtml(d.content)}</div>
       </div>`;
     commentsEl.innerHTML = d.comments.length
-      ? d.comments.map(c => `
+      ? d.comments.map(c => {
+          const isMineComment = c.author_email && c.author_email === userEmail;
+          if (editingCommentId === c.id) {
+            return `
+              <div class="diag-item" style="align-items:flex-start;flex-direction:column;gap:6px;">
+                <textarea id="cc-edit-${c.id}" rows="2" style="width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius);font-size:13px;font-family:inherit;resize:vertical;">${escapeHtml(c.content)}</textarea>
+                <div style="display:flex;gap:6px;">
+                  <button class="btn btn-primary" style="padding:3px 10px;font-size:11px;" onclick="saveCommunityComment(${c.id})">저장</button>
+                  <button class="btn" style="padding:3px 10px;font-size:11px;" onclick="cancelEditCommunityComment()">취소</button>
+                </div>
+              </div>`;
+          }
+          return `
         <div class="diag-item" style="align-items:flex-start;flex-direction:column;gap:4px;">
           <div style="display:flex;justify-content:space-between;width:100%;">
-            <span style="font-size:12px;color:var(--text3);">${escapeHtml(c.author)} · ${c.created_at ? c.created_at.slice(0,10) : ""}</span>
-            ${c.author_email && c.author_email === userEmail ? `<button class="btn" style="padding:2px 8px;font-size:11px;color:var(--danger);" onclick="deleteCommunityComment(${c.id})">삭제</button>` : ""}
+            <span style="font-size:12px;color:var(--text3);">${escapeHtml(c.author)} · ${c.created_at ? c.created_at.slice(0,10) : ""}${c.updated_at ? " · (수정됨)" : ""}</span>
+            ${isMineComment ? `
+              <div style="display:flex;gap:4px;">
+                <button class="btn" style="padding:2px 8px;font-size:11px;" onclick="startEditCommunityComment(${c.id})">수정</button>
+                <button class="btn" style="padding:2px 8px;font-size:11px;color:var(--danger);" onclick="deleteCommunityComment(${c.id})">삭제</button>
+              </div>` : ""}
           </div>
           <div style="font-size:14px;">${escapeHtml(c.content)}</div>
         </div>
-      `).join("")
+      `;
+        }).join("")
       : `<p style="font-size:13px;color:var(--text3);">아직 댓글이 없습니다.</p>`;
   } catch (e) {
     detailEl.innerHTML = `<p style="font-size:13px;color:var(--danger);">${e.message}</p>`;
@@ -2310,6 +2404,32 @@ async function deleteCommunityComment(id) {
   if (!confirm("이 댓글을 삭제하시겠습니까?")) return;
   try {
     await api("DELETE", `/community/comments/${id}`);
+    loadCommunityDetail();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function startEditCommunityComment(id) {
+  editingCommentId = id;
+  loadCommunityDetail();
+}
+
+function cancelEditCommunityComment() {
+  editingCommentId = null;
+  loadCommunityDetail();
+}
+
+async function saveCommunityComment(id) {
+  const textareaEl = document.getElementById(`cc-edit-${id}`);
+  const content = textareaEl.value.trim();
+  if (!content) {
+    toast("댓글 내용을 입력해주세요.");
+    return;
+  }
+  try {
+    await api("PUT", `/community/comments/${id}`, { content });
+    editingCommentId = null;
     loadCommunityDetail();
   } catch (e) {
     toast(e.message);
@@ -2361,6 +2481,54 @@ async function submitBugReport() {
     errEl.style.display = "block";
   } finally {
     btn.disabled = false; btn.textContent = "신고 접수하기";
+  }
+}
+
+// ── 문의하기 ────────────────────────────────────────────────────
+function openContactUs() {
+  document.getElementById("contactus-error").style.display = "none";
+  const emailEl = document.getElementById("contactus-email");
+  if (!emailEl.value && userEmail) emailEl.value = userEmail;
+  document.getElementById("contactus-modal").classList.remove("hidden");
+}
+
+function closeContactUs() {
+  document.getElementById("contactus-modal").classList.add("hidden");
+}
+
+async function submitContactUs() {
+  const email = document.getElementById("contactus-email").value.trim();
+  const message = document.getElementById("contactus-message").value.trim();
+  const errEl = document.getElementById("contactus-error");
+  errEl.style.display = "none";
+  if (!message) {
+    errEl.textContent = "문의 내용을 입력해주세요.";
+    errEl.style.display = "block";
+    return;
+  }
+  const activePage = document.querySelector(".page.active")?.id?.replace("page-", "") || "unknown";
+  const btn = document.getElementById("contactus-submit-btn");
+  btn.disabled = true; btn.textContent = "접수 중...";
+  try {
+    const res = await fetch(API_BASE + "/support/contact-us", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        email: email || null,
+        page: activePage,
+        user_agent: navigator.userAgent,
+      }),
+    });
+    if (!res.ok) throw new Error("failed");
+    toast("문의가 접수되었습니다. 감사합니다!");
+    document.getElementById("contactus-message").value = "";
+    closeContactUs();
+  } catch (e) {
+    errEl.textContent = "문의 접수 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.";
+    errEl.style.display = "block";
+  } finally {
+    btn.disabled = false; btn.textContent = "문의 접수하기";
   }
 }
 
