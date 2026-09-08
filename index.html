@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FinAnalyzer — AI 재무제표 분석</title>
+<title>FinAnalyzer(피나) — AI 재무제표 분석</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap" rel="stylesheet" />
 <!-- 포트원 V2 SDK -->
 <script src="https://cdn.portone.io/v2/browser-sdk.esm.js" type="module"></script>
 <script>
@@ -40,8 +43,14 @@
   .page { display: none; min-height: 100vh; }
   .page.active { display: block; }
   header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 1.5rem; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
-  header .logo { font-size: 17px; font-weight: 600; color: var(--text); text-decoration: none; letter-spacing: -0.02em; }
-  header .logo span { color: var(--accent); }
+  header .logo { display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; text-decoration: none; line-height: 1; }
+  header .logo .logo-en { font-size: 9px; font-weight: 600; color: var(--text3); letter-spacing: 0.04em; line-height: 1; }
+  header .logo .logo-en .accent { color: var(--accent); }
+  header .logo .logo-kr { font-family: 'Nanum Pen Script', cursive !important; font-weight: 400; font-size: 26px; line-height: 1; }
+  header .logo .logo-kr .c1 { color: var(--accent) !important; }
+  header .logo .logo-kr .c2 { color: #B8860B !important; }
+  .hero-band header .logo .logo-kr .c1 { color: #FFD166 !important; }
+  .hero-band header .logo .logo-kr .c2 { color: #ffffff !important; }
   .header-right { display: flex; align-items: center; gap: 12px; }
   .credit-badge { background: var(--accent-bg); color: var(--accent); font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 20px; display: none; }
 
@@ -303,7 +312,7 @@
         fill="none" stroke="#8fd9c0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
     </svg>
     <header>
-      <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+      <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
       <div class="header-right">
         <a class="btn" href="#" onclick="goCommunity()">커뮤니티</a>
         <a class="btn" id="landing-login-btn" href="#" onclick="showPage('login')">로그인</a>
@@ -352,7 +361,7 @@
 <!-- ───────────────────────── 회원가입 ───────────────────────── -->
 <div id="page-register" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
   </header>
   <div class="main" style="max-width:400px;">
     <h2 style="font-size:22px;font-weight:700;margin-bottom:1.5rem;letter-spacing:-0.02em;">계정 만들기</h2>
@@ -402,7 +411,7 @@
 <!-- ───────────────────────── 로그인 ───────────────────────── -->
 <div id="page-login" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
   </header>
   <div class="main" style="max-width:400px;">
     <h2 style="font-size:22px;font-weight:700;margin-bottom:1.5rem;letter-spacing:-0.02em;">로그인</h2>
@@ -430,7 +439,7 @@
 <!-- ───────────────────────── 아이디 찾기 ───────────────────────── -->
 <div id="page-findId" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
   </header>
   <div class="main" style="max-width:400px;">
     <h2 style="font-size:22px;font-weight:700;margin-bottom:1.5rem;letter-spacing:-0.02em;">아이디 찾기</h2>
@@ -454,7 +463,7 @@
 <!-- ───────────────────────── 비밀번호 찾기 ───────────────────────── -->
 <div id="page-findPw" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
   </header>
   <div class="main" style="max-width:400px;">
     <h2 style="font-size:22px;font-weight:700;margin-bottom:1.5rem;letter-spacing:-0.02em;">비밀번호 찾기</h2>
@@ -474,7 +483,7 @@
 <!-- ───────────────────────── 대시보드 ───────────────────────── -->
 <div id="page-dashboard" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
     <div class="header-right">
       <span class="credit-badge" id="header-credits">잔여횟수 0건</span>
       <button class="btn" onclick="showPage('landing')">홈</button>
@@ -752,7 +761,7 @@
 <!-- ───────────────────────── 커뮤니티 ───────────────────────── -->
 <div id="page-community" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
     <div class="header-right">
       <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
       <button class="btn" onclick="doLogout()">로그아웃</button>
@@ -770,7 +779,7 @@
 <!-- ───────────────────────── 커뮤니티 글쓰기 ───────────────────────── -->
 <div id="page-communityWrite" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
     <div class="header-right">
       <button class="btn" onclick="goCommunity()">← 목록으로</button>
     </div>
@@ -795,7 +804,7 @@
 <!-- ───────────────────────── 커뮤니티 글 상세 ───────────────────────── -->
 <div id="page-communityDetail" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
     <div class="header-right">
       <button class="btn" onclick="goCommunity()">← 목록으로</button>
     </div>
@@ -817,7 +826,7 @@
 <!-- ───────────────────────── 내 정보 ───────────────────────── -->
 <div id="page-myinfo" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
     <div class="header-right">
       <span class="credit-badge" id="myinfo-credits">0 크레딧</span>
       <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
@@ -912,7 +921,7 @@
 <!-- ───────────────────────── 회원 탈퇴 ───────────────────────── -->
 <div id="page-withdraw" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
     <div class="header-right">
       <button class="btn" onclick="showPage('myinfo')">← 돌아가기</button>
     </div>
@@ -934,7 +943,7 @@
 <!-- ───────────────────────── 결제하기 ───────────────────────── -->
 <div id="page-charge" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
     <div class="header-right">
       <span class="credit-badge" id="charge-credits">잔여횟수 0건</span>
       <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
@@ -976,7 +985,7 @@
 <!-- ───────────────────────── 이용약관 ───────────────────────── -->
 <div id="page-terms" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
   </header>
   <div class="main" style="max-width:720px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;">이용약관</h2>
@@ -1006,7 +1015,7 @@
 <!-- ───────────────────────── 개인정보처리방침 ───────────────────────── -->
 <div id="page-privacy" class="page">
   <header>
-    <a class="logo" href="#" onclick="showPage('landing')">Fin<span>Analyzer</span></a>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
   </header>
   <div class="main" style="max-width:720px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;">개인정보 처리방침</h2>
