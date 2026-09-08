@@ -248,9 +248,14 @@
   }
   .bugreport-modal textarea:focus, .contactus-modal textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 
-  /* ── 대시보드 2열 레이아웃 (우측 예시 리포트) ── */
-  .dashboard-grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+  /* ── 대시보드 3열 레이아웃 (좌측 광고 자리 · 가운데 분석폼 · 우측 예시 리포트) ── */
+  .dashboard-grid { display: grid; grid-template-columns: minmax(0,220px) minmax(0,760px) 340px; gap: 24px; align-items: start; justify-content: center; }
+  .dashboard-ad-col { min-height: 1px; } /* 추후 광고 슬롯이 들어갈 빈 영역 */
   .sample-report-card { position: sticky; top: 72px; padding: 0; overflow: hidden; }
+  @media (max-width: 1300px) {
+    .dashboard-grid { grid-template-columns: 1fr 340px; }
+    .dashboard-ad-col { display: none; }
+  }
   @media (max-width: 900px) {
     .dashboard-grid { grid-template-columns: 1fr; }
     .sample-report-card { position: static; }
@@ -533,10 +538,12 @@
       <button class="btn" onclick="doLogout()">로그아웃</button>
     </div>
   </header>
-  <div class="main" style="max-width:1080px;">
+  <div class="main" style="max-width:1400px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">재무제표 분석</h2>
 
     <div class="dashboard-grid">
+    <!-- 광고 영역 예정 (현재는 비워둠) -->
+    <div class="dashboard-ad-col"></div>
     <div class="dashboard-main-col">
 
     <!-- 이미지 업로드 -->
