@@ -2636,7 +2636,10 @@ function downloadResult() {
     <div style="font-size:9px;color:#9b9a95;">※ 차입상환 능력은 영업이익으로 이자비용을 충당하는 능력과 총부채를 상환하는 데 걸리는 기간에 따른 위험 수준을 종합해 분석함.</div>
   `;
 
-  const filenameBase = `재무분석리포트_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  // 파일명/문서 제목에 기업명을 포함 — 파일 시스템에서 문제가 되는 특수문자는 제거
+  const safeCompanyName = (window.lastCompanyName || "").replace(/[\\/:*?"<>|]/g, "").trim();
+  const reportTitle = safeCompanyName ? `${safeCompanyName} 재무분석 리포트 — 피나(FinAnalyzer)` : `재무분석 리포트 — 피나(FinAnalyzer)`;
+  const filenameBase = reportTitle;
   // 화면 전용 안내문구(값 수정하기 안내)는 리포트 파일에 포함하지 않음
   const comment = "";
 
@@ -2644,7 +2647,7 @@ function downloadResult() {
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
-<title>재무분석 리포트 — 피나(FinAnalyzer)</title>
+<title>${reportTitle}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
