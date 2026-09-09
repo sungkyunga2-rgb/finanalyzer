@@ -616,7 +616,19 @@ async def extract_income_doc(
 
     prompt = """이 문서는 한국 국세청 홈택스에서 발급한 "부가가치세과세표준증명원" 또는 "소득금액증명원" 중 하나입니다 (여러 장이 첨부된 경우 같은 서류의 여러 페이지이거나, 두 서류가 함께 첨부되었을 수 있습니다). 첨부된 모든 이미지를 함께 확인해 아래 항목을 추출하세요.
 
-━━━ 서류별 추출 방법 ━━━
+━━━ 1단계: 상호 / 대표자명 / 사업자등록번호 (반드시 먼저, 빠뜨리지 말 것) ━━━
+두 서류 모두 문서 상단(제목 바로 아래)에 납세자·사업자 정보가 표 또는 항목 형태로 반드시 인쇄되어 있습니다. 금액을 읽기 전에 이 부분을 먼저 정확히 읽으세요.
+- 라벨 표기는 서류 종류·발급 연도에 따라 다양합니다. 아래 중 어떤 표기든 같은 항목으로 취급하세요.
+  · 상호(company_name): "상호", "상 호", "상호(법인명)", "법인명", "사업장명", "업체명", "상호명"
+  · 대표자명(rep_name): "성명", "성 명", "대표자", "대표자명", "성명(대표자명)", "납세자명", "성명(법인명)"
+  · 사업자등록번호(business_number): "사업자등록번호", "사업자 등록번호", "등록번호", "사업자번호"
+- 라벨의 오른쪽 칸 또는 바로 아래 칸에 있는 값을 읽으세요. 라벨과 값이 ":"으로 구분되거나, 표의 머리행/데이터행으로 나뉘어 있을 수 있습니다.
+- 개인사업자는 상호 칸이 비어 있거나 없을 수 있습니다. 그때만 company_name을 null로 두고 rep_name은 반드시 채우세요. 법인은 상호와 대표자 성명이 모두 있습니다.
+- 사업자등록번호는 숫자 10자리입니다. 하이픈이 없거나 공백으로 띄어져 있어도 "000-00-00000" 형식으로 정리해서 반환하세요.
+- 상호는 "주식회사", "(주)", "농업회사법인" 등 문서에 적힌 표기를 그대로 유지하세요.
+- 글자가 흐리거나 일부 잘려 있어도 최대한 판독해서 채우고, 정말 알아볼 수 없을 때에만 null을 반환하세요. 이 세 항목을 이유 없이 null로 두지 마세요.
+
+━━━ 2단계: 서류별 금액 추출 방법 ━━━
 [부가가치세과세표준증명원]
 - 상단에 상호(회사/사업체명), 성명(대표자명), 사업자등록번호가 표기됩니다.
 - 표에는 보통 과세기간(예: 2025년 제1기, 2025년 제2기 등)별로 "과세표준액"(공급가액) 금액이 나열됩니다.
@@ -677,6 +689,26 @@ async def extract_income_doc(
 
     if data is None:
         raise HTTPException(status_code=500, detail=f"AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
+
+    # 상호/대표자명/사업자등록번호 후처리 — 빈 값 정리 및 사업자번호 형식 통일
+    if isinstance(data, dict):
+        def _clean_text(v):
+            if v is None:
+                return None
+            v = str(v).strip().strip('"').strip()
+            if not v or v.lower() in ("null", "none", "n/a", "-", "미상", "불명", "없음"):
+                return None
+            return v
+        for key in ("doc_type", "company_name", "rep_name", "business_number", "comment"):
+            if key in data:
+                data[key] = _clean_text(data[key])
+        biz = data.get("business_number")
+        if biz:
+            digits = re.sub(r"\D", "", biz)
+            if len(digits) == 10:
+                data["business_number"] = f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+            elif not digits:
+                data["business_number"] = None
 
     return {"data": data}
 

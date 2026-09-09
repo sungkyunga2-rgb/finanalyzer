@@ -1853,14 +1853,29 @@ async function extractIncomeDoc() {
     const salesEl    = document.getElementById("m-sales");
     const profitEl   = document.getElementById("m-profit");
 
-    if (d.company_name && !companyEl.value) companyEl.value = d.company_name;
-    if (d.rep_name && !repEl.value) repEl.value = d.rep_name;
-    if (d.business_number && !bizEl.value) bizEl.value = d.business_number;
+    // 인식된 값은 기존 입력값이 있어도 덮어씀 (서류 값이 더 정확하므로)
+    if (d.company_name) companyEl.value = String(d.company_name).trim();
+    if (d.rep_name) repEl.value = String(d.rep_name).trim();
+    if (d.business_number) {
+      const bizDigits = String(d.business_number).replace(/\D/g, "");
+      bizEl.value = bizDigits.length === 10
+        ? bizDigits.slice(0, 3) + "-" + bizDigits.slice(3, 5) + "-" + bizDigits.slice(5)
+        : String(d.business_number).trim();
+    }
     if (d.revenue) salesEl.value = Math.round(d.revenue).toLocaleString("ko-KR");
     if (d.income_amount) profitEl.value = Math.round(d.income_amount / 12).toLocaleString("ko-KR");
 
-    if (!d.revenue && !d.income_amount) {
-      toast("문서에서 금액을 인식하지 못했어요. 직접 입력해주세요.");
+    // 인식 결과 안내 — 못 읽은 항목이 있으면 어떤 항목인지 알려줌
+    const notRead = [];
+    if (!d.company_name) notRead.push("회사이름");
+    if (!d.rep_name) notRead.push("대표자명");
+    if (!d.business_number) notRead.push("사업자등록번호");
+    if (!d.revenue && !d.income_amount) notRead.push("금액");
+
+    if (notRead.length === 4) {
+      toast("문서에서 정보를 인식하지 못했어요. 서류 전체가 선명하게 보이도록 다시 촬영하거나 직접 입력해주세요.");
+    } else if (notRead.length) {
+      toast((d.doc_type || "서류") + "에서 정보를 채웠어요. " + notRead.join("·") + "은(는) 인식하지 못했으니 직접 입력해주세요.");
     } else {
       toast((d.doc_type || "서류") + "에서 정보를 자동으로 채웠어요. 부채·자산 정보는 직접 입력해주세요.");
     }
