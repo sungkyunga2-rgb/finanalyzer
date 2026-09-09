@@ -1887,6 +1887,23 @@ async function doManualAnalyze() {
     return;
   }
 
+  // 미입력 항목이 있으면 한 번 안내하고 진행 여부를 확인
+  const missingFields = [];
+  if (!repName)  missingFields.push("대표자명");
+  if (!bizNum)   missingFields.push("사업자등록번호");
+  if (!interest) missingFields.push("월 이자비용");
+  if (!profit)   missingFields.push("월 순수익");
+  if (missingFields.length) {
+    const lastWord = missingFields[missingFields.length - 1];
+    const lastChar = lastWord.charCodeAt(lastWord.length - 1);
+    const hasJongseong = lastChar >= 0xAC00 && lastChar <= 0xD7A3 && (lastChar - 0xAC00) % 28 !== 0;
+    const josa = hasJongseong ? "이" : "가";
+    const confirmMsg = missingFields.join(", ") + josa + " 입력되지 않았습니다.\n"
+      + "전체 내용이 입력되지 않은 경우 정확한 분석이 어려울 수 있습니다.\n"
+      + "이대로 분석 진행해드릴까요?";
+    if (!confirm(confirmMsg)) return;
+  }
+
   // 크레딧 확인 — 부족하면 결제 팝업으로 안내 (직접입력도 이미지 분석과 동일하게 유료)
   if (userCredits < 10) { openPaymentModal(); return; }
 
