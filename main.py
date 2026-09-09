@@ -43,6 +43,17 @@ def run_auto_migration():
     # 커뮤니티 글/댓글 수정 기능을 위한 updated_at 컬럼 추가
     add_missing_columns("community_posts", {"updated_at": "TIMESTAMP"})
     add_missing_columns("community_comments", {"updated_at": "TIMESTAMP"})
+    # 분석 이력 테이블 (신규 테이블은 create_all이 만들지만, 이미 있던 경우를 대비해 컬럼도 확인)
+    add_missing_columns("analysis_histories", {
+        "company_name": "VARCHAR DEFAULT ''",
+        "rep_name": "VARCHAR DEFAULT ''",
+        "business_number": "VARCHAR DEFAULT ''",
+        "source_type": "VARCHAR DEFAULT 'image'",
+        "revenue": "BIGINT",
+        "data_json": "TEXT",
+        "created_at": "TIMESTAMP",
+        "printed_at": "TIMESTAMP",
+    })
 
 run_auto_migration()
 
@@ -288,6 +299,7 @@ def withdraw(
         raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
     db.query(models.Payment).filter(models.Payment.user_id == user.id).delete()
     db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).delete()
+    db.query(models.AnalysisHistory).filter(models.AnalysisHistory.user_id == user.id).delete()
     db.delete(user)
     db.commit()
     return {"message": "회원 탈퇴가 완료되었습니다."}
@@ -711,6 +723,168 @@ async def extract_income_doc(
                 data["business_number"] = None
 
     return {"data": data}
+
+
+# ══════════════════════════════════════════════════════════════
+# 분석 이력 — 지난 분석 결과 조회 및 리포트 재출력
+# (이용약관상 분석 결과 보관기간은 3개월이므로 그 기간 내 이력만 조회됨)
+# ══════════════════════════════════════════════════════════════
+HISTORY_RETENTION_DAYS = 90
+
+class AnalysisHistoryCreate(BaseModel):
+    company_name: Optional[str] = ""
+    rep_name: Optional[str] = ""
+    business_number: Optional[str] = ""
+    source_type: Optional[str] = "image"   # image(재무제표 분석) / manual(직접 입력)
+    revenue: Optional[float] = None
+    data: dict = {}
+
+def _history_summary(h: "models.AnalysisHistory") -> dict:
+    from datetime import timedelta
+    expires_at = (h.created_at + timedelta(days=HISTORY_RETENTION_DAYS)) if h.created_at else None
+    return {
+        "id": h.id,
+        "company_name": h.company_name or "",
+        "rep_name": h.rep_name or "",
+        "business_number": h.business_number or "",
+        "source_type": h.source_type or "image",
+        "revenue": h.revenue,
+        "created_at": h.created_at.isoformat() if h.created_at else None,
+        "printed_at": h.printed_at.isoformat() if h.printed_at else None,
+        "printed": h.printed_at is not None,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+    }
+
+@app.post("/history")
+def create_analysis_history(
+    body: AnalysisHistoryCreate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    import json as _json
+    revenue = None
+    if body.revenue is not None:
+        try:
+            revenue = int(round(float(body.revenue)))
+        except Exception:
+            revenue = None
+
+    item = models.AnalysisHistory(
+        user_id=user.id,
+        company_name=(body.company_name or "").strip()[:200],
+        rep_name=(body.rep_name or "").strip()[:100],
+        business_number=(body.business_number or "").strip()[:50],
+        source_type=(body.source_type or "image"),
+        revenue=revenue,
+        data_json=_json.dumps(body.data or {}, ensure_ascii=False),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {"history": _history_summary(item)}
+
+@app.get("/history")
+def list_analysis_history(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
+    rows = (
+        db.query(models.AnalysisHistory)
+        .filter(models.AnalysisHistory.user_id == user.id)
+        .filter(models.AnalysisHistory.created_at >= cutoff)
+        .order_by(models.AnalysisHistory.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    return {"histories": [_history_summary(h) for h in rows], "retention_days": HISTORY_RETENTION_DAYS}
+
+@app.get("/history/{history_id}")
+def get_analysis_history(
+    history_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    import json as _json
+    h = db.query(models.AnalysisHistory).filter(
+        models.AnalysisHistory.id == history_id,
+        models.AnalysisHistory.user_id == user.id,
+    ).first()
+    if not h:
+        raise HTTPException(status_code=404, detail="분석 이력을 찾을 수 없습니다.")
+    try:
+        data = _json.loads(h.data_json or "{}")
+    except Exception:
+        data = {}
+    return {"history": _history_summary(h), "data": data}
+
+@app.put("/history/{history_id}")
+def update_analysis_history(
+    history_id: int,
+    body: AnalysisHistoryCreate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """값 수정 후 재계산한 경우 기존 이력을 갱신 (새 이력을 만들지 않음)"""
+    import json as _json
+    h = db.query(models.AnalysisHistory).filter(
+        models.AnalysisHistory.id == history_id,
+        models.AnalysisHistory.user_id == user.id,
+    ).first()
+    if not h:
+        raise HTTPException(status_code=404, detail="분석 이력을 찾을 수 없습니다.")
+
+    if body.company_name is not None:
+        h.company_name = (body.company_name or "").strip()[:200]
+    if body.rep_name is not None:
+        h.rep_name = (body.rep_name or "").strip()[:100]
+    if body.business_number is not None:
+        h.business_number = (body.business_number or "").strip()[:50]
+    if body.revenue is not None:
+        try:
+            h.revenue = int(round(float(body.revenue)))
+        except Exception:
+            pass
+    if body.data:
+        h.data_json = _json.dumps(body.data, ensure_ascii=False)
+    db.commit()
+    db.refresh(h)
+    return {"history": _history_summary(h)}
+
+@app.post("/history/{history_id}/printed")
+def mark_analysis_history_printed(
+    history_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    h = db.query(models.AnalysisHistory).filter(
+        models.AnalysisHistory.id == history_id,
+        models.AnalysisHistory.user_id == user.id,
+    ).first()
+    if not h:
+        raise HTTPException(status_code=404, detail="분석 이력을 찾을 수 없습니다.")
+    if h.printed_at is None:
+        h.printed_at = datetime.utcnow()
+        db.commit()
+        db.refresh(h)
+    return {"history": _history_summary(h)}
+
+@app.delete("/history/{history_id}")
+def delete_analysis_history(
+    history_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    h = db.query(models.AnalysisHistory).filter(
+        models.AnalysisHistory.id == history_id,
+        models.AnalysisHistory.user_id == user.id,
+    ).first()
+    if not h:
+        raise HTTPException(status_code=404, detail="분석 이력을 찾을 수 없습니다.")
+    db.delete(h)
+    db.commit()
+    return {"message": "삭제되었습니다."}
 
 
 # ══════════════════════════════════════════════════════════════

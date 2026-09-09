@@ -261,6 +261,28 @@
     .sample-report-card { position: static; }
   }
 
+  /* ── 분석 이력 목록 ── */
+  .hist-item { display:flex; align-items:center; justify-content:space-between; gap:14px;
+               padding:14px 2px; border-bottom:1px solid var(--border); }
+  .hist-item:last-child { border-bottom:none; }
+  .hist-main { min-width:0; flex:1; }
+  .hist-company { font-size:15px; font-weight:600; color:var(--text); letter-spacing:-0.01em;
+                  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hist-meta { font-size:12px; color:var(--text2); margin-top:4px; line-height:1.5; }
+  .hist-meta2 { font-size:11px; color:var(--text3); margin-top:2px; line-height:1.5; }
+  .hist-tag { display:inline-block; font-size:11px; font-weight:600; padding:1px 7px; border-radius:9px;
+              background:var(--surface2); color:var(--text2); margin-right:6px; }
+  .hist-actions { flex-shrink:0; }
+  .hist-btn { border:none; border-radius:8px; padding:9px 16px; font-size:12px; font-weight:700;
+              font-family:inherit; white-space:nowrap; }
+  .hist-btn.ready { background:#0F6E56; color:#fff; cursor:pointer; box-shadow:0 2px 8px rgba(15,110,86,.22); }
+  .hist-btn.ready:hover { background:#0c5a46; }
+  .hist-btn.done { background:#e5e4e0; color:#8a8a86; cursor:not-allowed; box-shadow:none; }
+  @media (max-width: 560px) {
+    .hist-item { flex-direction:column; align-items:stretch; gap:10px; }
+    .hist-btn { width:100%; padding:11px 16px; }
+  }
+
   /* ── 분석리포트 예시 카드 (실제 PDF 리포트와 동일한 축소 스타일) ── */
   .srp-lead { display: flex; align-items: center; gap: 10px; background: linear-gradient(135deg,#EBF2FA,#f4f8fc); padding: 16px 18px; }
   .srp-lead-icon { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 1px 3px rgba(13,59,124,0.12); }
@@ -532,6 +554,7 @@
     <div class="header-right">
       <span class="credit-badge" id="header-credits">잔여횟수 0건</span>
       <button class="btn" onclick="showPage('landing')">홈</button>
+      <button class="btn" onclick="goHistory()">분석이력</button>
       <button class="btn" onclick="goCommunity()">커뮤니티</button>
       <button class="btn" onclick="showPage('myinfo')">내 정보</button>
       <button class="btn" onclick="showPage('charge')">충전</button>
@@ -804,6 +827,28 @@
     </div>
 
     </div><!-- /.dashboard-grid -->
+  </div>
+</div>
+
+<!-- ───────────────────────── 분석 이력 ───────────────────────── -->
+<div id="page-history" class="page">
+  <header>
+    <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
+    <div class="header-right">
+      <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
+      <button class="btn" onclick="showPage('charge')">충전</button>
+      <button class="btn" onclick="doLogout()">로그아웃</button>
+    </div>
+  </header>
+  <div class="main">
+    <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">분석 이력</h2>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
+      지난 분석 결과를 다시 확인하고 리포트를 출력할 수 있습니다.
+      분석 결과는 <strong>3개월간</strong> 보관되며, 기간이 지나면 목록에서 사라집니다.
+    </p>
+    <div class="card">
+      <div id="history-list"></div>
+    </div>
   </div>
 </div>
 
@@ -1771,6 +1816,7 @@ async function doAnalyze() {
   if (userCredits < 10) { openPaymentModal(); return; }
 
   moveResultsAfter("imageCard");
+  window.currentHistoryId = null;
 
   const btn = document.getElementById("analyzeBtn");
   btn.disabled = true; btn.textContent = "분석 중...";
@@ -1785,6 +1831,7 @@ async function doAnalyze() {
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
     renderResults(d.data);
+    saveAnalysisHistory(d.data, "image");
     toast(`분석 완료 · 잔여횟수 ${Math.floor(userCredits / 10)}건`);
   } catch (e) {
     toast(e.message);
@@ -1961,9 +2008,11 @@ async function doManualAnalyze() {
     comment: "직접 입력 데이터 기반 추정 분석입니다. 실제 재무제표와 차이가 있을 수 있습니다."
   };
 
+  window.currentHistoryId = null;
   moveResultsAfter("manualCard");
   document.getElementById("results").classList.remove("hidden");
   renderResults(d);
+  saveAnalysisHistory(d, "manual");
   document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
   toast(`입력 정보로 분석 완료 · 잔여횟수 ${Math.floor(userCredits / 10)}건`);
 }
@@ -2297,8 +2346,155 @@ function applyEditedFields() {
   });
   updated.comment = "사용자가 직접 값을 수정한 뒤 재계산한 결과입니다.";
   renderResults(updated);
+  updateAnalysisHistory(updated);
   document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
   toast("수정한 값으로 다시 계산했습니다.");
+}
+
+// ── 분석 이력 ───────────────────────────────────────────────────
+let historyItems = [];
+window.currentHistoryId = null;   // 현재 화면에 표시된 분석 결과의 이력 id
+
+function goHistory() {
+  if (!token) { showPage("login"); return; }
+  showPage("history");
+  loadHistoryList();
+}
+
+// 서버는 UTC 기준(naive)으로 저장하므로 Z를 붙여 현지시각으로 변환
+function histDate(iso, withTime) {
+  if (!iso) return "-";
+  const d = new Date(/[Z+]/.test(iso) ? iso : iso + "Z");
+  if (isNaN(d)) return "-";
+  const p = n => String(n).padStart(2, "0");
+  const base = `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+  return withTime ? `${base} ${p(d.getHours())}:${p(d.getMinutes())}` : base;
+}
+
+// 보관 만료까지 남은 일수
+function histDaysLeft(iso) {
+  if (!iso) return null;
+  const d = new Date(/[Z+]/.test(iso) ? iso : iso + "Z");
+  if (isNaN(d)) return null;
+  return Math.ceil((d.getTime() - Date.now()) / 86400000);
+}
+
+async function loadHistoryList() {
+  const el = document.getElementById("history-list");
+  el.innerHTML = `<p style="font-size:13px;color:var(--text3);padding:6px 0;">불러오는 중...</p>`;
+  try {
+    const res = await api("GET", "/history");
+    historyItems = res.histories || [];
+    renderHistoryList();
+  } catch (e) {
+    el.innerHTML = `<p style="font-size:13px;color:var(--danger);padding:6px 0;">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderHistoryList() {
+  const el = document.getElementById("history-list");
+  if (!historyItems.length) {
+    el.innerHTML = `<div style="padding:28px 8px;text-align:center;">
+      <p style="font-size:14px;color:var(--text2);margin-bottom:4px;">아직 분석한 내역이 없습니다.</p>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:14px;">재무제표를 분석하면 이곳에 기록이 남습니다.</p>
+      <button class="btn btn-primary" onclick="showPage('dashboard')">분석하러 가기</button>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = historyItems.map(h => {
+    const company = h.company_name ? escapeHtml(h.company_name) : "상호 미입력";
+    const kind = h.source_type === "manual" ? "직접 입력" : "재무제표 분석";
+    const revenue = (h.revenue !== null && h.revenue !== undefined)
+      ? `매출 ${Number(h.revenue).toLocaleString("ko-KR")}원` : "매출 미인식";
+    const sub = [];
+    if (h.rep_name) sub.push("대표 " + escapeHtml(h.rep_name));
+    if (h.business_number) sub.push(escapeHtml(h.business_number));
+    const left = histDaysLeft(h.expires_at);
+    if (left !== null) sub.push(left > 0 ? `보관 ${left}일 남음` : "보관기간 만료 임박");
+
+    const btn = h.printed
+      ? `<button class="hist-btn done" disabled title="이미 출력한 리포트입니다">출력완료</button>`
+      : `<button class="hist-btn ready" onclick="openHistoryReport(${h.id}, this)">출력가능</button>`;
+
+    return `<div class="hist-item">
+      <div class="hist-main">
+        <div class="hist-company">${company}</div>
+        <div class="hist-meta"><span class="hist-tag">${kind}</span>${histDate(h.created_at, true)} · ${revenue}</div>
+        ${sub.length ? `<div class="hist-meta2">${sub.join(" · ")}</div>` : ""}
+      </div>
+      <div class="hist-actions">${btn}</div>
+    </div>`;
+  }).join("");
+}
+
+// 출력가능 → 저장된 분석 결과를 불러와 리포트(상단에 PDF 저장 버튼이 있는 화면)로 이동
+async function openHistoryReport(historyId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "불러오는 중..."; }
+  try {
+    const res = await api("GET", "/history/" + historyId);
+    const d = res.data || {};
+    if (!d || !Object.keys(d).length) throw new Error("저장된 분석 결과를 불러오지 못했습니다.");
+
+    window.currentHistoryId = historyId;
+    showPage("dashboard");
+    moveResultsAfter(res.history && res.history.source_type === "manual" ? "manualCard" : "imageCard");
+    renderResults(d);
+    document.getElementById("results").classList.remove("hidden");
+    await markHistoryPrinted();   // 리포트 창으로 넘어가기 전에 출력완료 처리
+    // 화면이 그려진 뒤에 리포트를 생성해야 지표/진단 영역이 정상적으로 담김
+    setTimeout(() => downloadResult(), 300);
+  } catch (e) {
+    toast(e.message);
+    if (btn) { btn.disabled = false; btn.textContent = "출력가능"; }
+  }
+}
+
+// 분석 완료 시 이력 저장
+async function saveAnalysisHistory(d, sourceType) {
+  try {
+    const res = await api("POST", "/history", {
+      company_name: d.company_name || "",
+      rep_name: d.rep_name || userRepName || "",
+      business_number: d.business_number || userBizNumber || "",
+      source_type: sourceType || "image",
+      revenue: (d.revenue === null || d.revenue === undefined) ? null : d.revenue,
+      data: d
+    });
+    window.currentHistoryId = (res.history && res.history.id) || null;
+  } catch (e) {
+    // 이력 저장 실패가 분석 자체를 막지 않도록 조용히 무시
+    console.warn("분석 이력 저장 실패:", e.message);
+  }
+}
+
+// 값 수정 후 재계산한 경우 기존 이력을 갱신
+async function updateAnalysisHistory(d) {
+  if (!window.currentHistoryId) return;
+  try {
+    await api("PUT", "/history/" + window.currentHistoryId, {
+      company_name: d.company_name || "",
+      rep_name: d.rep_name || "",
+      business_number: d.business_number || "",
+      revenue: (d.revenue === null || d.revenue === undefined) ? null : d.revenue,
+      data: d
+    });
+  } catch (e) {
+    console.warn("분석 이력 갱신 실패:", e.message);
+  }
+}
+
+// 리포트를 연 시점에 "출력완료"로 표시
+async function markHistoryPrinted() {
+  if (!window.currentHistoryId) return;
+  const id = window.currentHistoryId;
+  try {
+    await api("POST", "/history/" + id + "/printed");
+    const item = historyItems.find(h => h.id === id);
+    if (item) { item.printed = true; renderHistoryList(); }
+  } catch (e) {
+    console.warn("출력 상태 저장 실패:", e.message);
+  }
 }
 
 // ── 커뮤니티 ────────────────────────────────────────────────────
@@ -2626,6 +2822,7 @@ async function submitContactUs() {
 
 // ── 분석 결과 다운로드 ──────────────────────────────────────────
 function downloadResult() {
+  markHistoryPrinted();   // 리포트를 연 시점에 해당 이력을 "출력완료"로 표시
   const now = new Date();
   const dateStr = `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
 

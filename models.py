@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, DateTime, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
@@ -64,3 +64,18 @@ class CommunityComment(Base):
     content    = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=True)
+
+
+class AnalysisHistory(Base):
+    """분석 이력 — 사용자가 지난 분석 결과를 다시 보고 리포트를 출력할 수 있도록 저장"""
+    __tablename__ = "analysis_histories"
+    id              = Column(Integer, primary_key=True, index=True)
+    user_id         = Column(Integer, ForeignKey("users.id"), index=True)
+    company_name    = Column(String, default="")
+    rep_name        = Column(String, default="")
+    business_number = Column(String, default="")
+    source_type     = Column(String, default="image")   # image(재무제표 이미지 분석) / manual(직접 입력)
+    revenue         = Column(BigInteger, nullable=True)  # 매출액 (목록에 표시)
+    data_json       = Column(Text, default="")           # 분석 결과 전체 JSON (리포트 재출력용)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+    printed_at      = Column(DateTime, nullable=True)    # PDF(리포트) 출력 완료 시각 — null이면 아직 출력 전
