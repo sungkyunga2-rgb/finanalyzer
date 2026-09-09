@@ -376,6 +376,7 @@
       <div class="header-right">
         <span class="credit-badge hidden" id="landing-credits">잔여횟수 0건</span>
         <button class="btn hidden" id="landing-dashboard-btn" onclick="showPage('dashboard')">분석하기</button>
+        <button class="btn hidden" id="landing-history-btn" onclick="goHistory()">분석이력</button>
         <a class="btn" href="#" onclick="goCommunity()">커뮤니티</a>
         <button class="btn hidden" id="landing-myinfo-btn" onclick="showPage('myinfo')">내 정보</button>
         <button class="btn hidden" id="landing-charge-btn" onclick="showPage('charge')">충전</button>
@@ -556,15 +557,7 @@
 <div id="page-dashboard" class="page">
   <header>
     <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
-    <div class="header-right">
-      <span class="credit-badge" id="header-credits">잔여횟수 0건</span>
-      <button class="btn" onclick="showPage('landing')">홈</button>
-      <button class="btn" onclick="goHistory()">분석이력</button>
-      <button class="btn" onclick="goCommunity()">커뮤니티</button>
-      <button class="btn" onclick="showPage('myinfo')">내 정보</button>
-      <button class="btn" onclick="showPage('charge')">충전</button>
-      <button class="btn" onclick="doLogout()">로그아웃</button>
-    </div>
+    <div class="header-right" data-nav="dashboard"></div>
   </header>
   <div class="main" style="max-width:1400px;">
     <div class="dashboard-grid">
@@ -839,11 +832,7 @@
 <div id="page-history" class="page">
   <header>
     <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
-    <div class="header-right">
-      <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
-      <button class="btn" onclick="showPage('charge')">충전</button>
-      <button class="btn" onclick="doLogout()">로그아웃</button>
-    </div>
+    <div class="header-right" data-nav="history"></div>
   </header>
   <div class="main">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">분석 이력</h2>
@@ -861,10 +850,7 @@
 <div id="page-community" class="page">
   <header>
     <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
-    <div class="header-right">
-      <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
-      <button class="btn" onclick="doLogout()">로그아웃</button>
-    </div>
+    <div class="header-right" data-nav="community"></div>
   </header>
   <div class="main" style="max-width:640px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
@@ -879,9 +865,7 @@
 <div id="page-communityWrite" class="page">
   <header>
     <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
-    <div class="header-right">
-      <button class="btn" onclick="goCommunity()">← 목록으로</button>
-    </div>
+    <div class="header-right" data-nav="communityWrite"></div>
   </header>
   <div class="main" style="max-width:640px;">
     <h2 id="cw-heading" style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">글쓰기</h2>
@@ -904,9 +888,7 @@
 <div id="page-communityDetail" class="page">
   <header>
     <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
-    <div class="header-right">
-      <button class="btn" onclick="goCommunity()">← 목록으로</button>
-    </div>
+    <div class="header-right" data-nav="communityDetail"></div>
   </header>
   <div class="main" style="max-width:640px;">
     <div id="community-detail"></div>
@@ -926,10 +908,7 @@
 <div id="page-myinfo" class="page">
   <header>
     <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
-    <div class="header-right">
-      <span class="credit-badge" id="myinfo-credits">0 크레딧</span>
-      <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
-    </div>
+    <div class="header-right" data-nav="myinfo"></div>
   </header>
   <div class="main" style="max-width:480px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">내 정보</h2>
@@ -1033,9 +1012,7 @@
 <div id="page-withdraw" class="page">
   <header>
     <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
-    <div class="header-right">
-      <button class="btn" onclick="showPage('myinfo')">← 돌아가기</button>
-    </div>
+    <div class="header-right" data-nav="withdraw"></div>
   </header>
   <div class="main" style="max-width:400px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;color:var(--danger);">회원 탈퇴</h2>
@@ -1055,10 +1032,7 @@
 <div id="page-charge" class="page">
   <header>
     <a class="logo" href="#" onclick="showPage('landing')"><span class="logo-kr"><span class="c1">피</span><span class="c2">나</span></span><span class="logo-en">Fin<span class="accent">Analyzer</span></span></a>
-    <div class="header-right">
-      <span class="credit-badge" id="charge-credits">잔여횟수 0건</span>
-      <button class="btn" onclick="showPage('dashboard')">← 돌아가기</button>
-    </div>
+    <div class="header-right" data-nav="charge"></div>
   </header>
   <div class="main" style="max-width:560px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.02em;">결제하기</h2>
@@ -1305,6 +1279,7 @@ function updateLandingHeader() {
   document.getElementById("landing-login-btn").classList.toggle("hidden", loggedIn);
   document.getElementById("landing-register-btn").classList.toggle("hidden", loggedIn);
   document.getElementById("landing-dashboard-btn").classList.toggle("hidden", !loggedIn);
+  document.getElementById("landing-history-btn").classList.toggle("hidden", !loggedIn);
   document.getElementById("landing-myinfo-btn").classList.toggle("hidden", !loggedIn);
   document.getElementById("landing-charge-btn").classList.toggle("hidden", !loggedIn);
   document.getElementById("landing-logout-btn").classList.toggle("hidden", !loggedIn);
@@ -1320,9 +1295,57 @@ function heroStart() {
   }
 }
 
+// ── 로그인 후 페이지들의 공통 헤더 메뉴 ──────────────────────────
+// 페이지마다 헤더를 따로 적어두면 메뉴가 빠지는 곳이 생기므로 한 곳에서 만들어 넣는다.
+const NAV_ITEMS = [
+  { key: "home",      label: "홈",      action: "showPage('landing')" },
+  { key: "dashboard", label: "분석하기", action: "showPage('dashboard')" },
+  { key: "history",   label: "분석이력", action: "goHistory()" },
+  { key: "community", label: "커뮤니티", action: "goCommunity()" },
+  { key: "myinfo",    label: "내 정보",  action: "showPage('myinfo')" },
+  { key: "charge",    label: "충전",     action: "showPage('charge')" },
+];
+
+// 현재 보고 있는 화면에 해당하는 메뉴 (그 버튼은 중복이므로 감춤)
+const NAV_CURRENT = {
+  dashboard: "dashboard",
+  history: "history",
+  community: "community",
+  communityWrite: "community",
+  communityDetail: "community",
+  myinfo: "myinfo",
+  withdraw: "myinfo",
+  charge: "charge",
+};
+
+// 하위 화면에서만 필요한 뒤로가기 버튼
+const NAV_BACK = {
+  communityWrite:  { label: "← 목록으로", action: "goCommunity()" },
+  communityDetail: { label: "← 목록으로", action: "goCommunity()" },
+  withdraw:        { label: "← 돌아가기", action: "showPage('myinfo')" },
+};
+
+function renderHeaderNav(pageName) {
+  const el = document.querySelector('#page-' + pageName + ' .header-right[data-nav]');
+  if (!el) return;
+  const back = NAV_BACK[pageName];
+  const current = NAV_CURRENT[pageName];
+  let html = "";
+  if (back) html += `<button class="btn" onclick="${back.action}">${back.label}</button>`;
+  html += `<span class="credit-badge">잔여횟수 0건</span>`;
+  NAV_ITEMS.forEach(item => {
+    if (item.key === current) return;
+    html += `<button class="btn" onclick="${item.action}">${item.label}</button>`;
+  });
+  html += `<button class="btn" onclick="doLogout()">로그아웃</button>`;
+  el.innerHTML = html;
+  updateCreditBadges();
+}
+
 function showPage(name) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.getElementById("page-" + name).classList.add("active");
+  renderHeaderNav(name);
   window.scrollTo(0, 0);
   if (name === "landing") {
     updateLandingHeader();
@@ -3742,4 +3765,3 @@ window.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
-
