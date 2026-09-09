@@ -79,9 +79,9 @@ BREVO_API_KEY      = os.getenv("BREVO_API_KEY", "")         # Brevo(구 Sendinbl
 COST_PER_ANALYSIS = 10  # 분석 1회당 차감 크레딧
 
 CREDIT_PACKAGES = {
-    "single":   {"price": 5500,  "credits": 10,  "label": "1건"},
-    "standard": {"price": 27500, "credits": 60,  "label": "5+1건 (총 6건)"},
-    "mega":     {"price": 55000, "credits": 130, "label": "10+3건 (총 13건)"},
+    "single":   {"price": 13900, "credits": 10,  "label": "1건"},
+    "standard": {"price": 59075, "credits": 50,  "label": "5건 (15% 할인)"},
+    "mega":     {"price": 97300, "credits": 100, "label": "10건 (30% 할인)"},
 }
 
 

@@ -152,7 +152,10 @@
   .pkg-badge { display: inline-block; background: var(--accent-bg); color: var(--accent); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-bottom: 8px; }
   .pkg-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
   .pkg-price { font-size: 22px; font-weight: 700; margin-bottom: 2px; letter-spacing: -0.02em; }
+  .pkg-was { font-size: 12px; color: var(--text3); text-decoration: line-through; margin-bottom: 4px; }
   .pkg-credits { font-size: 13px; color: var(--text2); }
+  .pkg-save { display: inline-block; background: #FCEBEB; color: #A32D2D; font-size: 11px; font-weight: 700;
+              padding: 1px 7px; border-radius: 10px; margin-left: 4px; }
 
   /* 결제 팝업 모달 */
   .modal-overlay { position: fixed; inset: 0; background: rgba(20,24,32,0.55); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 20px; }
@@ -410,7 +413,7 @@
     <div class="feature">
       <div class="feature-icon">💳</div>
       <h3>건당 결제 방식</h3>
-      <p>필요한 만큼만 결제해서 사용하세요. 분석 1회당 5,500원부터.</p>
+      <p>필요한 만큼만 결제해서 사용하세요. 분석 1회당 9,730원부터.</p>
     </div>
   </div>
   <div class="community-promo" style="max-width:1080px;margin:0 auto 60px;padding:32px 28px;background:var(--accent-bg);border-radius:16px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
@@ -1065,19 +1068,21 @@
       <div class="packages" id="packages">
         <div class="pkg-card" data-pkg="single" onclick="selectPkg(this,'single')">
           <div class="pkg-name">1건</div>
-          <div class="pkg-price">5,500원</div>
+          <div class="pkg-price">13,900원</div>
           <div class="pkg-credits">분석 1회</div>
         </div>
         <div class="pkg-card recommended" data-pkg="standard" onclick="selectPkg(this,'standard')">
           <div class="pkg-badge">추천</div>
-          <div class="pkg-name">5+1건</div>
-          <div class="pkg-price">27,500원</div>
-          <div class="pkg-credits">분석 6회 <span style="color:var(--accent);font-size:11px;font-weight:600;">1건 보너스</span></div>
+          <div class="pkg-name">5건</div>
+          <div class="pkg-price">59,075원</div>
+          <div class="pkg-was">69,500원</div>
+          <div class="pkg-credits">분석 5회 <span class="pkg-save">15% 할인</span></div>
         </div>
         <div class="pkg-card" data-pkg="mega" onclick="selectPkg(this,'mega')">
-          <div class="pkg-name">10+3건</div>
-          <div class="pkg-price">55,000원</div>
-          <div class="pkg-credits">분석 13회 <span style="color:var(--accent);font-size:11px;font-weight:600;">3건 보너스</span></div>
+          <div class="pkg-name">10건</div>
+          <div class="pkg-price">97,300원</div>
+          <div class="pkg-was">139,000원</div>
+          <div class="pkg-credits">분석 10회 <span class="pkg-save">30% 할인</span></div>
         </div>
       </div>
     </div>
@@ -1205,19 +1210,21 @@
     <div class="packages" id="modal-packages">
       <div class="pkg-card" data-pkg="single" onclick="payFromModal('single')">
         <div class="pkg-name">1건</div>
-        <div class="pkg-price">5,500원</div>
+        <div class="pkg-price">13,900원</div>
         <div class="pkg-credits">분석 1회</div>
       </div>
       <div class="pkg-card recommended" data-pkg="standard" onclick="payFromModal('standard')">
         <div class="pkg-badge">추천</div>
-        <div class="pkg-name">5+1건</div>
-        <div class="pkg-price">27,500원</div>
-        <div class="pkg-credits">분석 6회 <span style="color:var(--accent);font-size:11px;font-weight:600;">1건 보너스</span></div>
+        <div class="pkg-name">5건</div>
+        <div class="pkg-price">59,075원</div>
+        <div class="pkg-was">69,500원</div>
+        <div class="pkg-credits">분석 5회 <span class="pkg-save">15% 할인</span></div>
       </div>
       <div class="pkg-card" data-pkg="mega" onclick="payFromModal('mega')">
-        <div class="pkg-name">10+3건</div>
-        <div class="pkg-price">55,000원</div>
-        <div class="pkg-credits">분석 13회 <span style="color:var(--accent);font-size:11px;font-weight:600;">3건 보너스</span></div>
+        <div class="pkg-name">10건</div>
+        <div class="pkg-price">97,300원</div>
+        <div class="pkg-was">139,000원</div>
+        <div class="pkg-credits">분석 10회 <span class="pkg-save">30% 할인</span></div>
       </div>
     </div>
     <p class="note text-center mt1">포트원 안전 결제 · 카드/계좌이체/간편결제 지원</p>
@@ -3607,9 +3614,9 @@ function isMobileDevice() {
 
 // ── 결제 (포트원 V2) ───────────────────────────────────────────
 const PKGS = {
-  single:   { price: 5500,  credits: 10,  label: "1건" },
-  standard: { price: 27500, credits: 60,  label: "5+1건 (총 6건)" },
-  mega:     { price: 55000, credits: 130, label: "10+3건 (총 13건)" },
+  single:   { price: 13900, credits: 10,  label: "1건" },
+  standard: { price: 59075, credits: 50,  label: "5건 (15% 할인)" },
+  mega:     { price: 97300, credits: 100, label: "10건 (30% 할인)" },
 };
 
 function selectPkg(el, pkgId) {
@@ -3713,8 +3720,8 @@ async function handlePaymentCallback() {
     const paymentId = params.get("paymentId");
     const amount    = parseInt(params.get("totalAmount") || "0");
     let pkgId = "single";
-    if (amount === 27500) pkgId = "standard";
-    if (amount === 55000) pkgId = "mega";
+    if (amount === 59075) pkgId = "standard";
+    if (amount === 97300) pkgId = "mega";
     await confirmPayment(paymentId, pkgId, amount);
     history.replaceState({}, "", window.location.pathname);
   }
