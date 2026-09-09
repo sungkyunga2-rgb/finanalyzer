@@ -3690,6 +3690,10 @@ async function executePayment(pkgId, fromModal) {
   const pkg = PKGS[pkgId];
   const orderId = "FA" + Date.now() + Math.random().toString(36).slice(2, 7).toUpperCase();
 
+  // 리다이렉트로 돌아왔을 때 "어떤 이용권을 샀는지" 알 수 있도록 미리 저장해 둔다.
+  // (포트원은 복귀 URL에 결제 금액을 붙여주지 않으므로 금액으로 역추적할 수 없음)
+  try { localStorage.setItem("fa_pending_pay", JSON.stringify({ pkgId, orderId })); } catch (e) {}
+
   try {
     const response = await window.PortOne.requestPayment({
       storeId: PORTONE_STORE_ID,
@@ -3700,11 +3704,12 @@ async function executePayment(pkgId, fromModal) {
       currency: "KRW",
       payMethod: "CARD",            // CARD / VIRTUAL_ACCOUNT / TRANSFER / EASY_PAY
       customer: { email: userEmail },
-      redirectUrl: window.location.origin + window.location.pathname + "?payment=success",
+      redirectUrl: window.location.origin + window.location.pathname + "?payment=success&pkg=" + encodeURIComponent(pkgId),
     });
 
     if (response.code) {
       // 오류 또는 사용자 취소
+      try { localStorage.removeItem("fa_pending_pay"); } catch (e) {}
       if (response.code !== "USER_CANCEL") toast("결제 실패: " + response.message);
       return;
     }
@@ -3720,34 +3725,82 @@ async function executePayment(pkgId, fromModal) {
 
 // 백엔드로 결제 검증 + 크레딧 지급 요청
 async function confirmPayment(paymentId, pkgId, amount) {
+  if (!PKGS[pkgId]) {
+    toast("이용권 정보를 확인하지 못했습니다. 결제번호 " + (paymentId || "-") + " 로 문의해주세요.");
+    return false;
+  }
   try {
     const d = await api("POST", "/payments/confirm", {
       payment_id: paymentId,   // 포트원은 payment_id 사용
       package_id: pkgId,
-      amount,
+      amount: amount !== undefined && amount !== null ? amount : PKGS[pkgId].price,
     });
     userCredits = d.total_credits;
     localStorage.setItem("fa_credits", userCredits);
+    try { localStorage.removeItem("fa_pending_pay"); } catch (e) {}
     updateCreditBadges();
     toast(`결제 완료! +${Math.floor(d.credits_added / 10)}건 (잔여횟수 ${Math.floor(d.total_credits / 10)}건)`);
     showPage("dashboard");
+    return true;
   } catch (e) {
-    toast("결제 확인 중 오류: " + e.message);
+    // 이미 처리된 결제라면 정상 상황이므로 대기 정보만 정리
+    if (e.message && e.message.indexOf("이미 처리된") !== -1) {
+      try { localStorage.removeItem("fa_pending_pay"); } catch (err) {}
+      toast("이미 처리된 결제입니다.");
+      return true;
+    }
+    toast("결제 확인 중 오류: " + e.message + " (결제번호 " + (paymentId || "-") + ")");
+    return false;
   }
+}
+
+// 결제 시작 전에 저장해 둔 정보 읽기
+function readPendingPay() {
+  try {
+    const raw = localStorage.getItem("fa_pending_pay");
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
 }
 
 // 리다이렉트 방식일 때 콜백 처리 (redirectUrl로 돌아온 경우)
 async function handlePaymentCallback() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get("payment") === "success") {
-    const paymentId = params.get("paymentId");
-    const amount    = parseInt(params.get("totalAmount") || "0");
-    let pkgId = "single";
-    if (amount === 59075) pkgId = "standard";
-    if (amount === 97300) pkgId = "mega";
-    await confirmPayment(paymentId, pkgId, amount);
-    history.replaceState({}, "", window.location.pathname);
+  if (params.get("payment") !== "success") return false;
+
+  const pending = readPendingPay();
+  const clearUrl = () => history.replaceState({}, "", window.location.pathname);
+
+  // 포트원이 실패/취소 코드를 함께 돌려준 경우
+  const code = params.get("code");
+  if (code) {
+    try { localStorage.removeItem("fa_pending_pay"); } catch (e) {}
+    if (code !== "USER_CANCEL") toast("결제 실패: " + (params.get("message") || code));
+    clearUrl();
+    return true;
   }
+
+  const paymentId = params.get("paymentId") || (pending && pending.orderId) || "";
+  // 어떤 이용권인지는 복귀 URL의 pkg 값으로 판단 (없으면 결제 직전에 저장해 둔 값)
+  const pkgId = params.get("pkg") || (pending && pending.pkgId) || "";
+
+  if (!PKGS[pkgId]) {
+    toast("구매하신 이용권 정보를 확인하지 못했습니다. 결제번호 " + (paymentId || "-") + " 로 문의해주세요.");
+    clearUrl();
+    return true;
+  }
+
+  await confirmPayment(paymentId, pkgId, PKGS[pkgId].price);
+  clearUrl();
+  return true;
+}
+
+// 결제는 됐는데 검증이 끊긴 경우(창 종료·통신 오류 등) 앱을 다시 열었을 때 한 번 더 시도
+async function retryPendingPayment() {
+  const pending = readPendingPay();
+  if (!pending || !pending.orderId || !PKGS[pending.pkgId]) return;
+  // 한 번만 시도하고 결과와 상관없이 정리 (실패해도 토스트로 결제번호를 안내)
+  const ok = await confirmPayment(pending.orderId, pending.pkgId, PKGS[pending.pkgId].price);
+  if (!ok) { try { localStorage.removeItem("fa_pending_pay"); } catch (e) {} }
 }
 
 // ── 초기화 ──────────────────────────────────────────────────────
@@ -3755,9 +3808,13 @@ window.addEventListener("DOMContentLoaded", () => {
   if (token) {
     updateCreditBadges();
     flushPendingPrinted();
-    handlePaymentCallback();
     const params = new URLSearchParams(window.location.search);
-    if (!params.get("payment")) showPage("dashboard");
+    if (params.get("payment")) {
+      handlePaymentCallback();
+    } else {
+      showPage("dashboard");
+      retryPendingPayment();
+    }
   } else {
     showPage("landing");
   }
