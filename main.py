@@ -50,6 +50,9 @@ def run_auto_migration():
         "business_number": "VARCHAR DEFAULT ''",
         "source_type": "VARCHAR DEFAULT 'image'",
         "revenue": "BIGINT",
+        "stability_grade": "VARCHAR DEFAULT ''",
+        "stability_score": "INTEGER",
+        "stability_max": "INTEGER",
         "data_json": "TEXT",
         "created_at": "TIMESTAMP",
         "printed_at": "TIMESTAMP",
@@ -737,6 +740,9 @@ class AnalysisHistoryCreate(BaseModel):
     business_number: Optional[str] = ""
     source_type: Optional[str] = "image"   # image(재무제표 분석) / manual(직접 입력)
     revenue: Optional[float] = None
+    stability_grade: Optional[str] = None
+    stability_score: Optional[int] = None
+    stability_max: Optional[int] = None
     data: dict = {}
 
 def _history_summary(h: "models.AnalysisHistory") -> dict:
@@ -749,6 +755,9 @@ def _history_summary(h: "models.AnalysisHistory") -> dict:
         "business_number": h.business_number or "",
         "source_type": h.source_type or "image",
         "revenue": h.revenue,
+        "stability_grade": h.stability_grade or "",
+        "stability_score": h.stability_score,
+        "stability_max": h.stability_max,
         "created_at": h.created_at.isoformat() if h.created_at else None,
         "printed_at": h.printed_at.isoformat() if h.printed_at else None,
         "printed": h.printed_at is not None,
@@ -776,6 +785,9 @@ def create_analysis_history(
         business_number=(body.business_number or "").strip()[:50],
         source_type=(body.source_type or "image"),
         revenue=revenue,
+        stability_grade=(body.stability_grade or "")[:30],
+        stability_score=body.stability_score,
+        stability_max=body.stability_max,
         data_json=_json.dumps(body.data or {}, ensure_ascii=False),
     )
     db.add(item)
@@ -846,6 +858,12 @@ def update_analysis_history(
             h.revenue = int(round(float(body.revenue)))
         except Exception:
             pass
+    if body.stability_grade is not None:
+        h.stability_grade = (body.stability_grade or "")[:30]
+    if body.stability_score is not None:
+        h.stability_score = body.stability_score
+    if body.stability_max is not None:
+        h.stability_max = body.stability_max
     if body.data:
         h.data_json = _json.dumps(body.data, ensure_ascii=False)
     db.commit()

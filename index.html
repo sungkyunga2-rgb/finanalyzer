@@ -269,6 +269,8 @@
   .hist-company { font-size:15px; font-weight:600; color:var(--text); letter-spacing:-0.01em;
                   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .hist-meta { font-size:12px; color:var(--text2); margin-top:4px; line-height:1.5; }
+  .hist-grade { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:10px;
+                margin-left:8px; vertical-align:middle; white-space:nowrap; }
   .hist-meta2 { font-size:11px; color:var(--text3); margin-top:2px; line-height:1.5; }
   .hist-tag { display:inline-block; font-size:11px; font-weight:600; padding:1px 7px; border-radius:9px;
               background:var(--surface2); color:var(--text2); margin-right:6px; }
@@ -2184,6 +2186,13 @@ function renderResults(d) {
                    : scorePct >= 40 ? { label: "C (주의)", color: "#B8860B", bg: "#FEF6D8" }
                    : { label: "D (위험)", color: "#A32D2D", bg: "#FCEBEB" };
 
+  // 분석 이력 목록에 표시할 사업 안정성 등급 보관
+  window.currentStabilityGrade = {
+    label: scoreGrade.label,
+    score: scoreTotal,
+    max: maxScore,
+  };
+
   const stabilityHTML = `
     <div style="background:#fff;border-radius:14px;padding:1.25rem;border:1px solid #e5e4e0;border-top:4px solid ${scoreGrade.color};margin-top:10px;page-break-inside:avoid;break-inside:avoid;">
       <div style="font-size:12px;color:#9b9a95;font-weight:600;margin-bottom:10px;">🏆 사업 안정성 종합점수</div>
@@ -2391,6 +2400,22 @@ async function loadHistoryList() {
   }
 }
 
+// 사업 안정성 등급 배지 (A 우수 / B 양호 / C 주의 / D 위험)
+function histGradeBadge(h) {
+  if (!h.stability_grade) return "";
+  const letter = String(h.stability_grade).trim().charAt(0).toUpperCase();
+  const palette = {
+    A: { color: "#0F6E56", bg: "#E1F5EE" },
+    B: { color: "#185FA5", bg: "#EBF2FA" },
+    C: { color: "#B8860B", bg: "#FEF6D8" },
+    D: { color: "#A32D2D", bg: "#FCEBEB" },
+  };
+  const c = palette[letter] || { color: "var(--text2)", bg: "var(--surface2)" };
+  const score = (h.stability_score !== null && h.stability_score !== undefined && h.stability_max)
+    ? ` ${h.stability_score}/${h.stability_max}점` : "";
+  return `<span class="hist-grade" style="color:${c.color};background:${c.bg};">사업안정성 ${escapeHtml(h.stability_grade)}${score}</span>`;
+}
+
 function renderHistoryList() {
   const el = document.getElementById("history-list");
   if (!historyItems.length) {
@@ -2407,6 +2432,7 @@ function renderHistoryList() {
     const kind = h.source_type === "manual" ? "직접 입력" : "재무제표 분석";
     const revenue = (h.revenue !== null && h.revenue !== undefined)
       ? `매출 ${Number(h.revenue).toLocaleString("ko-KR")}원` : "매출 미인식";
+    const grade = histGradeBadge(h);
     const sub = [];
     if (h.rep_name) sub.push("대표 " + escapeHtml(h.rep_name));
     if (h.business_number) sub.push(escapeHtml(h.business_number));
@@ -2419,7 +2445,7 @@ function renderHistoryList() {
 
     return `<div class="hist-item">
       <div class="hist-main">
-        <div class="hist-company">${company}</div>
+        <div class="hist-company">${company}${grade}</div>
         <div class="hist-meta"><span class="hist-tag">${kind}</span>${histDate(h.created_at, true)} · ${revenue}</div>
         ${sub.length ? `<div class="hist-meta2">${sub.join(" · ")}</div>` : ""}
       </div>
@@ -2441,7 +2467,6 @@ async function openHistoryReport(historyId, btn) {
     moveResultsAfter(res.history && res.history.source_type === "manual" ? "manualCard" : "imageCard");
     renderResults(d);
     document.getElementById("results").classList.remove("hidden");
-    await markHistoryPrinted();   // 리포트 창으로 넘어가기 전에 출력완료 처리
     // 화면이 그려진 뒤에 리포트를 생성해야 지표/진단 영역이 정상적으로 담김
     setTimeout(() => downloadResult(), 300);
   } catch (e) {
@@ -2459,6 +2484,9 @@ async function saveAnalysisHistory(d, sourceType) {
       business_number: d.business_number || userBizNumber || "",
       source_type: sourceType || "image",
       revenue: (d.revenue === null || d.revenue === undefined) ? null : d.revenue,
+      stability_grade: (window.currentStabilityGrade || {}).label || "",
+      stability_score: (window.currentStabilityGrade || {}).score,
+      stability_max: (window.currentStabilityGrade || {}).max,
       data: d
     });
     window.currentHistoryId = (res.history && res.history.id) || null;
@@ -2477,6 +2505,9 @@ async function updateAnalysisHistory(d) {
       rep_name: d.rep_name || "",
       business_number: d.business_number || "",
       revenue: (d.revenue === null || d.revenue === undefined) ? null : d.revenue,
+      stability_grade: (window.currentStabilityGrade || {}).label || "",
+      stability_score: (window.currentStabilityGrade || {}).score,
+      stability_max: (window.currentStabilityGrade || {}).max,
       data: d
     });
   } catch (e) {
@@ -2484,10 +2515,10 @@ async function updateAnalysisHistory(d) {
   }
 }
 
-// 리포트를 연 시점에 "출력완료"로 표시
-async function markHistoryPrinted() {
-  if (!window.currentHistoryId) return;
-  const id = window.currentHistoryId;
+// 실제로 저장/인쇄를 마쳤을 때만 "출력완료"로 표시
+async function markHistoryPrinted(historyId) {
+  const id = historyId || window.currentHistoryId;
+  if (!id || !token) return;
   try {
     await api("POST", "/history/" + id + "/printed");
     const item = historyItems.find(h => h.id === id);
@@ -2495,6 +2526,20 @@ async function markHistoryPrinted() {
   } catch (e) {
     console.warn("출력 상태 저장 실패:", e.message);
   }
+}
+
+// 리포트 창(새 탭)에서 "저장 완료"를 누르면 호출되는 창구
+window.faMarkHistoryPrinted = function (id) { markHistoryPrinted(id); };
+
+// 리포트 창이 원래 창과 연결되지 않는 경우(모바일 등)에는 localStorage로 전달되므로,
+// 앱으로 돌아왔을 때 이를 확인해 출력완료 처리
+async function flushPendingPrinted() {
+  let pending = null;
+  try { pending = localStorage.getItem("fa_pending_printed"); } catch (e) { return; }
+  if (!pending) return;
+  try { localStorage.removeItem("fa_pending_printed"); } catch (e) {}
+  const id = parseInt(pending, 10);
+  if (id) await markHistoryPrinted(id);
 }
 
 // ── 커뮤니티 ────────────────────────────────────────────────────
@@ -2822,7 +2867,6 @@ async function submitContactUs() {
 
 // ── 분석 결과 다운로드 ──────────────────────────────────────────
 function downloadResult() {
-  markHistoryPrinted();   // 리포트를 연 시점에 해당 이력을 "출력완료"로 표시
   const now = new Date();
   const dateStr = `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
 
@@ -3262,6 +3306,15 @@ function downloadResult() {
     padding: 12px 24px; font-size: 15px; font-weight: 700; cursor: pointer;
     font-family: 'Noto Sans KR', sans-serif; width: 100%; max-width: 420px;
   }
+  /* 저장/인쇄를 실제로 마쳤는지 확인하는 바 (분석이력의 출력완료 처리에 사용) */
+  .fa-print-confirm { display: none; align-items: center; justify-content: center; gap: 8px;
+    flex-wrap: wrap; margin-top: 10px; color: #fff; font-size: 13px; }
+  .fa-print-confirm.show { display: flex; }
+  .fa-print-confirm button { width: auto; max-width: none; display: inline-block; margin: 0;
+    padding: 7px 14px; font-size: 13px; border-radius: 8px; }
+  .fa-print-confirm .fa-no { background: rgba(255,255,255,0.18); color: #fff; }
+  .fa-print-confirm .fa-done { color: #a8e6cf; font-weight: 700; }
+  @media print { .fa-print-confirm { display: none !important; } }
 </style>
 </head>
 <body>
@@ -3270,7 +3323,12 @@ function downloadResult() {
   ${isMobileDevice()
     ? `<button onclick="saveAsImage()">🖼️ 이미지로 저장하기</button>
        <div style="color:rgba(255,255,255,0.65);font-size:11px;margin-top:6px;">(PDF파일은 PC에서만 저장 가능합니다)</div>`
-    : `<button onclick="window.print()">🖨️ PDF로 저장하기 (인쇄창 열기)</button>`}
+    : `<button onclick="faStartPrint()">🖨️ PDF로 저장하기 (인쇄창 열기)</button>`}
+  <div id="faPrintConfirm" class="fa-print-confirm">
+    <span>저장(또는 인쇄)을 완료하셨나요?</span>
+    <button type="button" onclick="faConfirmPrinted()">네, 완료했어요</button>
+    <button type="button" class="fa-no" onclick="faHidePrintConfirm()">아니요</button>
+  </div>
 </div>
 
 <div id="reportCaptureArea">
@@ -3445,6 +3503,50 @@ function downloadResult() {
 </div>
 
 <script>
+// 이 리포트가 어떤 분석 이력에서 열린 것인지 (출력완료 기록용)
+var FA_HISTORY_ID = ${window.currentHistoryId ? window.currentHistoryId : "null"};
+var faPrintRequested = false;
+
+function faShowPrintConfirm() {
+  var el = document.getElementById('faPrintConfirm');
+  if (el) el.classList.add('show');
+}
+function faHidePrintConfirm() {
+  var el = document.getElementById('faPrintConfirm');
+  if (el) el.classList.remove('show');
+}
+function faStartPrint() {
+  faPrintRequested = true;
+  window.print();
+  // afterprint 를 지원하지 않는 브라우저를 위한 보완
+  setTimeout(function () { if (faPrintRequested) faShowPrintConfirm(); }, 1200);
+}
+window.addEventListener('afterprint', function () { if (faPrintRequested) faShowPrintConfirm(); });
+
+// 사용자가 "네, 완료했어요"를 눌렀을 때만 분석이력을 출력완료로 기록
+function faConfirmPrinted() {
+  faPrintRequested = false;
+  var el = document.getElementById('faPrintConfirm');
+  if (el) { el.classList.add('show'); el.innerHTML = '<span class="fa-done">✓ 분석이력에 출력완료로 기록되었습니다.</span>'; }
+  if (!FA_HISTORY_ID) return;
+  var sent = false;
+  try {
+    if (window.opener && !window.opener.closed && typeof window.opener.faMarkHistoryPrinted === 'function') {
+      window.opener.faMarkHistoryPrinted(FA_HISTORY_ID);
+      sent = true;
+    }
+  } catch (err) {}
+  if (!sent) {
+    // 원래 창과 연결되지 않은 경우(모바일 등)에는 저장해 두었다가 앱으로 돌아왔을 때 처리
+    try { localStorage.setItem('fa_pending_printed', String(FA_HISTORY_ID)); } catch (err) {}
+  }
+}
+
+function faImageSaved(btn) {
+  faConfirmPrinted();
+  if (btn) btn.outerHTML = '<div style="color:#0F6E56;font-weight:700;padding:10px;font-size:13px;">✓ 분석이력에 출력완료로 기록되었습니다.</div>';
+}
+
 async function saveAsImage() {
   const modal = document.getElementById('imgSaveModal');
   const resultBox = document.getElementById('imgSaveResult');
@@ -3463,7 +3565,9 @@ async function saveAsImage() {
     const target = document.getElementById('reportCaptureArea');
     const canvas = await window.html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    resultBox.innerHTML = '<img src="' + dataUrl + '" style="width:100%;height:auto;display:block;border-radius:6px;" />';
+    resultBox.innerHTML = '<img src="' + dataUrl + '" style="width:100%;height:auto;display:block;border-radius:6px;" />'
+      + '<div style="margin-top:12px;font-size:13px;color:#333;line-height:1.5;">이미지를 길게 눌러 저장하신 뒤 아래 버튼을 눌러주세요.</div>'
+      + '<button type="button" onclick="faImageSaved(this)" style="margin-top:8px;background:#0F6E56;color:#fff;border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">저장 완료</button>';
   } catch (e) {
     resultBox.innerHTML = '<div style="padding:40px 20px;color:#c0392b;">이미지 생성에 실패했습니다: ' + e.message + '</div>';
   }
@@ -3620,6 +3724,7 @@ async function handlePaymentCallback() {
 window.addEventListener("DOMContentLoaded", () => {
   if (token) {
     updateCreditBadges();
+    flushPendingPrinted();
     handlePaymentCallback();
     const params = new URLSearchParams(window.location.search);
     if (!params.get("payment")) showPage("dashboard");

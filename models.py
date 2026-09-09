@@ -76,6 +76,9 @@ class AnalysisHistory(Base):
     business_number = Column(String, default="")
     source_type     = Column(String, default="image")   # image(재무제표 이미지 분석) / manual(직접 입력)
     revenue         = Column(BigInteger, nullable=True)  # 매출액 (목록에 표시)
+    stability_grade = Column(String, default="")         # 사업 안정성 종합등급 (예: "A (우수)")
+    stability_score = Column(Integer, nullable=True)     # 취득 점수
+    stability_max   = Column(Integer, nullable=True)     # 만점 (산정불가 항목이 있으면 100 미만)
     data_json       = Column(Text, default="")           # 분석 결과 전체 JSON (리포트 재출력용)
     created_at      = Column(DateTime, default=datetime.utcnow)
     printed_at      = Column(DateTime, nullable=True)    # PDF(리포트) 출력 완료 시각 — null이면 아직 출력 전
