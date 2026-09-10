@@ -1329,6 +1329,45 @@ def admin_list_refund_requests(_: bool = Depends(check_admin), db: Session = Dep
     result = []
     for r in reqs:
         user = db.query(models.User).filter(models.User.id == r.user_id).first()
+
+        # ── 결제 내역 (취소된 건도 함께 보여줘야 헷갈리지 않음) ──
+        pays = (db.query(models.Payment)
+                  .filter(models.Payment.user_id == r.user_id)
+                  .order_by(models.Payment.created_at.desc()).limit(20).all()) if user else []
+        pay_rows = []
+        for p in pays:
+            amount = p.amount or 0
+            cancelled = p.cancelled_amount or 0
+            pay_rows.append({
+                "order_id": p.order_id,
+                "amount": amount,
+                "cancelled_amount": cancelled,
+                "cancellable": max(0, amount - cancelled),
+                "credits": p.credits or 0,
+                "package_id": p.package_id,
+                "package_label": (CREDIT_PACKAGES.get(p.package_id) or {}).get("label", p.package_id),
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "cancelled_at": p.cancelled_at.isoformat() if p.cancelled_at else None,
+                "status": ("취소완료" if cancelled >= amount and amount > 0
+                           else ("부분취소" if cancelled else "결제완료")),
+            })
+
+        # ── 크레딧 출처 요약: 실결제 지급분과 관리자 지급분을 구분 ──
+        # 관리자 지급/조정분은 별도 기록이 없으므로 (현재 잔여) - (결제 지급 - 분석 사용)으로 역산한다.
+        credit_summary = None
+        if user:
+            paid_credits = sum((p.credits or 0) for p in pays)
+            used_credits = sum(
+                (l.credits_used or 0)
+                for l in db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == r.user_id).all()
+            )
+            expected = paid_credits - used_credits
+            credit_summary = {
+                "paid_credits": paid_credits,          # 결제로 지급된 크레딧
+                "used_credits": used_credits,          # 분석에 사용한 크레딧
+                "current_credits": user.credits,       # 현재 잔여
+                "admin_adjusted": user.credits - expected,   # 관리자가 넣거나 뺀 분 (추정)
+            }
         result.append({
             "id": r.id,
             "email": user.email if user else "(탈퇴한 회원)",
@@ -1343,28 +1382,16 @@ def admin_list_refund_requests(_: bool = Depends(check_admin), db: Session = Dep
             "order_id": r.order_id or "",
             "refunded_amount": r.refunded_amount or 0,
             "credits_deducted": r.credits_deducted or 0,
-            # 취소 가능한 결제 내역 (환불 처리 시 선택)
-            "payments": ([
-                {
-                    "order_id": p.order_id,
-                    "amount": p.amount or 0,
-                    "cancelled_amount": p.cancelled_amount or 0,
-                    "cancellable": max(0, (p.amount or 0) - (p.cancelled_amount or 0)),
-                    "credits": p.credits or 0,
-                    "package_id": p.package_id,
-                    "package_label": (CREDIT_PACKAGES.get(p.package_id) or {}).get("label", p.package_id),
-                    "created_at": p.created_at.isoformat() if p.created_at else None,
-                }
-                for p in db.query(models.Payment)
-                            .filter(models.Payment.user_id == r.user_id)
-                            .order_by(models.Payment.created_at.desc()).limit(10).all()
-            ] if user else []),
+            # 결제 내역 전체 (취소 완료분 포함) + 크레딧 출처 요약
+            "payments": pay_rows,
+            "credit_summary": credit_summary,
         })
     return {"count": len(result), "requests": result}
 
 class AdminResolveRefundBody(BaseModel):
     status: str  # processed / rejected
     admin_note: str = ""
+    deduct_credits: Optional[int] = None   # 포트원에서 직접 취소한 경우 크레딧만 회수할 때 사용
 
 @app.post("/admin/refund-requests/{req_id}/resolve")
 def admin_resolve_refund(req_id: int, body: AdminResolveRefundBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
@@ -1373,11 +1400,51 @@ def admin_resolve_refund(req_id: int, body: AdminResolveRefundBody, _: bool = De
     r = db.query(models.RefundRequest).filter(models.RefundRequest.id == req_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="해당 환불 신청을 찾을 수 없습니다.")
+    deducted = 0
+    shortfall = 0
+    if body.status == "processed" and body.deduct_credits:
+        user = db.query(models.User).filter(models.User.id == r.user_id).first()
+        if user:
+            want = max(0, int(body.deduct_credits))
+            deducted = min(want, user.credits)
+            shortfall = want - deducted
+            user.credits -= deducted
+            r.credits_deducted = (r.credits_deducted or 0) + deducted
+
     r.status = body.status
-    r.admin_note = body.admin_note.strip()
+    note = body.admin_note.strip()
+    if deducted:
+        note = (note + " / " if note else "") + f"크레딧 {deducted} 회수"
+    r.admin_note = note
     r.processed_at = datetime.utcnow()
     db.commit()
-    return {"id": r.id, "status": r.status}
+    return {"id": r.id, "status": r.status, "credits_deducted": deducted, "credits_shortfall": shortfall}
+
+
+async def sync_payment_cancelled(payment: "models.Payment", db: Session) -> int:
+    """포트원에서 실제 취소된 금액을 조회해 우리 결제 기록에 반영한다."""
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(
+                f"{PORTONE_API_BASE}/payments/{payment.order_id}",
+                headers={"Authorization": f"PortOne {PORTONE_SECRET_KEY}", "Content-Type": "application/json"},
+            )
+        if resp.status_code != 200:
+            return 0
+        info = resp.json() or {}
+        amt = info.get("amount") or {}
+        cancelled = int(amt.get("cancelled") or 0)
+        if not cancelled and str(info.get("status", "")).upper() == "CANCELLED":
+            cancelled = int(payment.amount or 0)   # 금액 정보가 없으면 전액 취소로 간주
+        if cancelled:
+            payment.cancelled_amount = cancelled
+            payment.cancelled_at = payment.cancelled_at or datetime.utcnow()
+            db.commit()
+        return cancelled
+    except Exception as e:
+        db.rollback()
+        print(f"결제 취소 상태 동기화 실패: {e}")
+        return 0
 
 
 class AdminRefundBody(BaseModel):
@@ -1440,8 +1507,16 @@ async def admin_process_refund(
         raise HTTPException(status_code=502, detail=f"포트원 서버에 연결하지 못했습니다: {e}")
 
     if resp.status_code not in (200, 201):
-        detail = resp.text[:300]
-        raise HTTPException(status_code=400, detail=f"포트원 결제 취소 실패 (status={resp.status_code}) {detail}")
+        raw = resp.text or ""
+        # 포트원 콘솔 등에서 이미 취소한 결제 → 우리 DB 기록을 실제 상태로 맞춰준다
+        if "ALREADY_CANCELLED" in raw.upper():
+            synced = await sync_payment_cancelled(payment, db)
+            raise HTTPException(
+                status_code=400,
+                detail=(f"이 결제는 포트원에서 이미 취소되어 있습니다"
+                        + (f" (취소금액 {synced:,}원)" if synced else "")
+                        + ". 결제 기록을 실제 상태로 맞춰두었으니, 크레딧 회수와 상태 정리는 '완료 처리'로 진행해주세요."))
+        raise HTTPException(status_code=400, detail=f"포트원 결제 취소 실패 (status={resp.status_code}) {raw[:200]}")
 
     # ── 여기부터는 실제로 돈이 나간 뒤이므로 기록을 반드시 남긴다 ──
     payment.cancelled_amount = (payment.cancelled_amount or 0) + amount

@@ -343,7 +343,7 @@ const REFUND_STATUS_KR = { pending: "처리 대기", processed: "환불 완료",
 function renderRefundList(d) {
   const card = document.getElementById("refundListCard");
   const rows = d.requests.map(r => {
-    const pays = (r.payments || []).filter(p => p.cancellable > 0);
+    const pays = (r.payments || []).filter(p => p.cancellable > 0);   // 환불 가능한 실결제 건만
     const options = pays.map(p =>
       `<option value="${esc(p.order_id)}" data-cancellable="${p.cancellable}">
          ${esc(fmtDT(p.created_at))} · ${Number(p.amount).toLocaleString("ko-KR")}원 · ${esc(p.package_label)}${
@@ -353,13 +353,45 @@ function renderRefundList(d) {
     const actions = r.status === "pending"
       ? `<div class="row-actions">
            <button class="btn-primary btn-xs" onclick="toggleRefundPanel(${r.id})">환불 처리</button>
+           <button class="btn-ghost btn-xs" onclick="resolveRefund(${r.id}, 'processed')">완료 처리</button>
            <button class="btn-ghost btn-xs" onclick="resolveRefund(${r.id}, 'rejected')">반려</button>
          </div>`
       : `<span class="muted">${esc(r.admin_note || "")}</span>`;
 
+    // 결제 내역 + 크레딧 출처 요약 (관리자가 넣어준 분과 실결제분을 구분)
+    const cs = r.credit_summary;
+    const summary = cs ? `
+      <div style="background:#EBF2FA;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.7;">
+        <strong>크레딧 출처</strong>
+        &nbsp;· 실결제 지급 <strong>${cs.paid_credits}</strong>
+        &nbsp;· 분석 사용 <strong>-${cs.used_credits}</strong>
+        &nbsp;· 관리자 지급/조정 <strong style="color:${cs.admin_adjusted >= 0 ? "var(--safe)" : "var(--danger)"};">${cs.admin_adjusted >= 0 ? "+" : ""}${cs.admin_adjusted}</strong>
+        &nbsp;→ 현재 잔여 <strong>${cs.current_credits}</strong> (${Math.floor(cs.current_credits / 10)}건)
+        <div class="muted" style="margin-top:4px;">
+          관리자 지급/조정분은 별도 기록이 없어 역산한 값입니다. <strong>환불 대상은 실결제 건에 한합니다.</strong>
+        </div>
+      </div>` : "";
+
+    const payTable = (r.payments || []).length ? `
+      <div class="section-title" style="margin-top:0;">결제 내역</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>결제일</th><th>주문번호</th><th>이용권</th><th>결제금액</th><th>지급 크레딧</th><th>상태</th></tr></thead>
+        <tbody>${r.payments.map(p => `<tr>
+          <td style="white-space:nowrap;">${esc(fmtDT(p.created_at))}</td>
+          <td class="muted">${esc(p.order_id)}</td>
+          <td>${esc(p.package_label)}</td>
+          <td style="white-space:nowrap;">${Number(p.amount).toLocaleString("ko-KR")}원${
+            p.cancelled_amount ? `<div class="muted">취소 ${Number(p.cancelled_amount).toLocaleString("ko-KR")}원</div>` : ""}</td>
+          <td>${p.credits}</td>
+          <td><span class="tag ${p.status === "결제완료" ? "tag-on" : (p.status === "취소완료" ? "tag-off" : "tag-pct")}">${p.status}</span></td>
+        </tr>`).join("")}</tbody>
+      </table></div>` : `<div class="muted" style="margin-bottom:12px;">실제 결제 내역이 없습니다. (관리자가 지급한 크레딧만 보유)</div>`;
+
     const panel = r.status === "pending" ? `
       <tr id="refundPanelRow-${r.id}" class="hidden"><td colspan="6">
         <div class="refund-panel">
+          ${summary}
+          ${payTable}
           <div class="warn-box">
             <strong>환불 실행을 누르면 포트원에서 실제로 결제가 취소되고 고객에게 돈이 돌아갑니다.</strong>
             되돌릴 수 없으니 결제건과 금액을 확인해주세요. 취소가 성공하면 크레딧 회수와 상태 변경까지 함께 처리됩니다.
@@ -435,20 +467,40 @@ async function doRefund(id) {
     toast(msg);
     alert(msg);
     renderRefundList(await api("GET", "/admin/refund-requests"));
-  } catch (e) { setErr(e.message); }
+  } catch (e) {
+    setErr(e.message);
+    // 포트원 상태와 어긋났을 수 있으므로 목록을 다시 불러온다
+    try { renderRefundList(await api("GET", "/admin/refund-requests")); } catch (err) {}
+  }
 }
 
 async function resolveRefund(id, status) {
   const label = status === "processed" ? "환불 완료 처리" : "반려";
-  if (status === "processed" &&
-      !confirm("이 버튼은 상태만 바꿉니다. 실제 환불은 되지 않습니다.\n계속하시겠습니까?")) return;
-  const note = status === "rejected" ? (prompt("반려 사유 (내부 기록용)", "") ?? null) : "";
-  if (note === null) return;
+  let note = "";
+  let deduct = null;
+
+  if (status === "processed") {
+    if (!confirm("이 버튼은 기록만 정리합니다. 실제 환불(입금)은 되지 않습니다.\n\n" +
+                 "포트원 콘솔에서 이미 취소하신 건을 마무리할 때 사용하세요.\n계속하시겠습니까?")) return;
+    const c = prompt("회수할 크레딧을 입력하세요. (10 크레딧 = 분석 1건)\n회수하지 않으려면 0을 입력하세요.", "0");
+    if (c === null) return;
+    deduct = parseInt(c, 10);
+    if (isNaN(deduct) || deduct < 0) { toast("숫자를 입력해주세요."); return; }
+    note = prompt("처리 메모 (내부 기록용)", "포트원에서 직접 취소") ?? "";
+  } else {
+    const n = prompt("반려 사유 (내부 기록용)", "");
+    if (n === null) return;
+    note = n;
+  }
+
   try {
-    await api("POST", `/admin/refund-requests/${id}/resolve`, { status, admin_note: note });
-    toast(`${label}되었습니다.`);
-    const d = await api("GET", "/admin/refund-requests");
-    renderRefundList(d);
+    const d = await api("POST", `/admin/refund-requests/${id}/resolve`,
+                        { status, admin_note: note, deduct_credits: deduct });
+    let msg = `${label}되었습니다.`;
+    if (d.credits_deducted) msg += ` 크레딧 ${d.credits_deducted} 회수`;
+    if (d.credits_shortfall) msg += ` / ⚠️ ${d.credits_shortfall} 크레딧은 이미 사용해 회수하지 못했습니다`;
+    toast(msg);
+    renderRefundList(await api("GET", "/admin/refund-requests"));
   } catch (e) { toast("오류: " + e.message); }
 }
 
