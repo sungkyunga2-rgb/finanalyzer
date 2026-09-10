@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="robots" content="noindex, nofollow"/>
-<title>프로모션 코드 관리 — 피나(FinAnalyzer)</title>
+<title>관리자 도구 — 피나(FinAnalyzer)</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
   :root {
@@ -64,12 +64,21 @@
                max-height:85vh; overflow-y:auto; }
   .modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
   .login-wrap { max-width:380px; margin:60px auto; }
+  .tabs { display:flex; gap:8px; margin-bottom:18px; }
+  .tab { padding:10px 20px; border-radius:10px; border:1px solid var(--border); background:#fff;
+         font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; color:var(--text2); }
+  .tab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .badge-count { display:inline-block; margin-left:6px; background:var(--danger); color:#fff;
+                 font-size:11px; font-weight:700; padding:1px 7px; border-radius:10px; }
+  .refund-panel { background:var(--surface2); border-radius:12px; padding:16px; margin-top:12px; }
+  .warn-box { background:#FCEBEB; border:1px solid #f0c9c9; border-radius:10px; padding:12px 14px;
+              font-size:12.5px; color:#7d2020; line-height:1.6; margin-bottom:14px; }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="brand">프로모션 코드 관리 · 피나<span>FinAnalyzer</span></div>
+  <div class="brand">관리자 도구 · 피나<span>FinAnalyzer</span></div>
   <button class="btn btn-sm hidden" id="logoutBtn" onclick="adminLogout()">잠그기</button>
 </header>
 
@@ -89,6 +98,12 @@
 <!-- 관리 화면 -->
 <div class="main hidden" id="adminView">
 
+  <div class="tabs">
+    <button class="tab active" id="tabBtn-promo" onclick="showTab('promo')">프로모션 코드</button>
+    <button class="tab" id="tabBtn-refund" onclick="showTab('refund')">환불 처리<span class="badge-count hidden" id="pendingCount">0</span></button>
+  </div>
+
+<div id="tab-promo">
   <div class="card">
     <div class="card-title" id="formTitle">새 코드 만들기</div>
     <input type="hidden" id="f-id"/>
@@ -154,6 +169,18 @@
     </div>
     <div class="msg" id="listMsg"></div>
   </div>
+</div><!-- /#tab-promo -->
+
+<div id="tab-refund" class="hidden">
+  <div class="card">
+    <div class="card-title">환불 신청</div>
+    <div class="warn-box">
+      <strong>환불 실행 버튼을 누르면 포트원에서 실제로 결제가 취소되고 고객에게 돈이 돌아갑니다.</strong><br>
+      되돌릴 수 없으니 금액과 결제건을 반드시 확인해주세요. 취소가 성공하면 크레딧 회수와 상태 변경까지 함께 처리됩니다.
+    </div>
+    <div id="refundList"></div>
+    <div class="msg" id="refundMsg"></div>
+  </div>
 </div>
 
 <!-- 사용 현황 -->
@@ -217,6 +244,7 @@ async function adminLogin() {
     $("logoutBtn").classList.remove("hidden");
     setMsg("loginMsg", "");
     loadPromos();
+    loadRefunds();   // 처리 대기 건수를 탭에 표시하기 위해 미리 조회
   } catch (e) {
     setMsg("loginMsg", e.message, "err");
   }
@@ -374,6 +402,173 @@ async function deletePromo(id, code) {
     await loadPromos();
   } catch (e) {
     setMsg("listMsg", e.message, "err");
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// 환불 처리
+// ══════════════════════════════════════════════════════════
+let refunds = [];
+
+function showTab(name) {
+  ["promo", "refund"].forEach(t => {
+    $("tab-" + t).classList.toggle("hidden", t !== name);
+    $("tabBtn-" + t).classList.toggle("active", t === name);
+  });
+  if (name === "refund") loadRefunds();
+}
+
+async function loadRefunds() {
+  setMsg("refundMsg", "불러오는 중...");
+  try {
+    const d = await apiCall("GET", "/admin/refund-requests");
+    refunds = d.requests || [];
+    renderRefunds();
+    setMsg("refundMsg", "");
+  } catch (e) {
+    setMsg("refundMsg", e.message, "err");
+  }
+}
+
+const STATUS_KR = { pending: "처리 대기", processed: "환불 완료", rejected: "반려" };
+
+function renderRefunds() {
+  const pending = refunds.filter(r => r.status === "pending").length;
+  const badge = $("pendingCount");
+  badge.textContent = pending;
+  badge.classList.toggle("hidden", pending === 0);
+
+  if (!refunds.length) {
+    $("refundList").innerHTML = '<p class="muted" style="padding:20px 0;">접수된 환불 신청이 없습니다.</p>';
+    return;
+  }
+
+  $("refundList").innerHTML = refunds.map(r => {
+    const isPending = r.status === "pending";
+    const tag = isPending
+      ? '<span class="tag tag-pct">처리 대기</span>'
+      : `<span class="tag ${r.status === "processed" ? "tag-on" : "tag-off"}">${STATUS_KR[r.status] || r.status}</span>`;
+    const payOptions = (r.payments || []).filter(p => p.cancellable > 0).map(p =>
+      `<option value="${esc(p.order_id)}" data-cancellable="${p.cancellable}" data-credits="${p.credits}">
+         ${esc(fmtDate(p.created_at))} · ${Number(p.amount).toLocaleString("ko-KR")}원 · ${esc(p.package_label)}
+         ${p.cancelled_amount ? " (취소가능 " + Number(p.cancellable).toLocaleString("ko-KR") + "원)" : ""}
+       </option>`).join("");
+
+    return `<div style="border-bottom:1px solid var(--border);padding:16px 2px;">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;font-size:14px;">${esc(r.email)} ${tag}</div>
+          <div class="muted" style="margin-top:3px;">
+            ${esc(r.company_name || "-")} · ${esc(r.phone || "연락처 없음")} · 잔여 ${r.remaining_count == null ? "-" : r.remaining_count}건
+          </div>
+          <div style="font-size:13px;margin-top:6px;">사유 : ${esc(r.reason || "(미입력)")}</div>
+          <div class="muted" style="margin-top:3px;">신청 ${esc(fmtDate(r.created_at))}</div>
+          ${r.admin_note ? `<div class="muted" style="margin-top:3px;">처리 메모 : ${esc(r.admin_note)}</div>` : ""}
+        </div>
+        <div class="row-actions">
+          ${isPending ? `
+            <button class="btn btn-sm" onclick="toggleRefundPanel(${r.id})">환불 처리</button>
+            <button class="btn btn-sm btn-danger" onclick="rejectRefund(${r.id})">반려</button>` : ""}
+        </div>
+      </div>
+
+      ${isPending ? `
+      <div class="refund-panel hidden" id="refundPanel-${r.id}">
+        ${payOptions ? `
+          <div class="grid">
+            <div class="field" style="grid-column:1/-1;">
+              <label>취소할 결제건</label>
+              <select id="rf-order-${r.id}" onchange="onOrderChange(${r.id})">${payOptions}</select>
+            </div>
+            <div class="field">
+              <label>환불 금액 (원) — 비우면 전액</label>
+              <input type="number" id="rf-amount-${r.id}" min="1" placeholder="전액"/>
+            </div>
+            <div class="field">
+              <label>회수할 크레딧 — 비우면 자동 계산</label>
+              <input type="number" id="rf-credits-${r.id}" min="0" placeholder="자동"/>
+            </div>
+            <div class="field">
+              <label>취소 사유 (포트원 기록)</label>
+              <input type="text" id="rf-reason-${r.id}" value="고객 환불 요청"/>
+            </div>
+            <div class="field">
+              <label>처리 메모 (내부용)</label>
+              <input type="text" id="rf-note-${r.id}" placeholder="예: 약관 제2조 미사용분"/>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:14px;" onclick="doRefund(${r.id})">환불 실행</button>
+          <div class="msg" id="rf-msg-${r.id}"></div>
+        ` : '<p class="muted">취소 가능한 결제 건이 없습니다. (전액 취소되었거나 결제 내역이 없음)</p>'}
+      </div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function toggleRefundPanel(id) {
+  const el = $("refundPanel-" + id);
+  if (el) el.classList.toggle("hidden");
+}
+
+function onOrderChange(id) {
+  const sel = $("rf-order-" + id);
+  const amt = $("rf-amount-" + id);
+  if (sel && amt) {
+    const opt = sel.options[sel.selectedIndex];
+    amt.placeholder = "전액 (" + Number(opt.dataset.cancellable).toLocaleString("ko-KR") + "원)";
+  }
+}
+
+async function doRefund(id) {
+  const sel = $("rf-order-" + id);
+  if (!sel) return;
+  const orderId = sel.value;
+  const opt = sel.options[sel.selectedIndex];
+  const cancellable = Number(opt.dataset.cancellable);
+  const amountRaw = $("rf-amount-" + id).value.trim();
+  const amount = amountRaw ? parseInt(amountRaw, 10) : cancellable;
+  const creditsRaw = $("rf-credits-" + id).value.trim();
+
+  if (amount <= 0 || amount > cancellable) {
+    setMsg("rf-msg-" + id, `환불 금액은 1원 ~ ${cancellable.toLocaleString("ko-KR")}원 사이여야 합니다.`, "err");
+    return;
+  }
+  if (!confirm(
+    `${orderId} 결제건에서 ${amount.toLocaleString("ko-KR")}원을 실제로 환불합니다.\n\n` +
+    `포트원에서 결제가 취소되고 고객에게 돈이 돌아갑니다.\n되돌릴 수 없습니다. 진행할까요?`)) return;
+
+  setMsg("rf-msg-" + id, "포트원에 취소 요청 중...");
+  try {
+    const body = {
+      order_id: orderId,
+      amount: amountRaw ? amount : null,
+      reason: $("rf-reason-" + id).value.trim() || "고객 환불 요청",
+      admin_note: $("rf-note-" + id).value.trim(),
+    };
+    if (creditsRaw !== "") body.deduct_credits = parseInt(creditsRaw, 10);
+
+    const d = await apiCall("POST", "/admin/refund-requests/" + id + "/refund", body);
+    let msg = `${Number(d.refunded_amount).toLocaleString("ko-KR")}원 환불 완료 · 크레딧 ${d.credits_deducted} 회수 (잔여 ${d.remaining_credits})`;
+    if (d.credits_shortfall > 0) {
+      msg += ` / ⚠️ 이미 사용해서 ${d.credits_shortfall} 크레딧은 회수하지 못했습니다`;
+    }
+    setMsg("rf-msg-" + id, msg, "ok");
+    alert(msg);
+    await loadRefunds();
+  } catch (e) {
+    setMsg("rf-msg-" + id, e.message, "err");
+  }
+}
+
+async function rejectRefund(id) {
+  const note = prompt("반려 사유를 입력하세요 (고객에게는 표시되지 않습니다)", "");
+  if (note === null) return;
+  try {
+    await apiCall("POST", "/admin/refund-requests/" + id + "/resolve",
+                  { status: "rejected", admin_note: note });
+    await loadRefunds();
+  } catch (e) {
+    setMsg("refundMsg", e.message, "err");
   }
 }
 

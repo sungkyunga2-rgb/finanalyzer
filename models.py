@@ -29,6 +29,8 @@ class Payment(Base):
     credits     = Column(Integer)
     package_id  = Column(String)
     created_at  = Column(DateTime, default=datetime.utcnow)
+    cancelled_amount = Column(Integer, default=0)        # 환불(취소)된 누적 금액
+    cancelled_at     = Column(DateTime, nullable=True)   # 마지막 취소 시각
 
 class AnalysisLog(Base):
     __tablename__ = "analysis_logs"
@@ -46,6 +48,9 @@ class RefundRequest(Base):
     admin_note   = Column(String, default="")
     created_at   = Column(DateTime, default=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
+    order_id         = Column(String, default="")   # 실제 취소한 결제건
+    refunded_amount  = Column(Integer, default=0)   # 실제 환불한 금액
+    credits_deducted = Column(Integer, default=0)   # 회수한 크레딧
 
 class CommunityPost(Base):
     __tablename__ = "community_posts"
