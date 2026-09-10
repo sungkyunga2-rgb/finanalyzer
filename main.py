@@ -57,6 +57,30 @@ def run_auto_migration():
         "created_at": "TIMESTAMP",
         "printed_at": "TIMESTAMP",
     })
+    # 프로모션(할인) 코드 테이블
+    add_missing_columns("promo_codes", {
+        "discount_percent": "INTEGER DEFAULT 0",
+        "packages": "VARCHAR DEFAULT ''",
+        "valid_from": "TIMESTAMP",
+        "valid_until": "TIMESTAMP",
+        "max_uses": "INTEGER",
+        "used_count": "INTEGER DEFAULT 0",
+        "once_per_user": "INTEGER DEFAULT 1",
+        "enabled": "INTEGER DEFAULT 1",
+        "memo": "VARCHAR DEFAULT ''",
+        "created_at": "TIMESTAMP",
+    })
+    add_missing_columns("promo_uses", {
+        "promo_id": "INTEGER",
+        "user_id": "INTEGER",
+        "code": "VARCHAR DEFAULT ''",
+        "package_id": "VARCHAR DEFAULT ''",
+        "order_id": "VARCHAR DEFAULT ''",
+        "discount_percent": "INTEGER DEFAULT 0",
+        "original_price": "INTEGER DEFAULT 0",
+        "paid_price": "INTEGER DEFAULT 0",
+        "created_at": "TIMESTAMP",
+    })
 
 run_auto_migration()
 
@@ -104,6 +128,7 @@ class PaymentRequest(BaseModel):
     payment_id: str   # 포트원 V2의 paymentId (프론트에서 전달)
     package_id: str
     amount: int
+    promo_code: Optional[str] = None
 
 class ImageItem(BaseModel):
     data: str
@@ -126,6 +151,126 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
 
 
 # ── 라우터 ───────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════════
+# 프로모션(할인) 코드
+#   ⚠️ 할인 금액은 반드시 서버에서 다시 계산합니다.
+#      프론트가 보낸 금액을 그대로 믿으면 결제금액을 조작당할 수 있습니다.
+# ══════════════════════════════════════════════════════════════
+def apply_discount(price: int, discount_percent: int) -> int:
+    """할인가 계산 — 10원 단위로 올림 처리해 금액이 지저분해지지 않게 함"""
+    pct = max(0, min(100, int(discount_percent or 0)))
+    discounted = price * (100 - pct) / 100
+    # 10원 단위 반올림 (최소 100원 — 포트원 최소 결제금액 고려)
+    discounted = int(round(discounted / 10.0) * 10)
+    return max(100, discounted)
+
+
+def check_promo_basic(db: Session, code: str, user: "models.User"):
+    """이용권과 무관한 공통 조건(존재·사용중·기간·횟수·1인1회)만 검증"""
+    normalized = str(code or "").strip().upper()
+    if not normalized:
+        return None
+
+    promo = db.query(models.PromoCode).filter(models.PromoCode.code == normalized).first()
+    if not promo:
+        raise HTTPException(status_code=400, detail="존재하지 않는 코드입니다. 코드를 다시 확인해주세요.")
+    if not promo.enabled:
+        raise HTTPException(status_code=400, detail="현재 사용할 수 없는 코드입니다.")
+
+    now = datetime.utcnow()
+    if promo.valid_from and now < promo.valid_from:
+        raise HTTPException(status_code=400, detail="아직 사용 기간이 시작되지 않은 코드입니다.")
+    if promo.valid_until and now > promo.valid_until:
+        raise HTTPException(status_code=400, detail="사용 기간이 지난 코드입니다.")
+
+    if promo.max_uses is not None and (promo.used_count or 0) >= promo.max_uses:
+        raise HTTPException(status_code=400, detail="사용 횟수가 모두 소진된 코드입니다.")
+
+    if promo.once_per_user:
+        already = db.query(models.PromoUse).filter(
+            models.PromoUse.promo_id == promo.id,
+            models.PromoUse.user_id == user.id,
+        ).first()
+        if already:
+            raise HTTPException(status_code=400, detail="이미 사용하신 코드입니다. (한 계정당 1회)")
+
+    return promo
+
+
+def promo_allowed_packages(promo) -> list:
+    """이 코드가 적용되는 이용권 목록"""
+    if not promo or not promo.packages:
+        return list(CREDIT_PACKAGES.keys())
+    allowed = [x.strip() for x in promo.packages.split(",") if x.strip() in CREDIT_PACKAGES]
+    return allowed or list(CREDIT_PACKAGES.keys())
+
+
+def resolve_promo(db: Session, code: str, package_id: str, user: "models.User"):
+    """코드를 검증하고 (PromoCode, 할인가)를 반환. 문제가 있으면 HTTPException."""
+    if not str(code or "").strip():
+        return None, None
+
+    pkg = CREDIT_PACKAGES.get(package_id)
+    if not pkg:
+        raise HTTPException(status_code=400, detail="유효하지 않은 패키지입니다.")
+
+    promo = check_promo_basic(db, code, user)
+    if not promo:
+        return None, None
+
+    allowed = promo_allowed_packages(promo)
+    if package_id not in allowed:
+        labels = ", ".join(CREDIT_PACKAGES[a]["label"] for a in allowed)
+        raise HTTPException(status_code=400, detail=f"이 코드는 {labels} 이용권에만 사용할 수 있습니다.")
+
+    return promo, apply_discount(pkg["price"], promo.discount_percent)
+
+
+class PromoCheckBody(BaseModel):
+    code: str
+    package_id: Optional[str] = None
+
+@app.post("/promo/check")
+def check_promo(
+    body: PromoCheckBody,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """결제 전 코드 확인 — 할인가를 미리 보여주기 위한 용도.
+    package_id를 주면 그 이용권만, 안 주면 적용 가능한 전체 이용권의 할인가를 반환."""
+    if not str(body.code or "").strip():
+        raise HTTPException(status_code=400, detail="코드를 입력해주세요.")
+
+    promo = check_promo_basic(db, body.code, user)
+    allowed = promo_allowed_packages(promo)
+
+    if body.package_id:
+        promo2, price = resolve_promo(db, body.code, body.package_id, user)
+        pkg = CREDIT_PACKAGES[body.package_id]
+        return {
+            "code": promo.code,
+            "discount_percent": promo.discount_percent,
+            "packages": allowed,
+            "original_price": pkg["price"],
+            "discounted_price": price,
+            "saved": pkg["price"] - price,
+        }
+
+    prices = {
+        pid: {
+            "original_price": pkg["price"],
+            "discounted_price": apply_discount(pkg["price"], promo.discount_percent),
+        }
+        for pid, pkg in CREDIT_PACKAGES.items() if pid in allowed
+    }
+    return {
+        "code": promo.code,
+        "discount_percent": promo.discount_percent,
+        "packages": allowed,
+        "prices": prices,
+    }
+
 
 @app.get("/")
 def root():
@@ -303,6 +448,7 @@ def withdraw(
     db.query(models.Payment).filter(models.Payment.user_id == user.id).delete()
     db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).delete()
     db.query(models.AnalysisHistory).filter(models.AnalysisHistory.user_id == user.id).delete()
+    db.query(models.PromoUse).filter(models.PromoUse.user_id == user.id).delete()
     db.delete(user)
     db.commit()
     return {"message": "회원 탈퇴가 완료되었습니다."}
@@ -351,6 +497,11 @@ async def confirm_payment(
     if not pkg:
         raise HTTPException(status_code=400, detail="유효하지 않은 패키지입니다.")
 
+    # ── 프로모션 코드가 있으면 서버에서 할인가를 다시 계산 (프론트 금액은 신뢰하지 않음) ──
+    promo, expected_price = resolve_promo(db, body.promo_code, body.package_id, user)
+    if not promo:
+        expected_price = pkg["price"]
+
     # ── 중복 결제 방지: 이미 처리된 payment_id인지 확인 ──
     existing = db.query(models.Payment).filter(models.Payment.order_id == body.payment_id).first()
     if existing:
@@ -376,9 +527,9 @@ async def confirm_payment(
         raise HTTPException(status_code=400, detail=f"결제 미완료 상태: {payment_data.get('status')}")
 
     paid_amount = payment_data.get("amount", {}).get("total", 0)
-    if paid_amount != pkg["price"]:
-        # 금액 불일치 → 포트원에 환불 요청 후 거부 (보안)
-        raise HTTPException(status_code=400, detail=f"결제 금액 불일치 (요청: {pkg['price']}원, 실제: {paid_amount}원)")
+    if paid_amount != expected_price:
+        # 금액 불일치 → 거부 (보안)
+        raise HTTPException(status_code=400, detail=f"결제 금액 불일치 (요청: {expected_price}원, 실제: {paid_amount}원)")
 
     # ── 크레딧 지급 ──
     credits_to_add = pkg["credits"]
@@ -392,10 +543,31 @@ async def confirm_payment(
         package_id=body.package_id,
     )
     db.add(payment_record)
+
+    # ── 프로모션 코드 사용 기록 ──
+    if promo:
+        promo.used_count = (promo.used_count or 0) + 1
+        db.add(models.PromoUse(
+            promo_id=promo.id,
+            user_id=user.id,
+            code=promo.code,
+            package_id=body.package_id,
+            order_id=body.payment_id,
+            discount_percent=promo.discount_percent,
+            original_price=pkg["price"],
+            paid_price=paid_amount,
+        ))
+
     db.commit()
     db.refresh(user)
 
-    return {"success": True, "credits_added": credits_to_add, "total_credits": user.credits}
+    return {
+        "success": True,
+        "credits_added": credits_to_add,
+        "total_credits": user.credits,
+        "promo_code": promo.code if promo else None,
+        "discount_percent": promo.discount_percent if promo else 0,
+    }
 
 # 재무제표 분석
 @app.post("/analyze")
@@ -1095,6 +1267,155 @@ def admin_resolve_refund(req_id: int, body: AdminResolveRefundBody, _: bool = De
 # ══════════════════════════════════════════════════════════════
 # 오류신고 (플로팅 버튼 → 관리자 이메일로 전달)
 # ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+# 관리자 — 프로모션(할인) 코드 관리
+# ══════════════════════════════════════════════════════════════
+def _promo_summary(p: "models.PromoCode") -> dict:
+    return {
+        "id": p.id,
+        "code": p.code,
+        "discount_percent": p.discount_percent,
+        "packages": p.packages or "",
+        "valid_from": p.valid_from.strftime("%Y-%m-%d") if p.valid_from else "",
+        "valid_until": p.valid_until.strftime("%Y-%m-%d") if p.valid_until else "",
+        "max_uses": p.max_uses,
+        "used_count": p.used_count or 0,
+        "once_per_user": bool(p.once_per_user),
+        "enabled": bool(p.enabled),
+        "memo": p.memo or "",
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+
+
+def _parse_date(value: str, end_of_day: bool = False):
+    """YYYY-MM-DD 문자열을 datetime으로. 빈 값이면 None."""
+    if not value:
+        return None
+    try:
+        d = datetime.strptime(str(value).strip()[:10], "%Y-%m-%d")
+    except Exception:
+        raise HTTPException(status_code=400, detail="날짜는 YYYY-MM-DD 형식으로 입력해주세요.")
+    if end_of_day:
+        d = d.replace(hour=23, minute=59, second=59)
+    return d
+
+
+class AdminPromoBody(BaseModel):
+    id: Optional[int] = None
+    code: str = ""
+    discount_percent: int = 0
+    packages: Optional[str] = ""      # "" 이면 전체, 아니면 "single,standard,mega"
+    valid_from: Optional[str] = ""    # YYYY-MM-DD
+    valid_until: Optional[str] = ""   # YYYY-MM-DD
+    max_uses: Optional[int] = None
+    once_per_user: bool = True
+    enabled: bool = True
+    memo: Optional[str] = ""
+
+
+@app.get("/admin/promos")
+def admin_list_promos(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    rows = db.query(models.PromoCode).order_by(models.PromoCode.id.desc()).all()
+    return {"promos": [_promo_summary(p) for p in rows], "packages": CREDIT_PACKAGES}
+
+
+@app.post("/admin/promos")
+def admin_save_promo(body: AdminPromoBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    """id가 있으면 수정, 없으면 새로 만들기"""
+    code = (body.code or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="코드를 입력해주세요.")
+    if not re_match_code(code):
+        raise HTTPException(status_code=400, detail="코드는 영문/숫자/하이픈만 사용할 수 있습니다. (2~30자)")
+    if not (1 <= int(body.discount_percent or 0) <= 100):
+        raise HTTPException(status_code=400, detail="할인율은 1~100 사이로 입력해주세요.")
+
+    packages = ",".join([x.strip() for x in (body.packages or "").split(",") if x.strip()])
+    for pid in [x for x in packages.split(",") if x]:
+        if pid not in CREDIT_PACKAGES:
+            raise HTTPException(status_code=400, detail=f"알 수 없는 이용권입니다: {pid}")
+
+    valid_from  = _parse_date(body.valid_from)
+    valid_until = _parse_date(body.valid_until, end_of_day=True)
+    if valid_from and valid_until and valid_from > valid_until:
+        raise HTTPException(status_code=400, detail="시작일이 종료일보다 늦습니다.")
+
+    if body.id:
+        promo = db.query(models.PromoCode).filter(models.PromoCode.id == body.id).first()
+        if not promo:
+            raise HTTPException(status_code=404, detail="코드를 찾을 수 없습니다.")
+    else:
+        promo = models.PromoCode()
+        db.add(promo)
+
+    dup = db.query(models.PromoCode).filter(models.PromoCode.code == code).first()
+    if dup and (not body.id or dup.id != body.id):
+        raise HTTPException(status_code=400, detail="이미 있는 코드입니다.")
+
+    promo.code = code
+    promo.discount_percent = int(body.discount_percent)
+    promo.packages = packages
+    promo.valid_from = valid_from
+    promo.valid_until = valid_until
+    promo.max_uses = int(body.max_uses) if body.max_uses else None
+    promo.once_per_user = 1 if body.once_per_user else 0
+    promo.enabled = 1 if body.enabled else 0
+    promo.memo = (body.memo or "").strip()[:200]
+    if promo.used_count is None:
+        promo.used_count = 0
+
+    db.commit()
+    db.refresh(promo)
+    return {"promo": _promo_summary(promo)}
+
+
+def re_match_code(code: str) -> bool:
+    import re as _re
+    return bool(_re.fullmatch(r"[A-Z0-9\-]{2,30}", code))
+
+
+@app.post("/admin/promos/{promo_id}/toggle")
+def admin_toggle_promo(promo_id: int, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    promo = db.query(models.PromoCode).filter(models.PromoCode.id == promo_id).first()
+    if not promo:
+        raise HTTPException(status_code=404, detail="코드를 찾을 수 없습니다.")
+    promo.enabled = 0 if promo.enabled else 1
+    db.commit()
+    db.refresh(promo)
+    return {"promo": _promo_summary(promo)}
+
+
+@app.delete("/admin/promos/{promo_id}")
+def admin_delete_promo(promo_id: int, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    promo = db.query(models.PromoCode).filter(models.PromoCode.id == promo_id).first()
+    if not promo:
+        raise HTTPException(status_code=404, detail="코드를 찾을 수 없습니다.")
+    db.query(models.PromoUse).filter(models.PromoUse.promo_id == promo_id).delete()
+    db.delete(promo)
+    db.commit()
+    return {"message": "삭제되었습니다."}
+
+
+@app.get("/admin/promos/{promo_id}/uses")
+def admin_promo_uses(promo_id: int, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    rows = (db.query(models.PromoUse, models.User)
+              .outerjoin(models.User, models.User.id == models.PromoUse.user_id)
+              .filter(models.PromoUse.promo_id == promo_id)
+              .order_by(models.PromoUse.id.desc()).limit(200).all())
+    return {"uses": [
+        {
+            "email": (u.email if u else "(탈퇴)"),
+            "package_id": pu.package_id,
+            "package_label": (CREDIT_PACKAGES.get(pu.package_id) or {}).get("label", pu.package_id),
+            "discount_percent": pu.discount_percent,
+            "original_price": pu.original_price,
+            "paid_price": pu.paid_price,
+            "order_id": pu.order_id,
+            "created_at": pu.created_at.isoformat() if pu.created_at else None,
+        } for pu, u in rows
+    ]}
+
+
 class ErrorReportBody(BaseModel):
     message: str
     email: Optional[str] = None

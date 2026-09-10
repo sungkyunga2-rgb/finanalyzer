@@ -82,3 +82,35 @@ class AnalysisHistory(Base):
     data_json       = Column(Text, default="")           # 분석 결과 전체 JSON (리포트 재출력용)
     created_at      = Column(DateTime, default=datetime.utcnow)
     printed_at      = Column(DateTime, nullable=True)    # PDF(리포트) 출력 완료 시각 — null이면 아직 출력 전
+
+
+class PromoCode(Base):
+    """프로모션(할인) 코드 — 관리자 화면에서 생성·수정"""
+    __tablename__ = "promo_codes"
+    id               = Column(Integer, primary_key=True, index=True)
+    code             = Column(String, unique=True, index=True, nullable=False)  # 항상 대문자로 저장
+    discount_percent = Column(Integer, default=0)      # 할인율 (1~100)
+    packages         = Column(String, default="")      # "" 이면 전체 이용권, 아니면 "single,mega" 형태
+    valid_from       = Column(DateTime, nullable=True) # 비우면 즉시 시작
+    valid_until      = Column(DateTime, nullable=True) # 비우면 무기한
+    max_uses         = Column(Integer, nullable=True)  # 전체 사용 가능 횟수 (비우면 무제한)
+    used_count       = Column(Integer, default=0)
+    once_per_user    = Column(Integer, default=1)      # 1이면 한 계정당 1회만
+    enabled          = Column(Integer, default=1)      # 0이면 사용 중단
+    memo             = Column(String, default="")
+    created_at       = Column(DateTime, default=datetime.utcnow)
+
+
+class PromoUse(Base):
+    """프로모션 코드 사용 내역"""
+    __tablename__ = "promo_uses"
+    id               = Column(Integer, primary_key=True, index=True)
+    promo_id         = Column(Integer, ForeignKey("promo_codes.id"), index=True)
+    user_id          = Column(Integer, ForeignKey("users.id"), index=True)
+    code             = Column(String, default="")
+    package_id       = Column(String, default="")
+    order_id         = Column(String, default="")
+    discount_percent = Column(Integer, default=0)
+    original_price   = Column(Integer, default=0)
+    paid_price       = Column(Integer, default=0)
+    created_at       = Column(DateTime, default=datetime.utcnow)

@@ -156,6 +156,21 @@
   .pkg-credits { font-size: 13px; color: var(--text2); }
   .pkg-save { display: inline-block; background: #FCEBEB; color: #A32D2D; font-size: 11px; font-weight: 700;
               padding: 1px 7px; border-radius: 10px; margin-left: 4px; }
+  .pkg-card.promo-off { opacity: .55; }
+
+  /* ── 프로모션(할인) 코드 ── */
+  .promo-box { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .promo-row { display: flex; gap: 8px; align-items: stretch; }
+  .promo-row input { flex: 1; min-width: 0; text-transform: uppercase; }
+  .promo-row button { flex-shrink: 0; padding: 0 16px; white-space: nowrap; }
+  .promo-msg { font-size: 12px; margin-top: 8px; line-height: 1.5; }
+  .promo-msg.ok { color: #0F6E56; font-weight: 600; }
+  .promo-msg.err { color: var(--danger); }
+  .promo-applied { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+                   background: #E1F5EE; border-radius: 10px; padding: 10px 12px; }
+  .promo-applied-text { font-size: 13px; color: #0F6E56; font-weight: 600; }
+  .promo-applied button { background: none; border: none; color: #0F6E56; font-size: 12px;
+                          text-decoration: underline; cursor: pointer; font-family: inherit; padding: 0; }
 
   /* 결제 팝업 모달 */
   .modal-overlay { position: fixed; inset: 0; background: rgba(20,24,32,0.55); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 20px; }
@@ -1059,6 +1074,11 @@
           <div class="pkg-credits">분석 10회 <span class="pkg-save">30% 할인</span></div>
         </div>
       </div>
+
+      <div class="promo-box">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">할인 코드</div>
+        <div id="promo-input-wrap-charge"></div>
+      </div>
     </div>
 
     <button class="btn btn-primary btn-full" id="payBtn" disabled onclick="doPayment()">
@@ -1181,6 +1201,9 @@
       <button class="modal-close" onclick="closePaymentModal()">✕</button>
     </div>
     <p class="modal-desc">이용권을 구매하면 바로 분석을 이어갈 수 있어요.</p>
+    <div class="promo-box" style="margin-top:0;padding-top:0;border-top:none;margin-bottom:1rem;">
+      <div id="promo-input-wrap-modal"></div>
+    </div>
     <div class="packages" id="modal-packages">
       <div class="pkg-card" data-pkg="single" onclick="payFromModal('single')">
         <div class="pkg-name">1건</div>
@@ -1354,6 +1377,9 @@ function showPage(name) {
     const mCompany = document.getElementById("m-company");
     if (mCompany && userCompanyName && !mCompany.value) mCompany.value = userCompanyName;
     prefillManualFields();
+  }
+  if (name === "charge") {
+    renderPromoBoxes();
   }
   if (name === "myinfo") {
     document.getElementById("myinfo-pw").value = "";
@@ -3646,10 +3672,157 @@ function selectPkg(el, pkgId) {
   document.querySelectorAll(".pkg-card").forEach(c => c.classList.remove("selected"));
   el.classList.add("selected");
   selectedPkg = pkgId;
-  const pkg = PKGS[pkgId];
+  document.getElementById("payBtn").disabled = false;
+  updatePayButton();
+}
+
+// ── 프로모션(할인) 코드 ─────────────────────────────────────────
+// appliedPromo = { code, discount_percent, packages:[...], prices:{pkgId:{original_price,discounted_price}} }
+let appliedPromo = null;
+
+// 이 이용권에 코드가 적용되는지
+function promoAppliesTo(pkgId) {
+  return !!(appliedPromo && appliedPromo.packages && appliedPromo.packages.indexOf(pkgId) !== -1);
+}
+
+// 실제 결제할 금액 (코드가 적용되면 할인가)
+function priceFor(pkgId) {
+  if (promoAppliesTo(pkgId) && appliedPromo.prices && appliedPromo.prices[pkgId]) {
+    return appliedPromo.prices[pkgId].discounted_price;
+  }
+  return PKGS[pkgId].price;
+}
+
+// 코드 입력창 / 적용 상태 표시
+function renderPromoBoxes() {
+  ["charge", "modal"].forEach(where => {
+    const el = document.getElementById("promo-input-wrap-" + where);
+    if (!el) return;
+    if (appliedPromo) {
+      el.innerHTML = `<div class="promo-applied">
+          <span class="promo-applied-text">🎉 ${escapeHtml(appliedPromo.code)} 적용 · ${appliedPromo.discount_percent}% 할인</span>
+          <button type="button" onclick="clearPromo()">해제</button>
+        </div>`;
+    } else {
+      el.innerHTML = `<div class="promo-row">
+          <input type="text" id="promo-code-${where}" placeholder="할인 코드를 입력하세요"
+                 autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();applyPromo('${where}');}" />
+          <button type="button" class="btn" onclick="applyPromo('${where}')">적용</button>
+        </div>
+        <div class="promo-msg" id="promo-msg-${where}"></div>`;
+    }
+  });
+  renderPackagePrices();
+}
+
+// 이용권 카드의 금액 표시를 코드 적용 여부에 맞춰 다시 그림
+function renderPackagePrices() {
+  document.querySelectorAll(".pkg-card[data-pkg]").forEach(card => {
+    const pkgId = card.getAttribute("data-pkg");
+    const pkg = PKGS[pkgId];
+    if (!pkg) return;
+    const priceEl = card.querySelector(".pkg-price");
+    const wasEl   = card.querySelector(".pkg-was");
+    const applies = promoAppliesTo(pkgId);
+
+    if (priceEl) priceEl.textContent = priceFor(pkgId).toLocaleString("ko-KR") + "원";
+
+    // 정가 취소선: 코드가 적용되면 항상 표시(원래 가격), 아니면 원래 markup 값 유지
+    if (applies) {
+      if (wasEl) {
+        wasEl.textContent = pkg.price.toLocaleString("ko-KR") + "원";
+      } else {
+        const div = document.createElement("div");
+        div.className = "pkg-was";
+        div.dataset.promoAdded = "1";
+        div.textContent = pkg.price.toLocaleString("ko-KR") + "원";
+        priceEl.insertAdjacentElement("afterend", div);
+      }
+    } else if (wasEl && wasEl.dataset.promoAdded) {
+      wasEl.remove();
+    } else if (wasEl) {
+      wasEl.textContent = (pkgId === "standard" ? 69500 : 139000).toLocaleString("ko-KR") + "원";
+    }
+
+    // 할인율 배지도 코드 기준으로 교체 (기존 묶음할인 표기와 섞이면 헷갈리므로)
+    const creditsEl = card.querySelector(".pkg-credits");
+    let saveEl = card.querySelector(".pkg-save");
+    if (applies) {
+      if (!saveEl && creditsEl) {
+        saveEl = document.createElement("span");
+        saveEl.className = "pkg-save";
+        saveEl.dataset.promoAdded = "1";
+        creditsEl.appendChild(saveEl);
+      }
+      if (saveEl) {
+        if (saveEl.dataset.original === undefined && !saveEl.dataset.promoAdded) saveEl.dataset.original = saveEl.textContent;
+        saveEl.textContent = `${appliedPromo.code} ${appliedPromo.discount_percent}% 할인`;
+      }
+    } else if (saveEl) {
+      if (saveEl.dataset.promoAdded) saveEl.remove();
+      else if (saveEl.dataset.original !== undefined) saveEl.textContent = saveEl.dataset.original;
+    }
+
+    card.classList.toggle("promo-off", !!appliedPromo && !applies);
+  });
+  if (selectedPkg) updatePayButton();
+}
+
+function updatePayButton() {
   const btn = document.getElementById("payBtn");
-  btn.disabled = false;
-  btn.textContent = `${pkg.label} — ${pkg.price.toLocaleString()}원 결제하기 →`;
+  if (!btn || !selectedPkg) return;
+  const pkg = PKGS[selectedPkg];
+  const price = priceFor(selectedPkg);
+  // 코드가 적용되면 이용권 이름의 기존 할인 표기는 빼고 코드 할인율만 보여준다
+  const applies = promoAppliesTo(selectedPkg);
+  const name = applies ? pkg.label.replace(/\s*\(.*?\)\s*/, "") : pkg.label;
+  const tag = applies ? ` (${appliedPromo.code} ${appliedPromo.discount_percent}% 할인)` : "";
+  btn.textContent = `${name} — ${price.toLocaleString()}원${tag} 결제하기 →`;
+}
+
+async function applyPromo(where) {
+  if (!token) { showPage("login"); return; }
+  const input = document.getElementById("promo-code-" + where);
+  const msg   = document.getElementById("promo-msg-" + where);
+  const code  = (input ? input.value : "").trim();
+  if (!code) { if (msg) { msg.className = "promo-msg err"; msg.textContent = "코드를 입력해주세요."; } return; }
+  if (msg) { msg.className = "promo-msg"; msg.textContent = "확인 중..."; }
+  try {
+    const d = await api("POST", "/promo/check", { code });
+    appliedPromo = d;
+    renderPromoBoxes();
+    toast(`${d.code} 코드가 적용되었습니다 · ${d.discount_percent}% 할인`);
+  } catch (e) {
+    if (msg) { msg.className = "promo-msg err"; msg.textContent = e.message; }
+  }
+}
+
+function clearPromo() {
+  appliedPromo = null;
+  try { localStorage.removeItem("fa_promo"); } catch (e) {}
+  renderPromoBoxes();
+}
+
+// 할인 링크(?promo=CODE)로 들어온 경우 자동 적용
+async function autoApplyPromoFromUrl() {
+  let code = "";
+  const params = new URLSearchParams(window.location.search);
+  code = (params.get("promo") || "").trim();
+  if (code) {
+    // 로그인 전에 링크로 들어올 수 있으므로 저장해 두었다가 로그인 후 적용
+    try { localStorage.setItem("fa_promo", code); } catch (e) {}
+  } else {
+    try { code = localStorage.getItem("fa_promo") || ""; } catch (e) {}
+  }
+  if (!code || !token) return;
+  try {
+    const d = await api("POST", "/promo/check", { code });
+    appliedPromo = d;
+    renderPromoBoxes();
+    toast(`${d.code} 할인 코드가 적용되었습니다 · ${d.discount_percent}% 할인`);
+  } catch (e) {
+    try { localStorage.removeItem("fa_promo"); } catch (err) {}
+  }
 }
 
 async function doPayment() {
@@ -3665,6 +3838,7 @@ async function payFromModal(pkgId) {
 
 function openPaymentModal() {
   document.getElementById("payment-modal").classList.remove("hidden");
+  renderPromoBoxes();
 }
 
 function closePaymentModal() {
@@ -3689,10 +3863,13 @@ async function executePayment(pkgId, fromModal) {
 
   const pkg = PKGS[pkgId];
   const orderId = "FA" + Date.now() + Math.random().toString(36).slice(2, 7).toUpperCase();
+  // 할인 코드가 이 이용권에 적용되면 할인가로 결제 (금액은 서버가 다시 검증함)
+  const promoCode = promoAppliesTo(pkgId) ? appliedPromo.code : null;
+  const payAmount = priceFor(pkgId);
 
   // 리다이렉트로 돌아왔을 때 "어떤 이용권을 샀는지" 알 수 있도록 미리 저장해 둔다.
   // (포트원은 복귀 URL에 결제 금액을 붙여주지 않으므로 금액으로 역추적할 수 없음)
-  try { localStorage.setItem("fa_pending_pay", JSON.stringify({ pkgId, orderId })); } catch (e) {}
+  try { localStorage.setItem("fa_pending_pay", JSON.stringify({ pkgId, orderId, promoCode })); } catch (e) {}
 
   try {
     const response = await window.PortOne.requestPayment({
@@ -3700,11 +3877,12 @@ async function executePayment(pkgId, fromModal) {
       channelKey: PORTONE_CHANNEL_KEY,
       paymentId: orderId,           // 포트원 V2는 paymentId 사용
       orderName: `FinAnalyzer ${pkg.label}`,
-      totalAmount: pkg.price,
+      totalAmount: payAmount,
       currency: "KRW",
       payMethod: "CARD",            // CARD / VIRTUAL_ACCOUNT / TRANSFER / EASY_PAY
       customer: { email: userEmail },
-      redirectUrl: window.location.origin + window.location.pathname + "?payment=success&pkg=" + encodeURIComponent(pkgId),
+      redirectUrl: window.location.origin + window.location.pathname + "?payment=success&pkg=" + encodeURIComponent(pkgId)
+                   + (promoCode ? "&promo=" + encodeURIComponent(promoCode) : ""),
     });
 
     if (response.code) {
@@ -3715,7 +3893,7 @@ async function executePayment(pkgId, fromModal) {
     }
 
     // 결제 성공 → 백엔드 검증 요청
-    await confirmPayment(response.paymentId, pkgId, pkg.price);
+    await confirmPayment(response.paymentId, pkgId, payAmount, promoCode);
     if (fromModal) closePaymentModal();
 
   } catch (e) {
@@ -3724,7 +3902,7 @@ async function executePayment(pkgId, fromModal) {
 }
 
 // 백엔드로 결제 검증 + 크레딧 지급 요청
-async function confirmPayment(paymentId, pkgId, amount) {
+async function confirmPayment(paymentId, pkgId, amount, promoCode) {
   if (!PKGS[pkgId]) {
     toast("이용권 정보를 확인하지 못했습니다. 결제번호 " + (paymentId || "-") + " 로 문의해주세요.");
     return false;
@@ -3734,10 +3912,13 @@ async function confirmPayment(paymentId, pkgId, amount) {
       payment_id: paymentId,   // 포트원은 payment_id 사용
       package_id: pkgId,
       amount: amount !== undefined && amount !== null ? amount : PKGS[pkgId].price,
+      promo_code: promoCode || null,
     });
     userCredits = d.total_credits;
     localStorage.setItem("fa_credits", userCredits);
     try { localStorage.removeItem("fa_pending_pay"); } catch (e) {}
+    // 사용한 코드는 해제 (한 계정당 1회 제한이 기본값이므로)
+    if (d.promo_code) { appliedPromo = null; try { localStorage.removeItem("fa_promo"); } catch (e) {} renderPromoBoxes(); }
     updateCreditBadges();
     toast(`결제 완료! +${Math.floor(d.credits_added / 10)}건 (잔여횟수 ${Math.floor(d.total_credits / 10)}건)`);
     showPage("dashboard");
@@ -3782,6 +3963,7 @@ async function handlePaymentCallback() {
   const paymentId = params.get("paymentId") || (pending && pending.orderId) || "";
   // 어떤 이용권인지는 복귀 URL의 pkg 값으로 판단 (없으면 결제 직전에 저장해 둔 값)
   const pkgId = params.get("pkg") || (pending && pending.pkgId) || "";
+  const promoCode = params.get("promo") || (pending && pending.promoCode) || null;
 
   if (!PKGS[pkgId]) {
     toast("구매하신 이용권 정보를 확인하지 못했습니다. 결제번호 " + (paymentId || "-") + " 로 문의해주세요.");
@@ -3789,7 +3971,7 @@ async function handlePaymentCallback() {
     return true;
   }
 
-  await confirmPayment(paymentId, pkgId, PKGS[pkgId].price);
+  await confirmPayment(paymentId, pkgId, undefined, promoCode);
   clearUrl();
   return true;
 }
@@ -3799,7 +3981,7 @@ async function retryPendingPayment() {
   const pending = readPendingPay();
   if (!pending || !pending.orderId || !PKGS[pending.pkgId]) return;
   // 한 번만 시도하고 결과와 상관없이 정리 (실패해도 토스트로 결제번호를 안내)
-  const ok = await confirmPayment(pending.orderId, pending.pkgId, PKGS[pending.pkgId].price);
+  const ok = await confirmPayment(pending.orderId, pending.pkgId, undefined, pending.promoCode || null);
   if (!ok) { try { localStorage.removeItem("fa_pending_pay"); } catch (e) {} }
 }
 
@@ -3815,6 +3997,7 @@ window.addEventListener("DOMContentLoaded", () => {
       showPage("dashboard");
       retryPendingPayment();
     }
+    autoApplyPromoFromUrl();
   } else {
     showPage("landing");
   }
@@ -3822,3 +4005,4 @@ window.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+

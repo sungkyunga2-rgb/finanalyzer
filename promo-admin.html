@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex, nofollow"/>
+<title>프로모션 코드 관리 — 피나(FinAnalyzer)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+  :root {
+    --accent:#185FA5; --accent-bg:#EBF2FA; --danger:#A32D2D; --ok:#0F6E56;
+    --text:#1a2332; --text2:#5a6a7d; --text3:#9aa7b8; --border:#e2e8f0;
+    --surface:#ffffff; --surface2:#f5f7fa;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Noto Sans KR','Apple SD Gothic Neo',sans-serif; background:var(--surface2);
+         color:var(--text); font-size:14px; line-height:1.5; }
+  header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 20px;
+           display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .brand { font-size:16px; font-weight:700; letter-spacing:-0.02em; }
+  .brand span { color:var(--accent); }
+  .main { max-width:1080px; margin:0 auto; padding:24px 16px 80px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:14px;
+          padding:20px; margin-bottom:18px; }
+  .card-title { font-size:15px; font-weight:700; margin-bottom:14px; letter-spacing:-0.01em; }
+  label { display:block; font-size:12px; font-weight:600; color:var(--text2); margin-bottom:5px; }
+  input[type=text], input[type=password], input[type=number], input[type=date], select {
+    width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:9px;
+    font-size:14px; font-family:inherit; background:#fff; color:var(--text); }
+  input:focus, select:focus { outline:none; border-color:var(--accent); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:12px; }
+  .field { min-width:0; }
+  .btn { border:1px solid var(--border); background:#fff; color:var(--text); border-radius:9px;
+         padding:9px 15px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit;
+         white-space:nowrap; }
+  .btn:hover { border-color:var(--accent); }
+  .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn-primary:hover { background:#14508c; }
+  .btn-sm { padding:5px 10px; font-size:12px; }
+  .btn-danger { color:var(--danger); }
+  .row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .check { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--text2); }
+  .check input { width:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:11px 8px; text-align:left; border-bottom:1px solid var(--border);
+           font-size:13px; vertical-align:middle; }
+  th { font-size:11px; font-weight:700; color:var(--text3); letter-spacing:.03em;
+       text-transform:uppercase; white-space:nowrap; }
+  .code-cell { font-weight:700; font-size:14px; letter-spacing:.02em; }
+  .tag { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; }
+  .tag-on  { background:#E1F5EE; color:var(--ok); }
+  .tag-off { background:#e5e4e0; color:#8a8a86; }
+  .tag-pct { background:#FCEBEB; color:var(--danger); }
+  .muted { color:var(--text3); font-size:12px; }
+  .msg { font-size:13px; margin-top:10px; }
+  .msg.err { color:var(--danger); }
+  .msg.ok  { color:var(--ok); }
+  .hint { font-size:12px; color:var(--text3); margin-top:6px; line-height:1.5; }
+  .hidden { display:none !important; }
+  .table-wrap { overflow-x:auto; }
+  .modal { position:fixed; inset:0; background:rgba(20,24,32,.55); display:flex;
+           align-items:center; justify-content:center; padding:20px; z-index:50; }
+  .modal-box { background:#fff; border-radius:16px; padding:22px; max-width:720px; width:100%;
+               max-height:85vh; overflow-y:auto; }
+  .modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .login-wrap { max-width:380px; margin:60px auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">프로모션 코드 관리 · 피나<span>FinAnalyzer</span></div>
+  <button class="btn btn-sm hidden" id="logoutBtn" onclick="adminLogout()">잠그기</button>
+</header>
+
+<!-- 관리자 로그인 -->
+<div class="main login-wrap" id="loginView">
+  <div class="card">
+    <div class="card-title">관리자 확인</div>
+    <div class="field">
+      <label>관리자 비밀번호</label>
+      <input type="password" id="adminPw" onkeydown="if(event.key==='Enter')adminLogin()" autocomplete="current-password"/>
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="adminLogin()">확인</button>
+    <div class="msg err" id="loginMsg"></div>
+  </div>
+</div>
+
+<!-- 관리 화면 -->
+<div class="main hidden" id="adminView">
+
+  <div class="card">
+    <div class="card-title" id="formTitle">새 코드 만들기</div>
+    <input type="hidden" id="f-id"/>
+    <div class="grid">
+      <div class="field">
+        <label>코드 <span style="color:var(--danger)">필수</span></label>
+        <input type="text" id="f-code" placeholder="예: WELCOME50" style="text-transform:uppercase"/>
+      </div>
+      <div class="field">
+        <label>할인율 (%) <span style="color:var(--danger)">필수</span></label>
+        <input type="number" id="f-percent" min="1" max="100" placeholder="50"/>
+      </div>
+      <div class="field">
+        <label>적용 이용권</label>
+        <select id="f-packages">
+          <option value="">전체 이용권</option>
+          <option value="single">1건만</option>
+          <option value="standard">5건만</option>
+          <option value="mega">10건만</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>시작일 (비우면 즉시)</label>
+        <input type="date" id="f-from"/>
+      </div>
+      <div class="field">
+        <label>종료일 (비우면 무기한)</label>
+        <input type="date" id="f-until"/>
+      </div>
+      <div class="field">
+        <label>총 사용 횟수 (비우면 무제한)</label>
+        <input type="number" id="f-max" min="1" placeholder="예: 100"/>
+      </div>
+      <div class="field">
+        <label>메모 (관리용)</label>
+        <input type="text" id="f-memo" placeholder="예: 블로그 이벤트"/>
+      </div>
+    </div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;">
+      <label class="check"><input type="checkbox" id="f-once" checked/> 한 계정당 1회만 사용</label>
+      <label class="check"><input type="checkbox" id="f-enabled" checked/> 바로 사용 가능하게</label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn btn-primary" onclick="savePromo()">저장</button>
+      <button class="btn hidden" id="cancelEditBtn" onclick="resetForm()">수정 취소</button>
+    </div>
+    <div class="msg" id="formMsg"></div>
+    <div class="hint">할인율을 바꾸면 그 이후 결제부터 적용됩니다. 이미 끝난 결제에는 소급되지 않습니다.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">코드 목록</div>
+    <div class="table-wrap">
+      <table id="promoTable">
+        <thead>
+          <tr>
+            <th>코드</th><th>할인</th><th>적용 이용권</th><th>기간</th>
+            <th>사용</th><th>상태</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="promoBody"></tbody>
+      </table>
+    </div>
+    <div class="msg" id="listMsg"></div>
+  </div>
+</div>
+
+<!-- 사용 현황 -->
+<div class="modal hidden" id="usesModal" onclick="if(event.target===this)closeUses()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="card-title" style="margin:0;" id="usesTitle">사용 현황</div>
+      <button class="btn btn-sm" onclick="closeUses()">닫기</button>
+    </div>
+    <div class="table-wrap"><div id="usesBody"></div></div>
+  </div>
+</div>
+
+<script>
+const API_BASE  = "https://analyze-1-250m.onrender.com";
+const SITE_BASE = "https://sungkyunga2-rgb.github.io/finanalyzer/";
+
+let adminPw = "";
+let promos  = [];
+
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+function setMsg(id, text, kind) {
+  const el = $(id);
+  el.className = "msg" + (kind ? " " + kind : "");
+  el.textContent = text || "";
+}
+
+async function apiCall(method, path, body) {
+  const opts = { method, headers: { "Content-Type": "application/json", "X-Admin-Password": adminPw } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API_BASE + path, opts);
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) {
+    let m = data.detail || data.message || "오류가 발생했습니다.";
+    if (typeof m !== "string") m = JSON.stringify(m);
+    throw new Error(m);
+  }
+  return data;
+}
+
+// ── 관리자 확인 ──
+async function adminLogin() {
+  const pw = $("adminPw").value.trim();
+  if (!pw) { setMsg("loginMsg", "비밀번호를 입력해주세요.", "err"); return; }
+  setMsg("loginMsg", "확인 중...");
+  try {
+    const res = await fetch(API_BASE + "/admin/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw })
+    });
+    if (!res.ok) throw new Error("비밀번호가 올바르지 않습니다.");
+    adminPw = pw;
+    try { sessionStorage.setItem("fa_admin_pw", pw); } catch (e) {}
+    $("loginView").classList.add("hidden");
+    $("adminView").classList.remove("hidden");
+    $("logoutBtn").classList.remove("hidden");
+    setMsg("loginMsg", "");
+    loadPromos();
+  } catch (e) {
+    setMsg("loginMsg", e.message, "err");
+  }
+}
+
+function adminLogout() {
+  adminPw = "";
+  try { sessionStorage.removeItem("fa_admin_pw"); } catch (e) {}
+  location.reload();
+}
+
+// ── 목록 ──
+async function loadPromos() {
+  setMsg("listMsg", "불러오는 중...");
+  try {
+    const d = await apiCall("GET", "/admin/promos");
+    promos = d.promos || [];
+    renderPromos();
+    setMsg("listMsg", "");
+  } catch (e) {
+    setMsg("listMsg", e.message, "err");
+  }
+}
+
+const PKG_LABEL = { single: "1건", standard: "5건", mega: "10건" };
+
+function renderPromos() {
+  const body = $("promoBody");
+  if (!promos.length) {
+    body.innerHTML = '<tr><td colspan="7" class="muted" style="padding:24px 8px;text-align:center;">아직 만든 코드가 없습니다.</td></tr>';
+    return;
+  }
+  body.innerHTML = promos.map(p => {
+    const pkgs = p.packages
+      ? p.packages.split(",").map(x => PKG_LABEL[x] || x).join(", ")
+      : "전체";
+    const period = (p.valid_from || p.valid_until)
+      ? `${p.valid_from || "즉시"} ~ ${p.valid_until || "무기한"}`
+      : "제한 없음";
+    const uses = p.max_uses ? `${p.used_count} / ${p.max_uses}` : `${p.used_count}회`;
+    const link = SITE_BASE + "?promo=" + encodeURIComponent(p.code);
+    return `<tr>
+      <td>
+        <div class="code-cell">${esc(p.code)}</div>
+        ${p.memo ? `<div class="muted">${esc(p.memo)}</div>` : ""}
+        ${p.once_per_user ? '<div class="muted">1인 1회</div>' : '<div class="muted">횟수 제한 없음</div>'}
+      </td>
+      <td><span class="tag tag-pct">${p.discount_percent}%</span></td>
+      <td>${esc(pkgs)}</td>
+      <td class="muted">${esc(period)}</td>
+      <td>${esc(uses)}</td>
+      <td><span class="tag ${p.enabled ? "tag-on" : "tag-off"}">${p.enabled ? "사용중" : "중단"}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="btn btn-sm" onclick="copyLink('${esc(link)}', this)">링크 복사</button>
+          <button class="btn btn-sm" onclick="editPromo(${p.id})">수정</button>
+          <button class="btn btn-sm" onclick="togglePromo(${p.id})">${p.enabled ? "중단" : "재개"}</button>
+          <button class="btn btn-sm" onclick="showUses(${p.id}, '${esc(p.code)}')">사용현황</button>
+          <button class="btn btn-sm btn-danger" onclick="deletePromo(${p.id}, '${esc(p.code)}')">삭제</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function copyLink(link, btn) {
+  const done = () => {
+    const old = btn.textContent;
+    btn.textContent = "복사됨!";
+    setTimeout(() => { btn.textContent = old; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(done).catch(() => prompt("아래 링크를 복사하세요", link));
+  } else {
+    prompt("아래 링크를 복사하세요", link);
+  }
+}
+
+// ── 만들기 / 수정 ──
+function resetForm() {
+  $("f-id").value = "";
+  $("f-code").value = "";
+  $("f-percent").value = "";
+  $("f-packages").value = "";
+  $("f-from").value = "";
+  $("f-until").value = "";
+  $("f-max").value = "";
+  $("f-memo").value = "";
+  $("f-once").checked = true;
+  $("f-enabled").checked = true;
+  $("formTitle").textContent = "새 코드 만들기";
+  $("cancelEditBtn").classList.add("hidden");
+  $("f-code").disabled = false;
+  setMsg("formMsg", "");
+}
+
+function editPromo(id) {
+  const p = promos.find(x => x.id === id);
+  if (!p) return;
+  $("f-id").value = p.id;
+  $("f-code").value = p.code;
+  $("f-percent").value = p.discount_percent;
+  $("f-packages").value = p.packages || "";
+  $("f-from").value = p.valid_from || "";
+  $("f-until").value = p.valid_until || "";
+  $("f-max").value = p.max_uses == null ? "" : p.max_uses;
+  $("f-memo").value = p.memo || "";
+  $("f-once").checked = !!p.once_per_user;
+  $("f-enabled").checked = !!p.enabled;
+  $("formTitle").textContent = p.code + " 코드 수정";
+  $("cancelEditBtn").classList.remove("hidden");
+  setMsg("formMsg", "");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function savePromo() {
+  const body = {
+    code: $("f-code").value.trim().toUpperCase(),
+    discount_percent: parseInt($("f-percent").value || "0", 10),
+    packages: $("f-packages").value,
+    valid_from: $("f-from").value,
+    valid_until: $("f-until").value,
+    max_uses: $("f-max").value ? parseInt($("f-max").value, 10) : null,
+    once_per_user: $("f-once").checked,
+    enabled: $("f-enabled").checked,
+    memo: $("f-memo").value.trim(),
+  };
+  const id = $("f-id").value;
+  if (id) body.id = parseInt(id, 10);
+
+  setMsg("formMsg", "저장 중...");
+  try {
+    const d = await apiCall("POST", "/admin/promos", body);
+    resetForm();   // 폼을 비운 뒤에 안내 문구를 남긴다 (resetForm이 문구를 지우므로 순서 주의)
+    setMsg("formMsg", `${d.promo.code} 코드를 저장했습니다.`, "ok");
+    await loadPromos();
+  } catch (e) {
+    setMsg("formMsg", e.message, "err");
+  }
+}
+
+async function togglePromo(id) {
+  try {
+    await apiCall("POST", "/admin/promos/" + id + "/toggle");
+    await loadPromos();
+  } catch (e) {
+    setMsg("listMsg", e.message, "err");
+  }
+}
+
+async function deletePromo(id, code) {
+  if (!confirm(code + " 코드를 삭제할까요?\n사용 내역도 함께 지워지며 되돌릴 수 없습니다.\n(잠시 중단만 하시려면 '중단'을 쓰세요)")) return;
+  try {
+    await apiCall("DELETE", "/admin/promos/" + id);
+    await loadPromos();
+  } catch (e) {
+    setMsg("listMsg", e.message, "err");
+  }
+}
+
+// ── 사용 현황 ──
+async function showUses(id, code) {
+  $("usesTitle").textContent = code + " 사용 현황";
+  $("usesBody").innerHTML = '<p class="muted">불러오는 중...</p>';
+  $("usesModal").classList.remove("hidden");
+  try {
+    const d = await apiCall("GET", "/admin/promos/" + id + "/uses");
+    const uses = d.uses || [];
+    if (!uses.length) {
+      $("usesBody").innerHTML = '<p class="muted">아직 사용된 적이 없습니다.</p>';
+      return;
+    }
+    $("usesBody").innerHTML = `<table>
+      <thead><tr><th>사용일시</th><th>계정</th><th>이용권</th><th>정가</th><th>결제금액</th></tr></thead>
+      <tbody>${uses.map(u => `<tr>
+        <td class="muted">${esc(fmtDate(u.created_at))}</td>
+        <td>${esc(u.email)}</td>
+        <td>${esc(u.package_label)}</td>
+        <td class="muted">${Number(u.original_price).toLocaleString("ko-KR")}원</td>
+        <td><strong>${Number(u.paid_price).toLocaleString("ko-KR")}원</strong></td>
+      </tr>`).join("")}</tbody></table>`;
+  } catch (e) {
+    $("usesBody").innerHTML = `<p class="msg err">${esc(e.message)}</p>`;
+  }
+}
+
+function closeUses() { $("usesModal").classList.add("hidden"); }
+
+// 서버는 UTC로 저장하므로 현지시각으로 변환
+function fmtDate(iso) {
+  if (!iso) return "-";
+  const d = new Date(/[Z+]/.test(iso) ? iso : iso + "Z");
+  if (isNaN(d)) return "-";
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 새로고침해도 다시 입력하지 않도록 (탭을 닫으면 사라짐)
+window.addEventListener("DOMContentLoaded", () => {
+  let saved = "";
+  try { saved = sessionStorage.getItem("fa_admin_pw") || ""; } catch (e) {}
+  if (saved) { $("adminPw").value = saved; adminLogin(); }
+});
+</script>
+</body>
+</html>
