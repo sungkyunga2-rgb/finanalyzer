@@ -101,6 +101,7 @@
   <div class="tabs">
     <button class="tab active" id="tabBtn-promo" onclick="showTab('promo')">프로모션 코드</button>
     <button class="tab" id="tabBtn-refund" onclick="showTab('refund')">환불 처리<span class="badge-count hidden" id="pendingCount">0</span></button>
+    <button class="tab" id="tabBtn-history" onclick="showTab('history')">분석이력</button>
   </div>
 
 <div id="tab-promo">
@@ -180,6 +181,23 @@
     </div>
     <div id="refundList"></div>
     <div class="msg" id="refundMsg"></div>
+  </div>
+</div>
+
+<div id="tab-history" class="hidden">
+  <div class="card">
+    <div class="card-title">회원 분석이력</div>
+    <p class="hint" style="margin-top:-8px;margin-bottom:14px;">
+      업로드된 재무제표 원본은 보관하지 않아 확인할 수 없고, <strong>분석 결과 리포트</strong>만 열람할 수 있습니다.
+      보관기간(30일)이 지난 이력은 삭제되어 조회되지 않습니다.
+    </p>
+    <div class="promo-row" style="display:flex;gap:10px;margin-bottom:14px;">
+      <input type="text" id="histSearch" placeholder="이메일 · 회사명 · 대표자명 · 사업자번호로 검색"
+             style="flex:1;" onkeydown="if(event.key==='Enter')loadHistories()"/>
+      <button class="btn" onclick="loadHistories()">검색</button>
+    </div>
+    <div class="table-wrap"><div id="histList"></div></div>
+    <div class="msg" id="histMsg"></div>
   </div>
 </div>
 
@@ -406,16 +424,68 @@ async function deletePromo(id, code) {
 }
 
 // ══════════════════════════════════════════════════════════
+// 회원 분석이력
+// ══════════════════════════════════════════════════════════
+async function loadHistories() {
+  setMsg("histMsg", "불러오는 중...");
+  const q = ($("histSearch").value || "").trim();
+  try {
+    const d = await apiCall("GET", "/admin/histories" + (q ? "?q=" + encodeURIComponent(q) : ""));
+    renderHistories(d.histories || []);
+    setMsg("histMsg", d.histories.length >= 200 ? "최근 200건만 표시됩니다. 검색어로 좁혀주세요." : "");
+  } catch (e) {
+    setMsg("histMsg", e.message, "err");
+  }
+}
+
+function renderHistories(rows) {
+  if (!rows.length) {
+    $("histList").innerHTML = '<p class="muted" style="padding:20px 0;">조회된 분석이력이 없습니다.</p>';
+    return;
+  }
+  $("histList").innerHTML = `<table>
+    <thead><tr><th>분석일시</th><th>회원</th><th>분석 대상</th><th>구분</th><th>매출</th><th>안정성</th><th>출력</th><th></th></tr></thead>
+    <tbody>${rows.map(h => `<tr>
+      <td class="muted" style="white-space:nowrap;">${esc(fmtDate(h.created_at))}</td>
+      <td>${esc(h.email)}${h.user_company ? `<div class="muted">${esc(h.user_company)}</div>` : ""}</td>
+      <td>
+        <div style="font-weight:600;">${esc(h.company_name || "상호 미입력")}</div>
+        <div class="muted">${esc([h.rep_name, h.business_number].filter(Boolean).join(" · ") || "-")}</div>
+      </td>
+      <td class="muted" style="white-space:nowrap;">${h.source_type === "manual" ? "직접 입력" : "재무제표 분석"}</td>
+      <td style="white-space:nowrap;">${h.revenue == null ? '<span class="muted">-</span>' : Number(h.revenue).toLocaleString("ko-KR") + "원"}</td>
+      <td style="white-space:nowrap;">${h.stability_grade
+          ? `<span class="tag ${gradeClass(h.stability_grade)}">${esc(h.stability_grade)}</span>`
+          : '<span class="muted">-</span>'}</td>
+      <td><span class="tag ${h.printed ? "tag-off" : "tag-on"}">${h.printed ? "출력완료" : "출력 전"}</span></td>
+      <td><button class="btn btn-sm" onclick="openHistoryReport(${h.id})">리포트 보기</button></td>
+    </tr>`).join("")}</tbody></table>`;
+}
+
+function gradeClass(grade) {
+  const c = String(grade).trim().charAt(0).toUpperCase();
+  return (c === "A" || c === "B") ? "tag-on" : "tag-pct";
+}
+
+// 고객 화면과 같은 코드로 리포트를 그리기 위해 index.html을 새 탭으로 연다
+// (관리자 비밀번호는 sessionStorage로 전달되며, 열람은 출력완료로 기록되지 않는다)
+function openHistoryReport(id) {
+  try { sessionStorage.setItem("fa_admin_pw", adminPw); } catch (e) {}
+  window.open("index.html?adminHistory=" + encodeURIComponent(id), "_blank");
+}
+
+// ══════════════════════════════════════════════════════════
 // 환불 처리
 // ══════════════════════════════════════════════════════════
 let refunds = [];
 
 function showTab(name) {
-  ["promo", "refund"].forEach(t => {
+  ["promo", "refund", "history"].forEach(t => {
     $("tab-" + t).classList.toggle("hidden", t !== name);
     $("tabBtn-" + t).classList.toggle("active", t === name);
   });
   if (name === "refund") loadRefunds();
+  if (name === "history") loadHistories();
 }
 
 async function loadRefunds() {

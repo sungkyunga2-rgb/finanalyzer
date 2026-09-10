@@ -1493,6 +1493,79 @@ async def admin_process_refund(
 # 오류신고 (플로팅 버튼 → 관리자 이메일로 전달)
 # ══════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════
+# 관리자 — 회원 분석이력 조회
+#   ※ 업로드된 재무제표 원본은 보관하지 않으므로 조회할 수 없고,
+#      분석 결과(리포트)만 확인할 수 있습니다.
+# ══════════════════════════════════════════════════════════════
+@app.get("/admin/histories")
+def admin_list_histories(
+    q: Optional[str] = None,
+    limit: int = 200,
+    _: bool = Depends(check_admin),
+    db: Session = Depends(get_db),
+):
+    """전체 회원의 분석이력 조회. q로 이메일·회사명·대표자명·사업자번호 검색"""
+    from datetime import timedelta
+    purge_expired_histories(db)
+    cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
+
+    query = (db.query(models.AnalysisHistory, models.User)
+               .outerjoin(models.User, models.User.id == models.AnalysisHistory.user_id)
+               .filter(models.AnalysisHistory.created_at >= cutoff))
+
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        query = query.filter(
+            (models.User.email.ilike(like))
+            | (models.AnalysisHistory.company_name.ilike(like))
+            | (models.AnalysisHistory.rep_name.ilike(like))
+            | (models.AnalysisHistory.business_number.ilike(like))
+        )
+
+    rows = query.order_by(models.AnalysisHistory.created_at.desc()).limit(max(1, min(limit, 500))).all()
+    return {
+        "count": len(rows),
+        "retention_days": HISTORY_RETENTION_DAYS,
+        "histories": [
+            {
+                **_history_summary(h),
+                "email": (u.email if u else "(탈퇴한 회원)"),
+                "user_company": (u.company_name if u else ""),
+                "phone": (u.phone if u else ""),
+            }
+            for h, u in rows
+        ],
+    }
+
+
+@app.get("/admin/histories/{history_id}")
+def admin_get_history(
+    history_id: int,
+    _: bool = Depends(check_admin),
+    db: Session = Depends(get_db),
+):
+    """분석 결과 전체 데이터 (리포트 화면을 그리는 데 사용)"""
+    import json as _json
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
+    h = db.query(models.AnalysisHistory).filter(
+        models.AnalysisHistory.id == history_id,
+        models.AnalysisHistory.created_at >= cutoff,
+    ).first()
+    if not h:
+        raise HTTPException(status_code=404, detail="분석 이력을 찾을 수 없습니다. (보관기간이 지났거나 삭제됨)")
+    u = db.query(models.User).filter(models.User.id == h.user_id).first()
+    try:
+        data = _json.loads(h.data_json or "{}")
+    except Exception:
+        data = {}
+    return {
+        "history": {**_history_summary(h), "email": (u.email if u else "(탈퇴한 회원)")},
+        "data": data,
+    }
+
+
+# ══════════════════════════════════════════════════════════════
 # 관리자 — 프로모션(할인) 코드 관리
 # ══════════════════════════════════════════════════════════════
 def _promo_summary(p: "models.PromoCode") -> dict:
