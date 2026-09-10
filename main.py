@@ -1379,6 +1379,7 @@ def admin_list_refund_requests(_: bool = Depends(check_admin), db: Session = Dep
             "status": r.status,
             "admin_note": r.admin_note,
             "created_at": r.created_at.isoformat() if r.created_at else None,
+            "processed_at": r.processed_at.isoformat() if r.processed_at else None,
             "order_id": r.order_id or "",
             "refunded_amount": r.refunded_amount or 0,
             "credits_deducted": r.credits_deducted or 0,
@@ -1453,6 +1454,7 @@ class AdminRefundBody(BaseModel):
     reason: str = "고객 환불 요청"
     deduct_credits: Optional[int] = None  # 회수할 크레딧 (비우면 환불 비율만큼 자동 계산)
     admin_note: str = ""
+    allow_reprocess: bool = False   # 이미 처리된 신청에 추가 환불을 할 때만 True
 
 
 @app.post("/admin/refund-requests/{req_id}/refund")
@@ -1470,8 +1472,8 @@ async def admin_process_refund(
     r = db.query(models.RefundRequest).filter(models.RefundRequest.id == req_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="해당 환불 신청을 찾을 수 없습니다.")
-    if r.status == "processed":
-        raise HTTPException(status_code=400, detail="이미 환불 처리된 신청입니다.")
+    if r.status == "processed" and not body.allow_reprocess:
+        raise HTTPException(status_code=400, detail="이미 환불 처리된 신청입니다. 추가 환불이 필요하면 '추가 환불'로 진행해주세요.")
 
     payment = db.query(models.Payment).filter(models.Payment.order_id == body.order_id).first()
     if not payment:

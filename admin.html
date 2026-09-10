@@ -350,15 +350,10 @@ function renderRefundList(d) {
            p.cancelled_amount ? " (취소가능 " + Number(p.cancellable).toLocaleString("ko-KR") + "원)" : ""}
        </option>`).join("");
 
-    const actions = r.status === "pending"
-      ? `<div class="row-actions">
-           <button class="btn-primary btn-xs" onclick="toggleRefundPanel(${r.id})">환불 처리</button>
-           <button class="btn-ghost btn-xs" onclick="resolveRefund(${r.id}, 'processed')">완료 처리</button>
-           <button class="btn-ghost btn-xs" onclick="resolveRefund(${r.id}, 'rejected')">반려</button>
-         </div>`
-      : `<span class="muted">${esc(r.admin_note || "")}</span>`;
+    const isPending = r.status === "pending";
+    const canRefund = pays.length > 0;
 
-    // 결제 내역 + 크레딧 출처 요약 (관리자가 넣어준 분과 실결제분을 구분)
+    // 크레딧 출처 요약 (관리자가 넣어준 분과 실결제분 구분)
     const cs = r.credit_summary;
     const summary = cs ? `
       <div style="background:#EBF2FA;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.7;">
@@ -372,6 +367,7 @@ function renderRefundList(d) {
         </div>
       </div>` : "";
 
+    // 결제 내역 (취소된 건도 함께)
     const payTable = (r.payments || []).length ? `
       <div class="section-title" style="margin-top:0;">결제 내역</div>
       <div class="table-wrap"><table>
@@ -387,35 +383,65 @@ function renderRefundList(d) {
         </tr>`).join("")}</tbody>
       </table></div>` : `<div class="muted" style="margin-bottom:12px;">실제 결제 내역이 없습니다. (관리자가 지급한 크레딧만 보유)</div>`;
 
-    const panel = r.status === "pending" ? `
+    const actions = `<div class="row-actions">
+        <button class="btn-ghost btn-xs" onclick="toggleRefundPanel(${r.id})">상세</button>
+        ${isPending ? `
+          <button class="btn-primary btn-xs" onclick="toggleRefundPanel(${r.id}, true)">환불 처리</button>
+          <button class="btn-ghost btn-xs" onclick="resolveRefund(${r.id}, 'processed')">완료 처리</button>
+          <button class="btn-ghost btn-xs" onclick="resolveRefund(${r.id}, 'rejected')">반려</button>` : ""}
+      </div>`;
+
+    // 처리가 끝난 신청의 결과 요약 (나중에 다시 확인할 수 있도록)
+    const resultBox = !isPending ? `
+      <div style="background:${r.status === "processed" ? "#E1F5EE" : "#f2f2f0"};border-radius:8px;
+                  padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.7;">
+        <strong>처리 결과</strong> · ${REFUND_STATUS_KR[r.status] || r.status}
+        ${r.processed_at ? ` · ${esc(fmtDT(r.processed_at, true))}` : ""}
+        ${r.refunded_amount ? ` · 환불 <strong>${Number(r.refunded_amount).toLocaleString("ko-KR")}원</strong>` : ""}
+        ${r.credits_deducted ? ` · 크레딧 <strong>${r.credits_deducted}</strong> 회수` : ""}
+        ${r.order_id ? ` · 주문번호 ${esc(r.order_id)}` : ""}
+        ${r.admin_note ? `<div class="muted" style="margin-top:4px;">메모 : ${esc(r.admin_note)}</div>` : ""}
+      </div>` : "";
+
+    // 환불 실행 폼 — 처리 대기는 바로, 이미 처리된 건은 "추가 환불"로 구분
+    const formBox = canRefund ? `
+      <div class="warn-box">
+        ${isPending
+          ? `<strong>환불 실행을 누르면 포트원에서 실제로 결제가 취소되고 고객에게 돈이 돌아갑니다.</strong>
+             되돌릴 수 없으니 결제건과 금액을 확인해주세요. 취소가 성공하면 크레딧 회수와 상태 변경까지 함께 처리됩니다.`
+          : `<strong>이미 처리된 신청입니다.</strong> 아래는 아직 취소 가능한 금액이 남아 있는 결제건으로,
+             <strong>추가 환불이 꼭 필요한 경우에만</strong> 사용하세요.`}
+      </div>
+      <div class="field"><label>취소할 결제건</label><select id="rf-order-${r.id}">${options}</select></div>
+      <div class="form-grid">
+        <div class="field"><label>환불 금액 (비우면 전액)</label><input type="number" id="rf-amount-${r.id}" min="1" placeholder="전액"/></div>
+        <div class="field"><label>회수 크레딧 (비우면 자동)</label><input type="number" id="rf-credits-${r.id}" min="0" placeholder="자동"/></div>
+        <div class="field"><label>취소 사유 (포트원 기록)</label><input type="text" id="rf-reason-${r.id}" value="고객 환불 요청"/></div>
+        <div class="field"><label>처리 메모 (내부용)</label><input type="text" id="rf-note-${r.id}" placeholder="예: 약관 제2조 미사용분"/></div>
+      </div>
+      <button class="btn-primary" style="margin-top:12px;" onclick="doRefund(${r.id}, ${isPending ? "false" : "true"})">
+        ${isPending ? "환불 실행" : "추가 환불 실행"}
+      </button>
+      <div class="error-msg" id="rf-err-${r.id}"></div>`
+      : `<div class="muted">취소 가능한 결제 건이 없습니다. (전액 취소되었거나 실제 결제 내역이 없음)</div>`;
+
+    const panel = `
       <tr id="refundPanelRow-${r.id}" class="hidden"><td colspan="6">
         <div class="refund-panel">
+          ${resultBox}
           ${summary}
           ${payTable}
-          <div class="warn-box">
-            <strong>환불 실행을 누르면 포트원에서 실제로 결제가 취소되고 고객에게 돈이 돌아갑니다.</strong>
-            되돌릴 수 없으니 결제건과 금액을 확인해주세요. 취소가 성공하면 크레딧 회수와 상태 변경까지 함께 처리됩니다.
-          </div>
-          ${options ? `
-            <div class="field"><label>취소할 결제건</label><select id="rf-order-${r.id}">${options}</select></div>
-            <div class="form-grid">
-              <div class="field"><label>환불 금액 (비우면 전액)</label><input type="number" id="rf-amount-${r.id}" min="1" placeholder="전액"/></div>
-              <div class="field"><label>회수 크레딧 (비우면 자동)</label><input type="number" id="rf-credits-${r.id}" min="0" placeholder="자동"/></div>
-              <div class="field"><label>취소 사유 (포트원 기록)</label><input type="text" id="rf-reason-${r.id}" value="고객 환불 요청"/></div>
-              <div class="field"><label>처리 메모 (내부용)</label><input type="text" id="rf-note-${r.id}" placeholder="예: 약관 제2조 미사용분"/></div>
-            </div>
-            <button class="btn-primary" style="margin-top:12px;" onclick="doRefund(${r.id})">환불 실행</button>
-            <div class="error-msg" id="rf-err-${r.id}"></div>
-          ` : `<span class="muted">취소 가능한 결제 건이 없습니다. (전액 취소되었거나 결제 내역 없음)</span>`}
+          ${formBox}
         </div>
-      </td></tr>` : "";
+      </td></tr>`;
 
     return `<tr>
       <td style="white-space:nowrap;">${esc(fmtDT(r.created_at))}</td>
       <td>${esc(r.company_name || "-")}<div class="muted">${esc(r.email)}</div>${r.phone ? `<div class="muted">${esc(r.phone)}</div>` : ""}</td>
       <td style="max-width:200px;white-space:normal;">${esc(r.reason || "-")}</td>
       <td style="white-space:nowrap;">${r.remaining_count !== null ? r.remaining_count + "건" : "-"}</td>
-      <td><span class="tag ${r.status === "pending" ? "tag-pct" : (r.status === "processed" ? "tag-on" : "tag-off")}">${REFUND_STATUS_KR[r.status] || r.status}</span></td>
+      <td><span class="tag ${isPending ? "tag-pct" : (r.status === "processed" ? "tag-on" : "tag-off")}">${REFUND_STATUS_KR[r.status] || r.status}</span>
+          ${!isPending && r.refunded_amount ? `<div class="muted">${Number(r.refunded_amount).toLocaleString("ko-KR")}원 환불</div>` : ""}</td>
       <td>${actions}</td>
     </tr>${panel}`;
   }).join("");
@@ -428,12 +454,14 @@ function renderRefundList(d) {
     </table></div>`;
 }
 
-function toggleRefundPanel(id) {
+function toggleRefundPanel(id, forceOpen) {
   const row = document.getElementById("refundPanelRow-" + id);
-  if (row) row.classList.toggle("hidden");
+  if (!row) return;
+  if (forceOpen) row.classList.remove("hidden");
+  else row.classList.toggle("hidden");
 }
 
-async function doRefund(id) {
+async function doRefund(id, allowReprocess) {
   const sel = document.getElementById("rf-order-" + id);
   if (!sel) return;
   const errEl = document.getElementById("rf-err-" + id);
@@ -458,6 +486,7 @@ async function doRefund(id) {
       amount: amountRaw ? amount : null,
       reason: document.getElementById("rf-reason-" + id).value.trim() || "고객 환불 요청",
       admin_note: document.getElementById("rf-note-" + id).value.trim(),
+      allow_reprocess: !!allowReprocess,
     };
     if (creditsRaw !== "") body.deduct_credits = parseInt(creditsRaw, 10);
 
