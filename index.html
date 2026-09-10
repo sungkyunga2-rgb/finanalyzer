@@ -159,18 +159,35 @@
   .pkg-card.promo-off { opacity: .55; }
 
   /* ── 프로모션(할인) 코드 ── */
-  .promo-box { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
-  .promo-row { display: flex; gap: 8px; align-items: stretch; }
-  .promo-row input { flex: 1; min-width: 0; text-transform: uppercase; }
-  .promo-row button { flex-shrink: 0; padding: 0 16px; white-space: nowrap; }
-  .promo-msg { font-size: 12px; margin-top: 8px; line-height: 1.5; }
+  .promo-box { margin-top: 20px; background: var(--surface2); border-radius: 14px; padding: 18px; }
+  .promo-title { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 3px; }
+  .promo-desc { font-size: 12px; color: var(--text3); margin-bottom: 14px; line-height: 1.5; }
+  .promo-row { display: flex; gap: 10px; align-items: stretch; }
+  .promo-row input {
+    flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+    padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 11px;
+    font-size: 15px; background: var(--surface); color: var(--text); outline: none; font-family: inherit;
+  }
+  .promo-row input::placeholder { letter-spacing: 0; font-weight: 400; color: var(--text3); text-transform: none; }
+  .promo-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  .promo-row button {
+    flex-shrink: 0; padding: 0 26px; border-radius: 11px; font-size: 14px; font-weight: 700;
+    background: var(--surface); border: 1px solid var(--border-strong); color: var(--text); cursor: pointer;
+    font-family: inherit; white-space: nowrap;
+  }
+  .promo-row button:hover { border-color: var(--accent); color: var(--accent); }
+  .promo-msg { font-size: 12.5px; margin-top: 10px; line-height: 1.5; }
   .promo-msg.ok { color: #0F6E56; font-weight: 600; }
   .promo-msg.err { color: var(--danger); }
-  .promo-applied { display: flex; align-items: center; justify-content: space-between; gap: 10px;
-                   background: #E1F5EE; border-radius: 10px; padding: 10px 12px; }
-  .promo-applied-text { font-size: 13px; color: #0F6E56; font-weight: 600; }
-  .promo-applied button { background: none; border: none; color: #0F6E56; font-size: 12px;
-                          text-decoration: underline; cursor: pointer; font-family: inherit; padding: 0; }
+  .promo-applied { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                   background: #E1F5EE; border: 1px solid #bfe6d8; border-radius: 12px; padding: 16px 18px; }
+  .promo-applied-text { font-size: 14px; color: #0F6E56; font-weight: 700; letter-spacing: -0.01em; }
+  .promo-applied button { background: none; border: none; color: #0F6E56; font-size: 12.5px;
+                          text-decoration: underline; cursor: pointer; font-family: inherit; padding: 4px; }
+  @media (max-width: 460px) {
+    .promo-row { flex-direction: column; }
+    .promo-row button { padding: 13px 26px; }
+  }
 
   /* 결제 팝업 모달 */
   .modal-overlay { position: fixed; inset: 0; background: rgba(20,24,32,0.55); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 20px; }
@@ -852,8 +869,9 @@
   <div class="main">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">분석 이력</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
-      지난 분석 결과를 다시 확인하고 리포트를 출력할 수 있습니다.
-      분석 결과는 <strong>3개월간</strong> 보관되며, 기간이 지나면 목록에서 사라집니다.
+      지난 분석이력을 확인할 수 있습니다.<br>
+      분석이력은 <strong>3개월간</strong> 보관되고 분석결과 출력은 <strong>1회만</strong> 가능합니다.
+      출력 이후에는 재발급이 불가능합니다.
     </p>
     <div class="card">
       <div id="history-list"></div>
@@ -1076,7 +1094,8 @@
       </div>
 
       <div class="promo-box">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">할인 코드</div>
+        <div class="promo-title">할인 코드</div>
+        <div class="promo-desc">받으신 코드가 있다면 입력해주세요. 적용하면 금액이 바로 바뀝니다.</div>
         <div id="promo-input-wrap-charge"></div>
       </div>
     </div>
@@ -1201,7 +1220,9 @@
       <button class="modal-close" onclick="closePaymentModal()">✕</button>
     </div>
     <p class="modal-desc">이용권을 구매하면 바로 분석을 이어갈 수 있어요.</p>
-    <div class="promo-box" style="margin-top:0;padding-top:0;border-top:none;margin-bottom:1rem;">
+    <div class="promo-box" style="margin-top:0;margin-bottom:1.25rem;">
+      <div class="promo-title">할인 코드</div>
+      <div class="promo-desc">받으신 코드가 있다면 먼저 입력해주세요.</div>
       <div id="promo-input-wrap-modal"></div>
     </div>
     <div class="packages" id="modal-packages">
@@ -3369,7 +3390,6 @@ function downloadResult() {
   .fa-print-confirm button { width: auto; max-width: none; display: inline-block; margin: 0;
     padding: 7px 14px; font-size: 13px; border-radius: 8px; }
   .fa-print-confirm .fa-no { background: rgba(255,255,255,0.18); color: #fff; }
-  .fa-print-confirm .fa-done { color: #a8e6cf; font-weight: 700; }
   @media print { .fa-print-confirm { display: none !important; } }
 </style>
 </head>
@@ -3582,8 +3602,7 @@ window.addEventListener('afterprint', function () { if (faPrintRequested) faShow
 // 사용자가 "네, 완료했어요"를 눌렀을 때만 분석이력을 출력완료로 기록
 function faConfirmPrinted() {
   faPrintRequested = false;
-  var el = document.getElementById('faPrintConfirm');
-  if (el) { el.classList.add('show'); el.innerHTML = '<span class="fa-done">✓ 분석이력에 출력완료로 기록되었습니다.</span>'; }
+  faHidePrintConfirm();
   if (!FA_HISTORY_ID) return;
   var sent = false;
   try {
@@ -3600,7 +3619,7 @@ function faConfirmPrinted() {
 
 function faImageSaved(btn) {
   faConfirmPrinted();
-  if (btn) btn.outerHTML = '<div style="color:#0F6E56;font-weight:700;padding:10px;font-size:13px;">✓ 분석이력에 출력완료로 기록되었습니다.</div>';
+  if (btn) btn.remove();
 }
 
 async function saveAsImage() {
