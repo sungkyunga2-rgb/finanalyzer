@@ -902,9 +902,9 @@ async def extract_income_doc(
 
 # ══════════════════════════════════════════════════════════════
 # 분석 이력 — 지난 분석 결과 조회 및 리포트 재출력
-# (이용약관상 분석 결과 보관기간은 3개월이므로 그 기간 내 이력만 조회됨)
+# (이용약관상 분석이력 보관기간은 30일이므로 그 기간 내 이력만 조회됨)
 # ══════════════════════════════════════════════════════════════
-HISTORY_RETENTION_DAYS = 90
+HISTORY_RETENTION_DAYS = 30
 
 class AnalysisHistoryCreate(BaseModel):
     company_name: Optional[str] = ""
