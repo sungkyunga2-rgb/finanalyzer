@@ -712,9 +712,12 @@
         <div id="opinionBox"></div>
       </div>
       <p class="note">※ AI가 이미지에서 추출한 수치이므로 오인식 가능성이 있습니다. 특히 글씨가 작거나 화질이 낮은 이미지는 숫자나 항목이 다르게 인식될 수 있으니, 중요한 의사결정 전에 원문을 반드시 확인하세요.</p>
-      <button class="btn btn-full mt1" onclick="downloadResult()" style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(90deg,#185FA5,#2e80d8);color:#fff;border-color:#185FA5;font-weight:700;box-shadow:0 4px 12px rgba(24,95,165,.25);">
+      <button class="btn btn-full mt1" id="fullReportBtn" onclick="downloadResult()" style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(90deg,#185FA5,#2e80d8);color:#fff;border-color:#185FA5;font-weight:700;box-shadow:0 4px 12px rgba(24,95,165,.25);">
         📄 분석결과 전체 확인하기
       </button>
+      <p id="printedNote" class="note text-center hidden" style="margin-top:8px;color:var(--text2);">
+        리포트 출력은 건당 1회만 가능하여 재발급되지 않습니다. 저장하신 파일을 확인해주세요.
+      </p>
       <p class="text-center" style="margin-top:8px;margin-bottom:24px;">
         <a href="#" onclick="event.preventDefault();window.open('print-guide.jpg','_blank')" style="font-size:12px;color:var(--text2);text-decoration:underline;">진단결과와 인쇄화면이 다를 경우</a>
       </p>
@@ -1103,7 +1106,7 @@
       이용권을 선택하세요
     </button>
     <p class="note text-center mt1">포트원 안전 결제 · 카드/계좌이체/간편결제 지원</p>
-    <p class="note text-center" style="margin-top:8px;color:var(--text2);">서비스 제공기간 : 분석된 재무제표는 결제 이후 <strong>3개월</strong>동안 보관됩니다. 꼭 다운로드해서 보관해주세요.</p>
+    <p class="note text-center" style="margin-top:8px;color:var(--text2);">서비스 제공기간 : 분석이력은 <strong>3개월간</strong> 보관되며, 리포트 출력은 <strong>1회만</strong> 가능합니다. 출력 이후에는 재발급이 불가하니 꼭 저장해서 보관해주세요.</p>
   </div>
 </div>
 
@@ -1127,7 +1130,7 @@
       ④ (처리 절차 및 소요기간) 회사는 환불 신청 접수일로부터 영업일 기준 3~7일 이내에 신청 내용을 확인하고 처리 결과를 안내합니다. 환불이 승인된 경우, 결제수단에 따라 실제 환급까지 추가로 3~5영업일이 소요될 수 있습니다.<br/><br/>
       ⑤ (기타) 이용자의 단순 변심에 의한 환불은 제1항의 청약철회 기간 내에서만 가능하며, 그 외의 사유로 인한 환불 및 분쟁은 관련 법령(전자상거래 등에서의 소비자보호에 관한 법률 등) 및 회사 정책에 따라 처리됩니다.</p>
       <br/>
-      <p><strong>제3조 (서비스 제공기간)</strong><br/>분석된 재무제표 결과는 결제일로부터 3개월간 보관됩니다. 보관 기간 내 다운로드하여 보관하시기 바랍니다.</p>
+      <p><strong>제3조 (서비스 제공기간 및 리포트 출력)</strong><br/>① 회원이 업로드한 재무제표 원본은 분석 완료 후 별도로 보관하지 않습니다.<br/>② 분석이력(분석 일시, 기업 정보, 진단 결과 등)은 분석일로부터 3개월간 보관되며, 기간이 지나면 조회할 수 없습니다.<br/>③ 분석 리포트의 출력(저장·인쇄)은 건당 1회만 가능하며, 출력 완료 이후에는 재발급되지 않습니다. 출력하신 리포트는 회원께서 직접 저장·보관하시기 바랍니다.</p>
       <br/>
       <p><strong>제4조 (면책)</strong><br/>회사는 AI 분석 결과의 정확성을 보증하지 않으며, 분석 결과를 기반으로 한 의사결정에 따른 손실에 대해 책임을 지지 않습니다.</p>
       <br/>
@@ -1895,6 +1898,7 @@ async function doAnalyze() {
 
   moveResultsAfter("imageCard");
   window.currentHistoryId = null;
+  window.currentHistoryPrinted = false;
 
   const btn = document.getElementById("analyzeBtn");
   btn.disabled = true; btn.textContent = "분석 중...";
@@ -2087,6 +2091,7 @@ async function doManualAnalyze() {
   };
 
   window.currentHistoryId = null;
+  window.currentHistoryPrinted = false;
   moveResultsAfter("manualCard");
   document.getElementById("results").classList.remove("hidden");
   renderResults(d);
@@ -2379,6 +2384,7 @@ function renderResults(d) {
   document.getElementById("aiComment").textContent = "💡 재무제표와 입력된 값이 다른 경우, 우측 상단의 '✏️ 값 수정하기'를 클릭하시면 직접 수정할 수 있습니다.";
 
   document.getElementById("results").classList.remove("hidden");
+  updateReportButtons();
 }
 
 // ── 인식 결과 직접 수정 ──────────────────────────────────────────
@@ -2539,6 +2545,7 @@ async function openHistoryReport(historyId, btn) {
     if (!d || !Object.keys(d).length) throw new Error("저장된 분석 결과를 불러오지 못했습니다.");
 
     window.currentHistoryId = historyId;
+    window.currentHistoryPrinted = !!(res.history && res.history.printed);
     showPage("dashboard");
     moveResultsAfter(res.history && res.history.source_type === "manual" ? "manualCard" : "imageCard");
     renderResults(d);
@@ -2566,6 +2573,8 @@ async function saveAnalysisHistory(d, sourceType) {
       data: d
     });
     window.currentHistoryId = (res.history && res.history.id) || null;
+    window.currentHistoryPrinted = false;
+    updateReportButtons();
   } catch (e) {
     // 이력 저장 실패가 분석 자체를 막지 않도록 조용히 무시
     console.warn("분석 이력 저장 실패:", e.message);
@@ -2591,6 +2600,35 @@ async function updateAnalysisHistory(d) {
   }
 }
 
+// 결과 화면의 "분석결과 전체 확인하기" 버튼을 출력 여부에 맞춰 잠그거나 푼다
+// (리포트 출력은 건당 1회만 가능 — 이용약관 제3조)
+function updateReportButtons() {
+  const printed = !!window.currentHistoryPrinted;
+  const full = document.getElementById("fullReportBtn");
+  const top  = document.getElementById("companyReportBtn");
+
+  if (full) {
+    full.disabled = printed;
+    full.style.cursor = printed ? "not-allowed" : "";
+    full.style.background = printed ? "#e5e4e0" : "linear-gradient(90deg,#185FA5,#2e80d8)";
+    full.style.borderColor = printed ? "#e5e4e0" : "#185FA5";
+    full.style.color = printed ? "#8a8a86" : "#fff";
+    full.style.boxShadow = printed ? "none" : "0 4px 12px rgba(24,95,165,.25)";
+    full.innerHTML = printed ? "✓ 출력완료 · 재발급 불가" : "📄 분석결과 전체 확인하기";
+  }
+  if (top) {
+    top.disabled = printed;
+    top.style.cursor = printed ? "not-allowed" : "";
+    top.style.background = printed ? "#e5e4e0" : "#0F6E56";
+    top.style.borderColor = printed ? "#e5e4e0" : "#0F6E56";
+    top.style.color = printed ? "#8a8a86" : "#fff";
+    top.style.boxShadow = printed ? "none" : "0 2px 8px rgba(15,110,86,.25)";
+    top.textContent = printed ? "✓ 출력완료" : "📄 분석결과 전체 확인하기";
+  }
+  const note = document.getElementById("printedNote");
+  if (note) note.classList.toggle("hidden", !printed);
+}
+
 // 실제로 저장/인쇄를 마쳤을 때만 "출력완료"로 표시
 async function markHistoryPrinted(historyId) {
   const id = historyId || window.currentHistoryId;
@@ -2599,6 +2637,7 @@ async function markHistoryPrinted(historyId) {
     await api("POST", "/history/" + id + "/printed");
     const item = historyItems.find(h => h.id === id);
     if (item) { item.printed = true; renderHistoryList(); }
+    if (id === window.currentHistoryId) { window.currentHistoryPrinted = true; updateReportButtons(); }
   } catch (e) {
     console.warn("출력 상태 저장 실패:", e.message);
   }
@@ -2943,6 +2982,11 @@ async function submitContactUs() {
 
 // ── 분석 결과 다운로드 ──────────────────────────────────────────
 function downloadResult() {
+  // 이미 출력한 건은 재발급 불가 (이용약관 제3조)
+  if (window.currentHistoryPrinted) {
+    toast("이미 출력하신 분석 결과입니다. 리포트 출력은 1회만 가능하며 재발급되지 않습니다.");
+    return;
+  }
   const now = new Date();
   const dateStr = `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
 
@@ -3551,7 +3595,7 @@ function downloadResult() {
   <div class="disclaimer-box">
     <p>※ 본 리포트는 AI가 재무제표에서 추출한 수치를 기반으로 자동 계산된 참고자료로, 공인 회계사 또는 재무 전문가의 검토를 대체하지 않습니다.<br/>
     ※ 원본 이미지의 글씨가 작거나 화질이 낮은 경우 항목이나 숫자가 다르게 인식될 수 있으니, 원문 재무제표와 반드시 대조 확인하시기 바랍니다.<br/>
-    ※ 분석된 재무제표는 결제일로부터 3개월간 보관됩니다. 중요 자료는 반드시 별도 보관하시기 바랍니다.</p>
+    ※ 본 리포트의 출력은 1회만 가능하며 출력 이후에는 재발급되지 않습니다. 반드시 저장하여 별도 보관하시기 바랍니다.</p>
   </div>
 
 </div>
