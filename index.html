@@ -618,7 +618,7 @@
     <div class="card" id="manualCard">
       <div class="card-title" style="margin-bottom:.5rem;">직접 입력</div>
       <p style="font-size:14px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">재무제표가 없으신가요?</p>
-      <p style="font-size:13px;color:var(--text3);margin-bottom:1rem;line-height:1.5;">부가가치세과세표준증명을 업로드해주시면 매출·월순수익을 AI가 자동으로 채워드려요.<br>대출·자산 정보는 서류에 없어 직접 입력이 필요합니다.</p>
+      <p style="font-size:13px;color:var(--text3);margin-bottom:1rem;line-height:1.5;">부가가치세과세표준증명을 업로드해주시면 매출·월순수익을 AI가 자동으로 채워드려요.<br>대출·자산 정보는 서류에 없어 직접 입력이 필요합니다.<br><span style="color:var(--danger);">⚠️ 전체 항목이 입력되지 않으면 일부 분석결과가 나오지 않을 수 있습니다.</span></p>
 
       <!-- 서류로 자동 채우기 (부가세과세표준증명원 / 소득금액증명원) -->
       <div id="incomeDocBox" style="background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:1rem;">
@@ -664,8 +664,7 @@
           <input type="text" inputmode="numeric" id="m-profit" placeholder="예: 5,000,000" oninput="formatMoneyInput(this)" />
         </div>
       </div>
-      <p style="font-size:11px;color:var(--text3);margin-top:2px;margin-bottom:1rem;">전부 입력해주실수록 정확하게 분석이 가능합니다.</p>
-      <button class="btn btn-primary btn-full" id="manualAnalyzeBtn" onclick="doManualAnalyze()">입력 정보로 분석하기</button>
+      <button class="btn btn-primary btn-full" id="manualAnalyzeBtn" style="margin-top:1rem;" onclick="doManualAnalyze()">입력 정보로 분석하기</button>
     </div>
 
     <!-- 분석 상태/결과 영역 (분석 방식에 따라 해당 카드 바로 아래로 이동) -->
