@@ -428,6 +428,7 @@
       <p>재무제표를 첨부하면 부채비율·이자보상배수부터<br>정책자금 연계여부까지 한번에 확인!</p>
       <div class="hero-btns">
         <a class="btn btn-primary" href="#" onclick="heroStart()">바로 시작하기</a>
+        <a class="btn" href="#" onclick="event.preventDefault();showSampleReport()">샘플 보러가기</a>
         <a class="btn" href="#" onclick="goCommunity()">커뮤니티</a>
       </div>
     </div>
@@ -2988,8 +2989,9 @@ async function submitContactUs() {
 
 // ── 분석 결과 다운로드 ──────────────────────────────────────────
 function downloadResult() {
+  const isSample = !!window.__sampleReport;   // 샘플 보기 모드 (저장·인쇄 불가)
   // 이미 출력한 건은 재발급 불가 (이용약관 제3조)
-  if (window.currentHistoryPrinted) {
+  if (!isSample && window.currentHistoryPrinted) {
     toast("이미 출력하신 분석 결과입니다. 리포트 출력은 1회만 가능하며 재발급되지 않습니다.");
     return;
   }
@@ -3440,11 +3442,31 @@ function downloadResult() {
     padding: 7px 14px; font-size: 13px; border-radius: 8px; }
   .fa-print-confirm .fa-no { background: rgba(255,255,255,0.18); color: #fff; }
   @media print { .fa-print-confirm { display: none !important; } }
+  ${isSample ? `
+  /* 샘플 리포트 — 인쇄/저장 차단 + 워터마크 */
+  @media print { html, body { display: none !important; } }
+  #reportCaptureArea { position: relative; }
+  .sample-mark {
+    position: fixed; top: 40%; left: 50%; transform: translate(-50%,-50%) rotate(-24deg);
+    font-size: 130px; font-weight: 900; color: rgba(13,59,124,.07);
+    letter-spacing: .06em; pointer-events: none; z-index: 5; white-space: nowrap;
+  }
+  .sample-note {
+    background: #FEF6D8; border: 1px solid #f0e0a8; color: #7a5c00;
+    border-radius: 10px; padding: 12px 16px; margin: 16px auto 0; max-width: 760px;
+    font-size: 12.5px; line-height: 1.7; text-align: center;
+  }
+  ` : ``}
 </style>
 </head>
 <body>
 
 <div class="save-pdf-bar">
+  ${isSample ? `
+    <div style="font-size:15px;font-weight:700;">📄 샘플 리포트 — 가상의 기업 정보로 만든 예시입니다</div>
+    <div style="color:rgba(255,255,255,0.72);font-size:12px;margin-top:6px;">
+      실제 분석 리포트는 저장·인쇄가 가능합니다. 샘플은 저장되지 않습니다.
+    </div>` : `
   ${isMobileDevice()
     ? `<button onclick="saveAsImage()">🖼️ 이미지로 저장하기</button>
        <div style="color:rgba(255,255,255,0.65);font-size:11px;margin-top:6px;">(PDF파일은 PC에서만 저장 가능합니다)</div>`
@@ -3453,8 +3475,14 @@ function downloadResult() {
     <span>저장(또는 인쇄)을 완료하셨나요?</span>
     <button type="button" onclick="faConfirmPrinted()">네, 완료했어요</button>
     <button type="button" class="fa-no" onclick="faHidePrintConfirm()">아니요</button>
-  </div>
+  </div>`}
 </div>
+
+${isSample ? `<div class="sample-mark">SAMPLE</div>
+<div class="sample-note">
+  본 화면은 <strong>가상의 기업 정보</strong>로 만든 샘플 리포트입니다. 실제 데이터가 아닙니다.<br>
+  회원가입 후 재무제표를 업로드하시면 우리 회사 기준으로 동일한 형식의 리포트를 받아보실 수 있습니다.
+</div>` : ``}
 
 <div id="reportCaptureArea">
 <!-- 인쇄 시 매 페이지 하단에 반복 표시되는 푸터 -->
@@ -3628,6 +3656,20 @@ function downloadResult() {
 </div>
 
 <script>
+${isSample ? `
+// 샘플 리포트 — 저장/인쇄 차단 (완전 차단은 불가하지만 일반적인 경로는 막는다)
+document.addEventListener('keydown', function (e) {
+  var k = (e.key || '').toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && (k === 'p' || k === 's')) {
+    e.preventDefault();
+    alert('샘플 리포트는 저장·인쇄할 수 없습니다.\\n회원가입 후 실제 분석을 진행하시면 리포트를 받아보실 수 있습니다.');
+    return false;
+  }
+});
+document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+window.addEventListener('beforeprint', function () { document.body.style.display = 'none'; });
+window.addEventListener('afterprint', function () { document.body.style.display = ''; });
+` : ``}
 // 이 리포트가 어떤 분석 이력에서 열린 것인지 (출력완료 기록용)
 var FA_HISTORY_ID = ${window.currentHistoryId ? window.currentHistoryId : "null"};
 var faPrintRequested = false;
@@ -3701,7 +3743,7 @@ async function saveAsImage() {
 </body>
 </html>`;
 
-  if (isMobileDevice()) {
+  if (isMobileDevice() && !isSample) {
     // 모바일: blob/data URI로의 이동이 사파리에서 차단되는 경우가 있어,
     // 아예 이동하지 않고 현재 문서 자체를 리포트 내용으로 바로 교체
     toast("리포트 화면으로 전환합니다. 상단의 'PDF로 저장하기' 버튼을 탭해주세요.");
@@ -4051,6 +4093,58 @@ async function retryPendingPayment() {
   // 한 번만 시도하고 결과와 상관없이 정리 (실패해도 토스트로 결제번호를 안내)
   const ok = await confirmPayment(pending.orderId, pending.pkgId, undefined, pending.promoCode || null);
   if (!ok) { try { localStorage.removeItem("fa_pending_pay"); } catch (e) {} }
+}
+
+// ── 샘플 리포트 (홈 화면 "샘플 보러가기") ──────────────────────
+// 실제 리포트와 같은 코드로 그리되, 가상의 기업 정보를 넣고 저장·인쇄를 막는다.
+const SAMPLE_DATA = {
+  company_name: "(주)한빛테크",
+  rep_name: "김한빛",
+  business_number: "123-45-67890",
+  revenue: 8200000000,
+  current_assets: 1950000000,
+  noncurrent_assets: 1350000000,
+  current_liabilities: 1600000000,
+  noncurrent_liabilities: 700000000,
+  capital_stock: 500000000,
+  total_equity: 1000000000,
+  operating_income: 486000000,
+  interest_expense: 84000000,
+  net_income: 352000000,
+  comment: "가상의 기업 정보로 작성된 샘플 리포트입니다. 실제 분석 결과가 아닙니다.",
+};
+
+function showSampleReport() {
+  // 현재 화면 상태를 건드리지 않도록 값을 보관해 뒀다가 되돌린다
+  const keepId = window.currentHistoryId;
+  const keepPrinted = window.currentHistoryPrinted;
+  const keepData = window.currentAnalysisData;
+  const keepCompany = window.lastCompanyName;
+
+  window.currentHistoryId = null;
+  window.currentHistoryPrinted = false;
+  window.__sampleReport = true;
+
+  const results = document.getElementById("results");
+  const wasHidden = results.classList.contains("hidden");
+  const dash = document.getElementById("page-dashboard");
+  const wasActive = dash.classList.contains("active");
+
+  // 리포트 생성에는 화면이 그려져 있어야 하므로 잠시 대시보드를 띄운다
+  dash.classList.add("active");
+  results.classList.remove("hidden");
+  renderResults(SAMPLE_DATA);
+
+  setTimeout(() => {
+    downloadResult();
+    // 원래 화면으로 복구
+    window.__sampleReport = false;
+    window.currentHistoryId = keepId;
+    window.currentHistoryPrinted = keepPrinted;
+    if (keepData) { renderResults(keepData); window.lastCompanyName = keepCompany; }
+    if (wasHidden) results.classList.add("hidden");
+    if (!wasActive) dash.classList.remove("active");
+  }, 250);
 }
 
 // ── 관리자 열람 모드 ────────────────────────────────────────────
