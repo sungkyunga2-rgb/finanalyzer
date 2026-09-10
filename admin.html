@@ -19,7 +19,7 @@
     min-height: 100vh; display: flex; flex-direction: column; align-items: center;
     padding: 40px 16px;
   }
-  .wrap { width: 100%; max-width: 640px; }
+  .wrap { width: 100%; max-width: 900px; }
   h1 { font-size: 20px; font-weight: 700; margin-bottom: 20px; color: var(--navy); }
   .card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
@@ -70,6 +70,32 @@
     opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 999;
   }
   .toast.show { opacity: 1; }
+
+  /* ── 프로모션 코드 / 분석이력 / 환불 처리 ── */
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .tag-on  { background: #E1F5EE; color: var(--safe); }
+  .tag-off { background: #e5e4e0; color: #8a8a86; }
+  .tag-pct { background: #FCEBEB; color: var(--danger); }
+  .muted { color: var(--text3); font-size: 11px; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .form-grid .field { margin-bottom: 0; }
+  .check-row { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; }
+  .check-row label { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 0; }
+  .check-row input { width: auto; }
+  select {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: #fff;
+  }
+  .table-wrap { overflow-x: auto; }
+  .btn-xs { padding: 4px 10px; font-size: 11px; }
+  .row-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+  .warn-box {
+    background: #FCEBEB; border: 1px solid #f0c9c9; border-radius: 8px; padding: 10px 12px;
+    font-size: 12px; color: #7d2020; line-height: 1.6; margin-bottom: 12px;
+  }
+  .refund-panel { background: var(--bg); border-radius: 10px; padding: 14px; margin-top: 10px; }
+  .search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .search-row input { flex: 1; }
 </style>
 </head>
 <body>
@@ -100,6 +126,8 @@
     <button class="btn-ghost btn-full" onclick="toggleUserList()" id="listToggleBtn" style="margin-top:12px;">📋 전체 가입자 목록 보기</button>
     <button class="btn-ghost btn-full" onclick="toggleRefundList()" id="refundToggleBtn" style="margin-top:8px;">💸 환불 신청 내역 보기</button>
     <button class="btn-ghost btn-full" onclick="toggleCommunityList()" id="communityToggleBtn" style="margin-top:8px;">🗨️ 커뮤니티 게시글 관리</button>
+    <button class="btn-ghost btn-full" onclick="togglePromoList()" id="promoToggleBtn" style="margin-top:8px;">🎟️ 프로모션 코드 관리</button>
+    <button class="btn-ghost btn-full" onclick="toggleHistList()" id="histToggleBtn" style="margin-top:8px;">📊 회원 분석이력 보기</button>
   </div>
 
   <!-- 전체 회원 목록 -->
@@ -112,6 +140,12 @@
   <div class="card hidden" id="communityListCard"></div>
 
   <!-- 결과 -->
+  <!-- 프로모션 코드 -->
+  <div class="card hidden" id="promoCard"></div>
+
+  <!-- 회원 분석이력 -->
+  <div class="card hidden" id="histCard"></div>
+
   <div class="card hidden" id="resultCard"></div>
 </div>
 
@@ -160,6 +194,44 @@ async function doLogin() {
     errEl.textContent = e.message;
     errEl.style.display = "block";
   }
+}
+
+// 목록 카드는 한 번에 하나만 보이도록
+function hideOtherCards(keep) {
+  ["resultCard", "userListCard", "refundListCard", "communityListCard", "promoCard", "histCard"]
+    .filter(id => id !== keep)
+    .forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
+  const labels = {
+    listToggleBtn: "📋 전체 가입자 목록 보기",
+    refundToggleBtn: "💸 환불 신청 내역 보기",
+    communityToggleBtn: "🗨️ 커뮤니티 게시글 관리",
+    promoToggleBtn: "🎟️ 프로모션 코드 관리",
+    histToggleBtn: "📊 회원 분석이력 보기",
+  };
+  const cardOf = {
+    listToggleBtn: "userListCard", refundToggleBtn: "refundListCard",
+    communityToggleBtn: "communityListCard", promoToggleBtn: "promoCard", histToggleBtn: "histCard",
+  };
+  Object.keys(labels).forEach(btnId => {
+    if (cardOf[btnId] === keep) return;
+    const b = document.getElementById(btnId);
+    if (b) b.textContent = labels[btnId];
+  });
+}
+
+function esc(str) {
+  return String(str == null ? "" : str).replace(/[&<>"']/g, c =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+// 서버는 UTC로 저장하므로 현지시각으로 변환
+function fmtDT(iso, withTime) {
+  if (!iso) return "-";
+  const d = new Date(/[Z+]/.test(iso) ? iso : iso + "Z");
+  if (isNaN(d)) return "-";
+  const p = n => String(n).padStart(2, "0");
+  const base = `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())}`;
+  return withTime ? `${base} ${p(d.getHours())}:${p(d.getMinutes())}` : base;
 }
 
 function showSearch() {
@@ -253,9 +325,7 @@ async function toggleRefundList() {
     btn.textContent = "💸 환불 신청 내역 보기";
     return;
   }
-  document.getElementById("resultCard").classList.add("hidden");
-  document.getElementById("userListCard").classList.add("hidden");
-  document.getElementById("communityListCard").classList.add("hidden");
+  hideOtherCards("refundListCard");
   btn.textContent = "불러오는 중...";
   try {
     const d = await api("GET", "/admin/refund-requests");
@@ -272,37 +342,385 @@ const REFUND_STATUS_KR = { pending: "처리 대기", processed: "환불 완료",
 
 function renderRefundList(d) {
   const card = document.getElementById("refundListCard");
-  const rows = d.requests.map(r => `
-    <tr>
-      <td>${r.created_at ? r.created_at.slice(0,10) : "-"}</td>
-      <td>${r.company_name || "-"}<br><span style="color:#9aa7b8;">${r.email}</span></td>
-      <td style="max-width:220px;white-space:normal;">${r.reason || "-"}</td>
-      <td>${r.remaining_count !== null ? r.remaining_count + "건" : "-"}</td>
-      <td>${REFUND_STATUS_KR[r.status] || r.status}</td>
-      <td>
-        ${r.status === "pending" ? `
-          <button class="btn-primary" style="padding:4px 10px;font-size:11px;" onclick="resolveRefund(${r.id}, 'processed')">완료 처리</button>
-          <button class="btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="resolveRefund(${r.id}, 'rejected')">반려</button>
-        ` : `<span style="color:#9aa7b8;">${r.admin_note || ""}</span>`}
-      </td>
-    </tr>`).join("");
+  const rows = d.requests.map(r => {
+    const pays = (r.payments || []).filter(p => p.cancellable > 0);
+    const options = pays.map(p =>
+      `<option value="${esc(p.order_id)}" data-cancellable="${p.cancellable}">
+         ${esc(fmtDT(p.created_at))} · ${Number(p.amount).toLocaleString("ko-KR")}원 · ${esc(p.package_label)}${
+           p.cancelled_amount ? " (취소가능 " + Number(p.cancellable).toLocaleString("ko-KR") + "원)" : ""}
+       </option>`).join("");
+
+    const actions = r.status === "pending"
+      ? `<div class="row-actions">
+           <button class="btn-primary btn-xs" onclick="toggleRefundPanel(${r.id})">환불 처리</button>
+           <button class="btn-ghost btn-xs" onclick="resolveRefund(${r.id}, 'rejected')">반려</button>
+         </div>`
+      : `<span class="muted">${esc(r.admin_note || "")}</span>`;
+
+    const panel = r.status === "pending" ? `
+      <tr id="refundPanelRow-${r.id}" class="hidden"><td colspan="6">
+        <div class="refund-panel">
+          <div class="warn-box">
+            <strong>환불 실행을 누르면 포트원에서 실제로 결제가 취소되고 고객에게 돈이 돌아갑니다.</strong>
+            되돌릴 수 없으니 결제건과 금액을 확인해주세요. 취소가 성공하면 크레딧 회수와 상태 변경까지 함께 처리됩니다.
+          </div>
+          ${options ? `
+            <div class="field"><label>취소할 결제건</label><select id="rf-order-${r.id}">${options}</select></div>
+            <div class="form-grid">
+              <div class="field"><label>환불 금액 (비우면 전액)</label><input type="number" id="rf-amount-${r.id}" min="1" placeholder="전액"/></div>
+              <div class="field"><label>회수 크레딧 (비우면 자동)</label><input type="number" id="rf-credits-${r.id}" min="0" placeholder="자동"/></div>
+              <div class="field"><label>취소 사유 (포트원 기록)</label><input type="text" id="rf-reason-${r.id}" value="고객 환불 요청"/></div>
+              <div class="field"><label>처리 메모 (내부용)</label><input type="text" id="rf-note-${r.id}" placeholder="예: 약관 제2조 미사용분"/></div>
+            </div>
+            <button class="btn-primary" style="margin-top:12px;" onclick="doRefund(${r.id})">환불 실행</button>
+            <div class="error-msg" id="rf-err-${r.id}"></div>
+          ` : `<span class="muted">취소 가능한 결제 건이 없습니다. (전액 취소되었거나 결제 내역 없음)</span>`}
+        </div>
+      </td></tr>` : "";
+
+    return `<tr>
+      <td style="white-space:nowrap;">${esc(fmtDT(r.created_at))}</td>
+      <td>${esc(r.company_name || "-")}<div class="muted">${esc(r.email)}</div>${r.phone ? `<div class="muted">${esc(r.phone)}</div>` : ""}</td>
+      <td style="max-width:200px;white-space:normal;">${esc(r.reason || "-")}</td>
+      <td style="white-space:nowrap;">${r.remaining_count !== null ? r.remaining_count + "건" : "-"}</td>
+      <td><span class="tag ${r.status === "pending" ? "tag-pct" : (r.status === "processed" ? "tag-on" : "tag-off")}">${REFUND_STATUS_KR[r.status] || r.status}</span></td>
+      <td>${actions}</td>
+    </tr>${panel}`;
+  }).join("");
+
   card.innerHTML = `
-    <div class="section-title">환불 신청 내역 (${d.count}건)</div>
-    <table>
+    <div class="section-title" style="margin-top:0;">환불 신청 내역 (${d.count}건)</div>
+    <div class="table-wrap"><table>
       <thead><tr><th>신청일</th><th>회원</th><th>사유</th><th>잔여횟수</th><th>상태</th><th>처리</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="6" style="text-align:center;color:#9aa7b8;">환불 신청이 없습니다.</td></tr>`}</tbody>
-    </table>`;
+    </table></div>`;
+}
+
+function toggleRefundPanel(id) {
+  const row = document.getElementById("refundPanelRow-" + id);
+  if (row) row.classList.toggle("hidden");
+}
+
+async function doRefund(id) {
+  const sel = document.getElementById("rf-order-" + id);
+  if (!sel) return;
+  const errEl = document.getElementById("rf-err-" + id);
+  const setErr = m => { errEl.textContent = m || ""; errEl.style.display = m ? "block" : "none"; };
+  setErr("");
+
+  const orderId = sel.value;
+  const cancellable = Number(sel.options[sel.selectedIndex].dataset.cancellable);
+  const amountRaw = document.getElementById("rf-amount-" + id).value.trim();
+  const amount = amountRaw ? parseInt(amountRaw, 10) : cancellable;
+  const creditsRaw = document.getElementById("rf-credits-" + id).value.trim();
+
+  if (!(amount > 0) || amount > cancellable) {
+    setErr(`환불 금액은 1원 ~ ${cancellable.toLocaleString("ko-KR")}원 사이여야 합니다.`);
+    return;
+  }
+  if (!confirm(`${orderId} 결제건에서 ${amount.toLocaleString("ko-KR")}원을 실제로 환불합니다.\n\n포트원에서 결제가 취소되고 고객에게 돈이 돌아갑니다.\n되돌릴 수 없습니다. 진행할까요?`)) return;
+
+  try {
+    const body = {
+      order_id: orderId,
+      amount: amountRaw ? amount : null,
+      reason: document.getElementById("rf-reason-" + id).value.trim() || "고객 환불 요청",
+      admin_note: document.getElementById("rf-note-" + id).value.trim(),
+    };
+    if (creditsRaw !== "") body.deduct_credits = parseInt(creditsRaw, 10);
+
+    const d = await api("POST", `/admin/refund-requests/${id}/refund`, body);
+    let msg = `${Number(d.refunded_amount).toLocaleString("ko-KR")}원 환불 완료 · 크레딧 ${d.credits_deducted} 회수 (잔여 ${d.remaining_credits})`;
+    if (d.credits_shortfall > 0) msg += ` / ⚠️ 이미 사용해서 ${d.credits_shortfall} 크레딧은 회수하지 못했습니다`;
+    toast(msg);
+    alert(msg);
+    renderRefundList(await api("GET", "/admin/refund-requests"));
+  } catch (e) { setErr(e.message); }
 }
 
 async function resolveRefund(id, status) {
   const label = status === "processed" ? "환불 완료 처리" : "반려";
-  if (!confirm(`이 신청을 "${label}"로 처리하시겠습니까?`)) return;
+  if (status === "processed" &&
+      !confirm("이 버튼은 상태만 바꿉니다. 실제 환불은 되지 않습니다.\n계속하시겠습니까?")) return;
+  const note = status === "rejected" ? (prompt("반려 사유 (내부 기록용)", "") ?? null) : "";
+  if (note === null) return;
   try {
-    await api("POST", `/admin/refund-requests/${id}/resolve`, { status });
+    await api("POST", `/admin/refund-requests/${id}/resolve`, { status, admin_note: note });
     toast(`${label}되었습니다.`);
     const d = await api("GET", "/admin/refund-requests");
     renderRefundList(d);
   } catch (e) { toast("오류: " + e.message); }
+}
+
+// ══════════════════════════════════════════════════════════
+// 프로모션(할인) 코드 관리
+// ══════════════════════════════════════════════════════════
+let promos = [];
+const PKG_LABEL = { single: "1건", standard: "5건", mega: "10건" };
+const SITE_BASE = location.origin + location.pathname.replace(/admin\.html$/, "");
+
+async function togglePromoList() {
+  const card = document.getElementById("promoCard");
+  const btn = document.getElementById("promoToggleBtn");
+  if (!card.classList.contains("hidden")) {
+    card.classList.add("hidden");
+    btn.textContent = "🎟️ 프로모션 코드 관리";
+    return;
+  }
+  hideOtherCards("promoCard");
+  btn.textContent = "불러오는 중...";
+  try {
+    const d = await api("GET", "/admin/promos");
+    promos = d.promos || [];
+    renderPromoCard();
+    card.classList.remove("hidden");
+    btn.textContent = "🎟️ 목록 닫기";
+  } catch (e) {
+    toast("오류: " + e.message);
+    btn.textContent = "🎟️ 프로모션 코드 관리";
+  }
+}
+
+function renderPromoCard() {
+  const rows = promos.map(p => {
+    const pkgs = p.packages ? p.packages.split(",").map(x => PKG_LABEL[x] || x).join(", ") : "전체";
+    const period = (p.valid_from || p.valid_until)
+      ? `${p.valid_from || "즉시"} ~ ${p.valid_until || "무기한"}` : "제한 없음";
+    const uses = p.max_uses ? `${p.used_count} / ${p.max_uses}` : `${p.used_count}회`;
+    return `<tr>
+      <td><strong style="font-size:13px;color:var(--text);">${esc(p.code)}</strong>
+          ${p.memo ? `<div class="muted">${esc(p.memo)}</div>` : ""}
+          <div class="muted">${p.once_per_user ? "1인 1회" : "횟수 제한 없음"}</div></td>
+      <td><span class="tag tag-pct">${p.discount_percent}%</span></td>
+      <td>${esc(pkgs)}</td>
+      <td class="muted">${esc(period)}</td>
+      <td>${esc(uses)}</td>
+      <td><span class="tag ${p.enabled ? "tag-on" : "tag-off"}">${p.enabled ? "사용중" : "중단"}</span></td>
+      <td><div class="row-actions">
+        <button class="btn-ghost btn-xs" onclick="copyPromoLink('${esc(p.code)}', this)">링크</button>
+        <button class="btn-ghost btn-xs" onclick="editPromo(${p.id})">수정</button>
+        <button class="btn-ghost btn-xs" onclick="togglePromo(${p.id})">${p.enabled ? "중단" : "재개"}</button>
+        <button class="btn-ghost btn-xs" onclick="showPromoUses(${p.id}, '${esc(p.code)}')">사용현황</button>
+        <button class="btn-ghost btn-xs" style="color:var(--danger);" onclick="deletePromo(${p.id}, '${esc(p.code)}')">삭제</button>
+      </div></td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("promoCard").innerHTML = `
+    <div class="section-title" style="margin-top:0;" id="promoFormTitle">새 코드 만들기</div>
+    <input type="hidden" id="p-id"/>
+    <div class="form-grid">
+      <div class="field"><label>코드 (필수)</label><input type="text" id="p-code" placeholder="예: WELCOME50" style="text-transform:uppercase"/></div>
+      <div class="field"><label>할인율 % (필수)</label><input type="number" id="p-percent" min="1" max="100" placeholder="50"/></div>
+      <div class="field"><label>적용 이용권</label>
+        <select id="p-packages">
+          <option value="">전체 이용권</option>
+          <option value="single">1건만</option>
+          <option value="standard">5건만</option>
+          <option value="mega">10건만</option>
+        </select></div>
+      <div class="field"><label>시작일 (비우면 즉시)</label><input type="date" id="p-from"/></div>
+      <div class="field"><label>종료일 (비우면 무기한)</label><input type="date" id="p-until"/></div>
+      <div class="field"><label>총 사용횟수 (비우면 무제한)</label><input type="number" id="p-max" min="1" placeholder="예: 100"/></div>
+      <div class="field"><label>메모 (관리용)</label><input type="text" id="p-memo" placeholder="예: 블로그 이벤트"/></div>
+    </div>
+    <div class="check-row">
+      <label><input type="checkbox" id="p-once" checked/> 한 계정당 1회만 사용</label>
+      <label><input type="checkbox" id="p-enabled" checked/> 바로 사용 가능하게</label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn-primary" onclick="savePromo()">저장</button>
+      <button class="btn-ghost hidden" id="promoCancelBtn" onclick="resetPromoForm()">수정 취소</button>
+    </div>
+    <div class="error-msg" id="promo-error"></div>
+    <div class="muted" style="margin-top:8px;">할인율을 바꾸면 그 이후 결제부터 적용됩니다. 이미 끝난 결제에는 소급되지 않습니다.</div>
+
+    <div class="section-title">코드 목록 (${promos.length}개)</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>코드</th><th>할인</th><th>적용</th><th>기간</th><th>사용</th><th>상태</th><th>관리</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:#9aa7b8;">만든 코드가 없습니다.</td></tr>'}</tbody>
+    </table></div>
+    <div id="promoUses"></div>`;
+}
+
+function promoErr(msg) {
+  const el = document.getElementById("promo-error");
+  el.textContent = msg || "";
+  el.style.display = msg ? "block" : "none";
+}
+
+function resetPromoForm() {
+  ["p-id","p-code","p-percent","p-from","p-until","p-max","p-memo"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("p-packages").value = "";
+  document.getElementById("p-once").checked = true;
+  document.getElementById("p-enabled").checked = true;
+  document.getElementById("promoFormTitle").textContent = "새 코드 만들기";
+  document.getElementById("promoCancelBtn").classList.add("hidden");
+  promoErr("");
+}
+
+function editPromo(id) {
+  const p = promos.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById("p-id").value = p.id;
+  document.getElementById("p-code").value = p.code;
+  document.getElementById("p-percent").value = p.discount_percent;
+  document.getElementById("p-packages").value = p.packages || "";
+  document.getElementById("p-from").value = p.valid_from || "";
+  document.getElementById("p-until").value = p.valid_until || "";
+  document.getElementById("p-max").value = p.max_uses == null ? "" : p.max_uses;
+  document.getElementById("p-memo").value = p.memo || "";
+  document.getElementById("p-once").checked = !!p.once_per_user;
+  document.getElementById("p-enabled").checked = !!p.enabled;
+  document.getElementById("promoFormTitle").textContent = p.code + " 코드 수정";
+  document.getElementById("promoCancelBtn").classList.remove("hidden");
+  promoErr("");
+  document.getElementById("promoCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function savePromo() {
+  const id = document.getElementById("p-id").value;
+  const body = {
+    code: document.getElementById("p-code").value.trim().toUpperCase(),
+    discount_percent: parseInt(document.getElementById("p-percent").value || "0", 10),
+    packages: document.getElementById("p-packages").value,
+    valid_from: document.getElementById("p-from").value,
+    valid_until: document.getElementById("p-until").value,
+    max_uses: document.getElementById("p-max").value ? parseInt(document.getElementById("p-max").value, 10) : null,
+    once_per_user: document.getElementById("p-once").checked,
+    enabled: document.getElementById("p-enabled").checked,
+    memo: document.getElementById("p-memo").value.trim(),
+  };
+  if (id) body.id = parseInt(id, 10);
+  promoErr("");
+  try {
+    const d = await api("POST", "/admin/promos", body);
+    toast(`${d.promo.code} 코드를 저장했습니다.`);
+    const list = await api("GET", "/admin/promos");
+    promos = list.promos || [];
+    renderPromoCard();
+  } catch (e) { promoErr(e.message); }
+}
+
+async function togglePromo(id) {
+  try {
+    await api("POST", `/admin/promos/${id}/toggle`);
+    const list = await api("GET", "/admin/promos");
+    promos = list.promos || [];
+    renderPromoCard();
+  } catch (e) { toast("오류: " + e.message); }
+}
+
+async function deletePromo(id, code) {
+  if (!confirm(`${code} 코드를 삭제할까요?\n사용 내역도 함께 지워지며 되돌릴 수 없습니다.\n(잠시 중단만 하시려면 '중단'을 쓰세요)`)) return;
+  try {
+    await api("DELETE", `/admin/promos/${id}`);
+    toast("삭제되었습니다.");
+    const list = await api("GET", "/admin/promos");
+    promos = list.promos || [];
+    renderPromoCard();
+  } catch (e) { toast("오류: " + e.message); }
+}
+
+function copyPromoLink(code, btn) {
+  const link = SITE_BASE + "?promo=" + encodeURIComponent(code);
+  const done = () => { const t = btn.textContent; btn.textContent = "복사됨"; setTimeout(() => btn.textContent = t, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(done).catch(() => prompt("아래 링크를 복사하세요", link));
+  } else prompt("아래 링크를 복사하세요", link);
+}
+
+async function showPromoUses(id, code) {
+  const box = document.getElementById("promoUses");
+  box.innerHTML = `<div class="section-title">${esc(code)} 사용 현황</div><p class="muted">불러오는 중...</p>`;
+  try {
+    const d = await api("GET", `/admin/promos/${id}/uses`);
+    const uses = d.uses || [];
+    box.innerHTML = `<div class="section-title">${esc(code)} 사용 현황 (${uses.length}건)</div>` + (uses.length
+      ? `<div class="table-wrap"><table>
+          <thead><tr><th>사용일시</th><th>계정</th><th>이용권</th><th>정가</th><th>결제금액</th></tr></thead>
+          <tbody>${uses.map(u => `<tr>
+            <td>${esc(fmtDT(u.created_at, true))}</td><td>${esc(u.email)}</td><td>${esc(u.package_label)}</td>
+            <td class="muted">${Number(u.original_price).toLocaleString("ko-KR")}원</td>
+            <td><strong>${Number(u.paid_price).toLocaleString("ko-KR")}원</strong></td>
+          </tr>`).join("")}</tbody></table></div>`
+      : `<p class="muted">아직 사용된 적이 없습니다.</p>`);
+  } catch (e) { box.innerHTML = `<p style="color:var(--danger);font-size:12px;">${esc(e.message)}</p>`; }
+}
+
+// ══════════════════════════════════════════════════════════
+// 회원 분석이력
+// ══════════════════════════════════════════════════════════
+async function toggleHistList() {
+  const card = document.getElementById("histCard");
+  const btn = document.getElementById("histToggleBtn");
+  if (!card.classList.contains("hidden")) {
+    card.classList.add("hidden");
+    btn.textContent = "📊 회원 분석이력 보기";
+    return;
+  }
+  hideOtherCards("histCard");
+  btn.textContent = "불러오는 중...";
+  try {
+    await loadHistories("");
+    card.classList.remove("hidden");
+    btn.textContent = "📊 목록 닫기";
+  } catch (e) {
+    toast("오류: " + e.message);
+    btn.textContent = "📊 회원 분석이력 보기";
+  }
+}
+
+async function loadHistories(q) {
+  const d = await api("GET", "/admin/histories" + (q ? "?q=" + encodeURIComponent(q) : ""));
+  renderHistCard(d.histories || [], q || "");
+}
+
+async function searchHistories() {
+  const q = (document.getElementById("hist-search").value || "").trim();
+  try { await loadHistories(q); } catch (e) { toast("오류: " + e.message); }
+}
+
+function gradeTagClass(grade) {
+  const c = String(grade).trim().charAt(0).toUpperCase();
+  return (c === "A" || c === "B") ? "tag-on" : "tag-pct";
+}
+
+function renderHistCard(rows, q) {
+  const body = rows.map(h => `<tr>
+    <td style="white-space:nowrap;">${esc(fmtDT(h.created_at, true))}</td>
+    <td>${esc(h.email)}${h.user_company ? `<div class="muted">${esc(h.user_company)}</div>` : ""}</td>
+    <td><strong style="color:var(--text);">${esc(h.company_name || "상호 미입력")}</strong>
+        <div class="muted">${esc([h.rep_name, h.business_number].filter(Boolean).join(" · ") || "-")}</div></td>
+    <td style="white-space:nowrap;">${h.source_type === "manual" ? "직접 입력" : "재무제표 분석"}</td>
+    <td style="white-space:nowrap;">${h.revenue == null ? '<span class="muted">-</span>' : Number(h.revenue).toLocaleString("ko-KR") + "원"}</td>
+    <td style="white-space:nowrap;">${h.stability_grade ? `<span class="tag ${gradeTagClass(h.stability_grade)}">${esc(h.stability_grade)}</span>` : '<span class="muted">-</span>'}</td>
+    <td><span class="tag ${h.printed ? "tag-off" : "tag-on"}">${h.printed ? "출력완료" : "출력 전"}</span></td>
+    <td><button class="btn-ghost btn-xs" onclick="openMemberReport(${h.id})">리포트</button></td>
+  </tr>`).join("");
+
+  document.getElementById("histCard").innerHTML = `
+    <div class="section-title" style="margin-top:0;">회원 분석이력 (${rows.length}건)</div>
+    <div class="muted" style="margin-bottom:12px;line-height:1.6;">
+      업로드된 재무제표 원본은 보관하지 않아 확인할 수 없고, <strong>분석 결과 리포트</strong>만 열람할 수 있습니다.
+      보관기간(30일)이 지난 이력은 삭제되어 조회되지 않습니다.
+    </div>
+    <div class="search-row">
+      <input type="text" id="hist-search" value="${esc(q)}" placeholder="이메일 · 회사명 · 대표자명 · 사업자번호로 검색"
+             onkeydown="if(event.key==='Enter')searchHistories()"/>
+      <button class="btn-primary" onclick="searchHistories()">검색</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>분석일시</th><th>회원</th><th>분석 대상</th><th>구분</th><th>매출</th><th>안정성</th><th>출력</th><th></th></tr></thead>
+      <tbody>${body || '<tr><td colspan="8" style="text-align:center;color:#9aa7b8;">조회된 분석이력이 없습니다.</td></tr>'}</tbody>
+    </table></div>`;
+}
+
+// 고객 화면과 같은 코드로 리포트를 그리기 위해 index.html을 새 탭으로 연다
+// (관리자 열람은 출력완료로 기록되지 않는다)
+function openMemberReport(id) {
+  try { sessionStorage.setItem("fa_admin_pw", adminPw); } catch (e) {}
+  window.open("index.html?adminHistory=" + encodeURIComponent(id), "_blank");
 }
 
 // ── 커뮤니티 게시글 관리 ──
