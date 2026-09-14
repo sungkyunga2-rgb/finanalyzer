@@ -4095,6 +4095,61 @@ async function retryPendingPayment() {
   if (!ok) { try { localStorage.removeItem("fa_pending_pay"); } catch (e) {} }
 }
 
+// ── 방문 기록 (트래픽 집계) ─────────────────────────────────────
+// 개인정보는 남기지 않고, 브라우저에 저장한 임의 식별자로 순방문자만 구분한다.
+function getVisitorId() {
+  try {
+    let id = localStorage.getItem("fa_vid");
+    if (!id) {
+      id = "v" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem("fa_vid", id);
+    }
+    return id;
+  } catch (e) { return ""; }
+}
+
+// 유입경로 판별 — ?src= 또는 ?utm_source= 가 있으면 그 값, 없으면 referrer 도메인으로 추정
+function detectSource(params) {
+  const explicit = (params.get("src") || params.get("utm_source") || "").trim().toLowerCase();
+  if (explicit) return explicit.slice(0, 40);
+  const ref = document.referrer || "";
+  if (!ref) return "direct";
+  try {
+    const host = new URL(ref).hostname.replace(/^www\./, "");
+    if (host === window.location.hostname) return "";       // 사이트 내부 이동은 기록하지 않음
+    if (host.includes("kakao")) return "kakao";
+    if (host.includes("naver")) return "naver";
+    if (host.includes("google")) return "google";
+    if (host.includes("daum")) return "daum";
+    if (host.includes("instagram")) return "instagram";
+    if (host.includes("facebook")) return "facebook";
+    return host.slice(0, 40);
+  } catch (e) { return "direct"; }
+}
+
+function trackVisit() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const source = detectSource(params);
+    if (source === "") return;   // 내부 이동
+
+    fetch(API_BASE + "/track/visit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        visitor_id: getVisitorId(),
+        path: (window.location.pathname.split("/").pop() || "index.html").slice(0, 100),
+        source: source,
+        referrer: (document.referrer || "").slice(0, 200),
+        promo_code: (params.get("promo") || "").slice(0, 40),
+        device: isMobileDevice() ? "mobile" : "pc",
+        is_member: !!token,
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) {}
+}
+
 // ── 샘플 리포트 (홈 화면 "샘플 보러가기") ──────────────────────
 // 실제 리포트와 같은 코드로 그리되, 가상의 기업 정보를 넣고 저장·인쇄를 막는다.
 const SAMPLE_DATA = {
@@ -4185,6 +4240,8 @@ window.addEventListener("DOMContentLoaded", () => {
   // 관리자 열람 모드가 우선 (로그인 여부와 무관)
   const adminHistoryId = new URLSearchParams(window.location.search).get("adminHistory");
   if (adminHistoryId) { adminViewHistory(adminHistoryId); return; }
+
+  trackVisit();   // 방문 1건 기록 (관리자 열람은 제외)
 
   if (token) {
     updateCreditBadges();

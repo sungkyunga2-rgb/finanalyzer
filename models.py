@@ -119,3 +119,18 @@ class PromoUse(Base):
     original_price   = Column(Integer, default=0)
     paid_price       = Column(Integer, default=0)
     created_at       = Column(DateTime, default=datetime.utcnow)
+
+
+class SiteVisit(Base):
+    """방문 기록 — 홈페이지 트래픽 집계용.
+    개인정보를 남기지 않기 위해 IP는 저장하지 않고, 브라우저가 만든 임의의 방문자 식별자만 사용한다."""
+    __tablename__ = "site_visits"
+    id          = Column(Integer, primary_key=True, index=True)
+    visitor_id  = Column(String, index=True, default="")   # 브라우저에 저장된 임의 문자열 (순방문자 집계용)
+    path        = Column(String, default="")               # 어떤 화면을 봤는지
+    source      = Column(String, default="", index=True)   # 유입경로 (kakao, blog, naver, direct ...)
+    referrer    = Column(String, default="")               # 유입 도메인
+    promo_code  = Column(String, default="")               # 할인 링크로 들어온 경우
+    device      = Column(String, default="")               # mobile / pc
+    is_member   = Column(Integer, default=0)               # 로그인 상태로 방문했는지
+    created_at  = Column(DateTime, default=datetime.utcnow, index=True)

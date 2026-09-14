@@ -79,6 +79,16 @@ def run_auto_migration():
         "refunded_amount": "INTEGER DEFAULT 0",
         "credits_deducted": "INTEGER DEFAULT 0",
     })
+    add_missing_columns("site_visits", {
+        "visitor_id": "VARCHAR DEFAULT ''",
+        "path": "VARCHAR DEFAULT ''",
+        "source": "VARCHAR DEFAULT ''",
+        "referrer": "VARCHAR DEFAULT ''",
+        "promo_code": "VARCHAR DEFAULT ''",
+        "device": "VARCHAR DEFAULT ''",
+        "is_member": "INTEGER DEFAULT 0",
+        "created_at": "TIMESTAMP",
+    })
     add_missing_columns("promo_uses", {
         "promo_id": "INTEGER",
         "user_id": "INTEGER",
@@ -1569,6 +1579,156 @@ async def admin_process_refund(
 # ══════════════════════════════════════════════════════════════
 # 오류신고 (플로팅 버튼 → 관리자 이메일로 전달)
 # ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+# 방문 통계 (트래픽)
+#   개인정보를 남기지 않기 위해 IP는 저장하지 않는다.
+#   순방문자는 브라우저가 만든 임의 식별자(visitor_id)로만 구분한다.
+# ══════════════════════════════════════════════════════════════
+VISIT_RETENTION_DAYS = 180   # 방문 기록 보관 기간
+
+class VisitBody(BaseModel):
+    visitor_id: Optional[str] = ""
+    path: Optional[str] = ""
+    source: Optional[str] = ""
+    referrer: Optional[str] = ""
+    promo_code: Optional[str] = ""
+    device: Optional[str] = ""
+    is_member: Optional[bool] = False
+
+
+BOT_HINTS = ("bot", "crawl", "spider", "slurp", "curl", "wget", "python-requests",
+             "headlesschrome", "lighthouse", "preview", "monitor", "pingdom", "uptime")
+
+
+@app.post("/track/visit")
+def track_visit(
+    body: VisitBody,
+    user_agent: str = Header(default="", alias="User-Agent"),
+    db: Session = Depends(get_db),
+):
+    """방문 1건 기록 — 로그인 여부와 무관하게 누구나 호출 (인증 없음)"""
+    ua = (user_agent or "").lower()
+    if any(h in ua for h in BOT_HINTS):
+        return {"ok": True, "skipped": "bot"}
+
+    try:
+        db.add(models.SiteVisit(
+            visitor_id=(body.visitor_id or "")[:64],
+            path=(body.path or "")[:100],
+            source=(body.source or "direct")[:50],
+            referrer=(body.referrer or "")[:200],
+            promo_code=(body.promo_code or "")[:40],
+            device=(body.device or "")[:20],
+            is_member=1 if body.is_member else 0,
+        ))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"방문 기록 실패: {e}")
+    return {"ok": True}
+
+
+def purge_old_visits(db: Session) -> int:
+    """보관기간이 지난 방문 기록 삭제"""
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=VISIT_RETENTION_DAYS)
+    try:
+        n = db.query(models.SiteVisit).filter(models.SiteVisit.created_at < cutoff).delete(synchronize_session=False)
+        if n:
+            db.commit()
+            print(f"[visits] 오래된 방문 기록 {n}건 삭제")
+        return n
+    except Exception as e:
+        db.rollback()
+        return 0
+
+
+@app.get("/admin/stats")
+def admin_stats(
+    days: int = 30,
+    _: bool = Depends(check_admin),
+    db: Session = Depends(get_db),
+):
+    """방문 통계 — 일별 추이, 유입경로, 기기, 전환 현황"""
+    from datetime import timedelta
+    from sqlalchemy import func
+
+    purge_old_visits(db)
+    days = max(1, min(days, 180))
+    now = datetime.utcnow()
+    since = now - timedelta(days=days - 1)
+    since = since.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    rows = db.query(models.SiteVisit).filter(models.SiteVisit.created_at >= since).all()
+
+    # ── 일별 집계 (KST 기준으로 묶어야 사장님이 보는 날짜와 맞음) ──
+    KST = timedelta(hours=9)
+    daily = {}
+    for i in range(days):
+        d = (since + timedelta(days=i) + KST).strftime("%Y-%m-%d")
+        daily[d] = {"date": d, "visits": 0, "visitors": set()}
+
+    sources, devices = {}, {"mobile": 0, "pc": 0}
+    all_visitors, member_visits = set(), 0
+
+    for v in rows:
+        if not v.created_at:
+            continue
+        d = (v.created_at + KST).strftime("%Y-%m-%d")
+        if d not in daily:
+            continue
+        daily[d]["visits"] += 1
+        vid = v.visitor_id or f"anon-{v.id}"
+        daily[d]["visitors"].add(vid)
+        all_visitors.add(vid)
+        src = v.source or "direct"
+        sources[src] = sources.get(src, 0) + 1
+        if v.device in devices:
+            devices[v.device] += 1
+        if v.is_member:
+            member_visits += 1
+
+    daily_list = [{"date": x["date"], "visits": x["visits"], "visitors": len(x["visitors"])}
+                  for x in daily.values()]
+
+    def count_since(model, dt):
+        return db.query(func.count(model.id)).filter(model.created_at >= dt).scalar() or 0
+
+    today_kst = (now + KST).replace(hour=0, minute=0, second=0, microsecond=0) - KST
+    week_ago = now - timedelta(days=7)
+
+    today_rows = [v for v in rows if v.created_at and v.created_at >= today_kst]
+
+    return {
+        "days": days,
+        "retention_days": VISIT_RETENTION_DAYS,
+        "summary": {
+            "today_visits": len(today_rows),
+            "today_visitors": len({(v.visitor_id or f"anon-{v.id}") for v in today_rows}),
+            "period_visits": len(rows),
+            "period_visitors": len(all_visitors),
+            "member_visits": member_visits,
+        },
+        "daily": daily_list,
+        "sources": sorted(
+            [{"source": k, "visits": v} for k, v in sources.items()],
+            key=lambda x: -x["visits"]
+        )[:15],
+        "devices": devices,
+        # ── 전환 현황: 방문이 실제 가입·결제·분석으로 이어졌는지 ──
+        "conversions": {
+            "signups_period": count_since(models.User, since),
+            "signups_week": count_since(models.User, week_ago),
+            "payments_period": count_since(models.Payment, since),
+            "payments_week": count_since(models.Payment, week_ago),
+            "analyses_period": count_since(models.AnalysisLog, since),
+            "analyses_week": count_since(models.AnalysisLog, week_ago),
+            "revenue_period": db.query(func.coalesce(func.sum(models.Payment.amount), 0))
+                                .filter(models.Payment.created_at >= since).scalar() or 0,
+        },
+    }
+
+
 # ══════════════════════════════════════════════════════════════
 # 관리자 — 회원 분석이력 조회
 #   ※ 업로드된 재무제표 원본은 보관하지 않으므로 조회할 수 없고,
