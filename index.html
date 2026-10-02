@@ -3743,10 +3743,27 @@ async function saveAsImage() {
 </body>
 </html>`;
 
-  if (isMobileDevice() && !isSample) {
+  // 버튼을 누른 그 순간 미리 열어둔 창이 있으면 그 창에 직접 써넣는다.
+  // (모바일 사파리·카톡 인앱 브라우저는 blob 주소로 새 창 열기를 막는다)
+  if (window.__reportWindow) {
+    const w = window.__reportWindow;
+    window.__reportWindow = null;
+    try {
+      w.document.open();
+      w.document.write(htmlContent);
+      w.document.close();
+      return;
+    } catch (e) {
+      // 미리 열어둔 창에 쓰지 못하면 아래 기본 경로로 넘어간다
+    }
+  }
+
+  if (isMobileDevice() && (!isSample || window.__sampleSameTab)) {
     // 모바일: blob/data URI로의 이동이 사파리에서 차단되는 경우가 있어,
     // 아예 이동하지 않고 현재 문서 자체를 리포트 내용으로 바로 교체
-    toast("리포트 화면으로 전환합니다. 상단의 'PDF로 저장하기' 버튼을 탭해주세요.");
+    toast(isSample
+      ? "샘플 리포트를 불러옵니다. 확인 후 뒤로가기를 눌러주세요."
+      : "리포트 화면으로 전환합니다. 상단의 'PDF로 저장하기' 버튼을 탭해주세요.");
     setTimeout(() => {
       document.open();
       document.write(htmlContent);
@@ -4170,6 +4187,20 @@ const SAMPLE_DATA = {
 };
 
 function showSampleReport() {
+  // ⚠️ 새 창은 "버튼을 누른 바로 그 순간"에 열어야 한다.
+  //    setTimeout 안에서 열면 브라우저가 팝업으로 보고 차단한다 (특히 모바일).
+  let win = null;
+  try {
+    win = window.open("", "_blank");
+    if (win) {
+      win.document.write(
+        '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+        '<title>샘플 리포트 — 피나(FinAnalyzer)</title>' +
+        '<p style="font-family:-apple-system,sans-serif;padding:24px;color:#5a6a7d;font-size:15px;">' +
+        '샘플 리포트를 준비하고 있습니다...</p>');
+    }
+  } catch (e) { win = null; }
+
   // 현재 화면 상태를 건드리지 않도록 값을 보관해 뒀다가 되돌린다
   const keepId = window.currentHistoryId;
   const keepPrinted = window.currentHistoryPrinted;
@@ -4179,6 +4210,8 @@ function showSampleReport() {
   window.currentHistoryId = null;
   window.currentHistoryPrinted = false;
   window.__sampleReport = true;
+  window.__reportWindow = win;
+  window.__sampleSameTab = !win;   // 새 창이 막혔으면 현재 탭을 리포트로 교체
 
   const results = document.getElementById("results");
   const wasHidden = results.classList.contains("hidden");
@@ -4189,17 +4222,19 @@ function showSampleReport() {
   dash.classList.add("active");
   results.classList.remove("hidden");
   renderResults(SAMPLE_DATA);
+  void results.offsetHeight;   // 레이아웃을 강제로 계산시켜 수치가 비는 것을 막는다
 
-  setTimeout(() => {
-    downloadResult();
-    // 원래 화면으로 복구
-    window.__sampleReport = false;
-    window.currentHistoryId = keepId;
-    window.currentHistoryPrinted = keepPrinted;
-    if (keepData) { renderResults(keepData); window.lastCompanyName = keepCompany; }
-    if (wasHidden) results.classList.add("hidden");
-    if (!wasActive) dash.classList.remove("active");
-  }, 250);
+  downloadResult();
+
+  // 원래 화면으로 복구
+  window.__sampleReport = false;
+  window.__sampleSameTab = false;
+  window.__reportWindow = null;
+  window.currentHistoryId = keepId;
+  window.currentHistoryPrinted = keepPrinted;
+  if (keepData) { renderResults(keepData); window.lastCompanyName = keepCompany; }
+  if (wasHidden) results.classList.add("hidden");
+  if (!wasActive) dash.classList.remove("active");
 }
 
 // ── 관리자 열람 모드 ────────────────────────────────────────────
