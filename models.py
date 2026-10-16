@@ -134,3 +134,34 @@ class SiteVisit(Base):
     device      = Column(String, default="")               # mobile / pc
     is_member   = Column(Integer, default=0)               # 로그인 상태로 방문했는지
     created_at  = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Team(Base):
+    """팀(구독 단위) — 대표(owner) 1명이 요금제를 갖고, 요금제별 사용자 수 한도까지 팀원을 둘 수 있다.
+    요금제는 현재 관리자 화면에서 지정하며, 구독 결제가 붙으면 같은 값을 결제 결과로 갱신한다."""
+    __tablename__ = "teams"
+    id              = Column(Integer, primary_key=True, index=True)
+    owner_id        = Column(Integer, ForeignKey("users.id"), unique=True, index=True)
+    plan            = Column(String, default="")      # starter / standard / pro / "" (요금제 없음)
+    plan_updated_at = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+
+class TeamMember(Base):
+    """팀 구성원 — 대표 본인도 role='owner'로 1석을 차지한다. 한 회원은 하나의 팀에만 속할 수 있다."""
+    __tablename__ = "team_members"
+    id        = Column(Integer, primary_key=True, index=True)
+    team_id   = Column(Integer, ForeignKey("teams.id"), index=True)
+    user_id   = Column(Integer, ForeignKey("users.id"), unique=True, index=True)
+    role      = Column(String, default="member")      # owner / member
+    joined_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TeamInvite(Base):
+    """팀 초대 — 이메일로 보내며, 수락 전까지도 1석을 미리 차지한다(한도 초과 초대 방지)."""
+    __tablename__ = "team_invites"
+    id         = Column(Integer, primary_key=True, index=True)
+    team_id    = Column(Integer, ForeignKey("teams.id"), index=True)
+    email      = Column(String, index=True, nullable=False)   # 소문자로 저장
+    invited_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)

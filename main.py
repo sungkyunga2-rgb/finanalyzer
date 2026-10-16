@@ -6,7 +6,7 @@ from typing import Optional
 import httpx
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from database import get_db, engine
 import models
 from sqlalchemy.orm import Session
@@ -127,6 +127,16 @@ CREDIT_PACKAGES = {
     "standard": {"price": 59075, "credits": 50,  "label": "5건 (15% 할인)"},
     "mega":     {"price": 97300, "credits": 100, "label": "10건 (30% 할인)"},
 }
+
+# 구독 요금제 — 월 분석 건수는 제한하지 않고 '사용자 수(seats)'로만 구분한다.
+# 가격은 아직 확정 전이라 여기에 넣지 않았다. 확정되면 "price" 항목만 추가하면 된다.
+SUBSCRIPTION_PLANS = {
+    "starter":  {"label": "스타터",   "seats": 1},
+    "standard": {"label": "스탠다드", "seats": 3},
+    "pro":      {"label": "프로",     "seats": 10},
+}
+TEAM_INVITE_VALID_DAYS = 14   # 초대 유효기간 (지나면 수락 불가)
+TEAM_MAX_PENDING_INVITES = 20 # 수락 대기 초대 상한 (초대 남발 방지용 — 사용자 수 한도와는 별개)
 
 
 # ── 모델 ─────────────────────────────────────────────
@@ -469,6 +479,7 @@ def withdraw(
     db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).delete()
     db.query(models.AnalysisHistory).filter(models.AnalysisHistory.user_id == user.id).delete()
     db.query(models.PromoUse).filter(models.PromoUse.user_id == user.id).delete()
+    cleanup_user_team(db, user)   # 팀 소속/초대 정리 (대표가 탈퇴하면 팀 해산)
     db.delete(user)
     db.commit()
     return {"message": "회원 탈퇴가 완료되었습니다."}
@@ -1240,6 +1251,7 @@ def admin_get_user(email: str, _: bool = Depends(check_admin), db: Session = Dep
         "credits": user.credits,
         "remaining_count": user.credits // COST_PER_ANALYSIS,
         "created_at": user.created_at.isoformat() if user.created_at else None,
+        "team": admin_team_info(db, user),
         "payments": [
             {"order_id": p.order_id, "amount": p.amount, "credits": p.credits, "package_id": p.package_id,
              "created_at": p.created_at.isoformat() if p.created_at else None}
@@ -1328,9 +1340,352 @@ def admin_delete_user(body: AdminDeleteUserBody, _: bool = Depends(check_admin),
     db.query(models.Payment).filter(models.Payment.user_id == user.id).delete()
     db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).delete()
     db.query(models.RefundRequest).filter(models.RefundRequest.user_id == user.id).delete()
+    cleanup_user_team(db, user)   # 팀 소속/초대 정리 (대표면 팀 해산)
     db.delete(user)
     db.commit()
     return {"message": f"{body.email} 회원이 탈퇴 처리되었습니다."}
+
+
+# ══════════════════════════════════════════════════════════════
+# 팀(구독 요금제별 사용자 수 제한)
+#   - 대표(owner) 1명이 요금제를 갖고, 요금제의 사용자 수(seats)까지 팀원을 둘 수 있다.
+#   - 대표 본인도 1석. 사용자 수는 '수락해서 합류한 사람'만 센다. 초대를 보내는 것만으로는 자리를 차지하지 않는다.
+#   - 한도 검사는 반드시 서버에서 한다 (화면의 버튼 숨김은 편의일 뿐).
+#       · 초대 시: 이미 한도를 다 채운 팀이면 초대 불가
+#       · 수락 시: 그 순간의 팀원 수로 다시 검사 (대기 초대가 한도보다 많아도 먼저 수락한 순서대로 합류)
+#   - 요금제 지정은 지금은 관리자(/admin/team/set-plan)만 가능. 구독 결제가 붙으면 결제 성공 시
+#     set_team_plan()을 호출하도록 연결하면 된다.
+# ══════════════════════════════════════════════════════════════
+def _norm_email(s: str) -> str:
+    return str(s or "").strip().lower()
+
+def _invite_cutoff():
+    return datetime.utcnow() - timedelta(days=TEAM_INVITE_VALID_DAYS)
+
+def team_seat_limit(team) -> int:
+    plan = SUBSCRIPTION_PLANS.get((team.plan or "") if team else "")
+    return plan["seats"] if plan else 0
+
+def team_counts(db: Session, team):
+    """(팀원 수, 유효한 대기 초대 수)"""
+    members = db.query(models.TeamMember).filter(models.TeamMember.team_id == team.id).count()
+    pending = db.query(models.TeamInvite).filter(
+        models.TeamInvite.team_id == team.id,
+        models.TeamInvite.created_at >= _invite_cutoff(),
+    ).count()
+    return members, pending
+
+def get_membership(db: Session, user):
+    """(내 팀, 내 멤버십) — 소속이 없으면 (None, None)"""
+    m = db.query(models.TeamMember).filter(models.TeamMember.user_id == user.id).first()
+    if not m:
+        return None, None
+    team = db.query(models.Team).filter(models.Team.id == m.team_id).first()
+    return team, m
+
+def cleanup_user_team(db: Session, user):
+    """회원 탈퇴/삭제 시 팀 관련 데이터 정리. 대표가 탈퇴하면 팀 전체가 해산된다. (commit은 호출한 쪽에서)"""
+    from sqlalchemy import func, or_
+    team = db.query(models.Team).filter(models.Team.owner_id == user.id).first()
+    if team:
+        db.query(models.TeamInvite).filter(models.TeamInvite.team_id == team.id).delete(synchronize_session=False)
+        db.query(models.TeamMember).filter(models.TeamMember.team_id == team.id).delete(synchronize_session=False)
+        db.delete(team)
+    db.query(models.TeamMember).filter(models.TeamMember.user_id == user.id).delete(synchronize_session=False)
+    db.query(models.TeamInvite).filter(or_(
+        models.TeamInvite.invited_by == user.id,
+        func.lower(models.TeamInvite.email) == _norm_email(user.email),
+    )).delete(synchronize_session=False)
+    db.flush()
+
+def set_team_plan(db: Session, owner, plan: str):
+    """대표에게 요금제를 지정(없으면 팀 생성). plan이 ""이면 요금제 해지. 구독 결제 연동 시에도 이 함수를 사용."""
+    if plan and plan not in SUBSCRIPTION_PLANS:
+        raise HTTPException(status_code=400, detail="알 수 없는 요금제입니다.")
+    team, membership = get_membership(db, owner)
+    if team and team.owner_id != owner.id:
+        raise HTTPException(status_code=400, detail="이미 다른 팀의 팀원으로 속해 있는 회원입니다. 팀에서 먼저 탈퇴해야 대표가 될 수 있습니다.")
+    if not team:
+        team = models.Team(owner_id=owner.id, plan="")
+        db.add(team)
+        db.flush()
+        db.add(models.TeamMember(team_id=team.id, user_id=owner.id, role="owner"))
+    team.plan = plan or ""
+    team.plan_updated_at = datetime.utcnow()
+    db.commit()
+    return team
+
+def _plan_label(plan: str) -> str:
+    return SUBSCRIPTION_PLANS.get(plan or "", {}).get("label", "요금제 없음")
+
+def admin_team_info(db: Session, user):
+    """관리자 회원 상세에 보여줄 팀/요금제 요약 (팀이 없으면 None)"""
+    team, m = get_membership(db, user)
+    if not team:
+        return None
+    owner = db.query(models.User).filter(models.User.id == team.owner_id).first()
+    members_n, pending_n = team_counts(db, team)
+    return {
+        "role": m.role,
+        "owner_email": owner.email if owner else "",
+        "plan": team.plan or "",
+        "plan_label": _plan_label(team.plan),
+        "seat_limit": team_seat_limit(team),
+        "members_count": members_n,
+        "pending_count": pending_n,
+    }
+
+@app.get("/plans")
+def list_plans():
+    return [{"id": k, "label": v["label"], "seats": v["seats"]} for k, v in SUBSCRIPTION_PLANS.items()]
+
+@app.get("/team/me")
+def team_me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    team, membership = get_membership(db, user)
+
+    # 내게 온 초대 (아직 팀이 없는 경우 수락할 수 있음)
+    incoming = []
+    inv_rows = db.query(models.TeamInvite).filter(
+        func.lower(models.TeamInvite.email) == _norm_email(user.email),
+        models.TeamInvite.created_at >= _invite_cutoff(),
+    ).order_by(models.TeamInvite.created_at.desc()).all()
+    for inv in inv_rows:
+        t = db.query(models.Team).filter(models.Team.id == inv.team_id).first()
+        owner = db.query(models.User).filter(models.User.id == t.owner_id).first() if t else None
+        if not t or not owner:
+            continue
+        incoming.append({
+            "id": inv.id,
+            "team_name": owner.company_name or owner.nickname or owner.email,
+            "owner_email": owner.email,
+            "plan_label": _plan_label(t.plan),
+            "created_at": inv.created_at.isoformat() if inv.created_at else None,
+        })
+
+    if not team:
+        return {"has_team": False, "incoming_invites": incoming}
+
+    # 만료된 초대는 이 팀에 한해 정리
+    db.query(models.TeamInvite).filter(
+        models.TeamInvite.team_id == team.id,
+        models.TeamInvite.created_at < _invite_cutoff(),
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    is_owner = (membership.role == "owner")
+    limit = team_seat_limit(team)
+    members_n, pending_n = team_counts(db, team)
+    member_rows = db.query(models.TeamMember).filter(models.TeamMember.team_id == team.id).order_by(models.TeamMember.joined_at).all()
+    users_by_id = {u.id: u for u in db.query(models.User).filter(models.User.id.in_([m.user_id for m in member_rows])).all()}
+    members = []
+    for m in member_rows:
+        u = users_by_id.get(m.user_id)
+        if not u:
+            continue
+        members.append({
+            "user_id": u.id,
+            "email": u.email,
+            "nickname": u.nickname or "",
+            "role": m.role,
+            "is_me": (u.id == user.id),
+            "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+        })
+    invites = []
+    if is_owner:
+        for inv in db.query(models.TeamInvite).filter(models.TeamInvite.team_id == team.id).order_by(models.TeamInvite.created_at.desc()).all():
+            invites.append({
+                "id": inv.id,
+                "email": inv.email,
+                "created_at": inv.created_at.isoformat() if inv.created_at else None,
+                "expires_at": (inv.created_at + timedelta(days=TEAM_INVITE_VALID_DAYS)).isoformat() if inv.created_at else None,
+            })
+    return {
+        "has_team": True,
+        "role": membership.role,
+        "plan": team.plan or "",
+        "plan_label": _plan_label(team.plan),
+        "seat_limit": limit,
+        "seats_used": members_n,                       # 수락해서 합류한 사람만 센다 (대표 포함)
+        "seats_remaining": max(0, limit - members_n),
+        "members_count": members_n,
+        "pending_count": pending_n,                    # 수락 대기 중인 초대 (자리를 차지하지 않음)
+        "can_invite": bool(is_owner and limit > 0 and members_n < limit and pending_n < TEAM_MAX_PENDING_INVITES),
+        "over_limit": members_n > limit,
+        "members": members,
+        "invites": invites,
+        "incoming_invites": incoming,
+    }
+
+class TeamInviteBody(BaseModel):
+    email: str
+
+@app.post("/team/invite")
+def team_invite(body: TeamInviteBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    import re
+    from sqlalchemy import func
+    team, membership = get_membership(db, user)
+    if not team or membership.role != "owner":
+        raise HTTPException(status_code=403, detail="팀 대표만 팀원을 초대할 수 있습니다.")
+    limit = team_seat_limit(team)
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="적용된 요금제가 없어 팀원을 초대할 수 없습니다.")
+    email = _norm_email(body.email)
+    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+        raise HTTPException(status_code=400, detail="올바른 이메일 형식이 아닙니다.")
+    if email == _norm_email(user.email):
+        raise HTTPException(status_code=400, detail="본인은 이미 팀 대표입니다.")
+    dup = db.query(models.TeamInvite).filter(
+        models.TeamInvite.team_id == team.id,
+        func.lower(models.TeamInvite.email) == email,
+        models.TeamInvite.created_at >= _invite_cutoff(),
+    ).first()
+    if dup:
+        raise HTTPException(status_code=400, detail="이미 초대를 보낸 이메일입니다.")
+    target = db.query(models.User).filter(func.lower(models.User.email) == email).first()
+    if target:
+        t_team, _m = get_membership(db, target)
+        if t_team:
+            if t_team.id == team.id:
+                raise HTTPException(status_code=400, detail="이미 우리 팀의 팀원입니다.")
+            raise HTTPException(status_code=400, detail="이미 다른 팀에 속해 있어 초대할 수 없습니다.")
+    members_n, pending_n = team_counts(db, team)
+    # 초대는 자리를 차지하지 않는다. 이미 한도를 다 채운 팀만 막는다. (실제 한도 검사는 수락 시점에도 다시 한다)
+    if members_n >= limit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"현재 요금제의 사용자 수 한도({limit}명)를 모두 사용 중입니다. 상위 요금제로 변경하거나 기존 팀원을 정리해주세요.",
+        )
+    if pending_n >= TEAM_MAX_PENDING_INVITES:
+        raise HTTPException(status_code=400, detail=f"수락 대기 중인 초대가 너무 많습니다(최대 {TEAM_MAX_PENDING_INVITES}건). 기존 초대를 취소한 뒤 다시 시도해주세요.")
+    db.add(models.TeamInvite(team_id=team.id, email=email, invited_by=user.id))
+    db.commit()
+    return {"message": f"{email} 님에게 초대를 보냈습니다. 상대방이 피나에 로그인해 초대를 수락하면 팀에 합류합니다."}
+
+@app.delete("/team/invites/{invite_id}")
+def team_cancel_invite(invite_id: int, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    team, membership = get_membership(db, user)
+    if not team or membership.role != "owner":
+        raise HTTPException(status_code=403, detail="팀 대표만 초대를 취소할 수 있습니다.")
+    inv = db.query(models.TeamInvite).filter(models.TeamInvite.id == invite_id, models.TeamInvite.team_id == team.id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="초대를 찾을 수 없습니다.")
+    db.delete(inv)
+    db.commit()
+    return {"message": "초대를 취소했습니다."}
+
+def _find_my_invite(db: Session, invite_id: int, user):
+    from sqlalchemy import func
+    inv = db.query(models.TeamInvite).filter(
+        models.TeamInvite.id == invite_id,
+        func.lower(models.TeamInvite.email) == _norm_email(user.email),
+    ).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="초대를 찾을 수 없습니다.")
+    if inv.created_at and inv.created_at < _invite_cutoff():
+        db.delete(inv)
+        db.commit()
+        raise HTTPException(status_code=400, detail="초대 유효기간이 지났습니다. 대표에게 다시 초대를 요청해주세요.")
+    return inv
+
+@app.post("/team/invites/{invite_id}/accept")
+def team_accept_invite(invite_id: int, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    inv = _find_my_invite(db, invite_id, user)
+    my_team, _m = get_membership(db, user)
+    if my_team:
+        raise HTTPException(status_code=400, detail="이미 팀에 속해 있습니다. 기존 팀에서 먼저 탈퇴해주세요.")
+    team = db.query(models.Team).filter(models.Team.id == inv.team_id).first()
+    if not team:
+        db.delete(inv)
+        db.commit()
+        raise HTTPException(status_code=404, detail="팀이 더 이상 존재하지 않습니다.")
+    limit = team_seat_limit(team)
+    members_n, _pending = team_counts(db, team)
+    # 사용자 수는 수락하는 이 순간에 차감된다. 그 사이 다른 팀원이 먼저 합류해 한도가 찼으면 합류할 수 없다.
+    if members_n + 1 > limit:
+        raise HTTPException(status_code=400, detail="팀의 사용자 수 한도가 모두 찼거나 요금제가 변경되어 합류할 수 없습니다. 팀 대표에게 문의해주세요.")
+    db.add(models.TeamMember(team_id=team.id, user_id=user.id, role="member"))
+    # 다른 팀에서 온 대기 초대는 정리해서 그쪽 자리를 풀어준다
+    db.query(models.TeamInvite).filter(func.lower(models.TeamInvite.email) == _norm_email(user.email)).delete(synchronize_session=False)
+    db.commit()
+    return {"message": "팀에 합류했습니다."}
+
+@app.post("/team/invites/{invite_id}/decline")
+def team_decline_invite(invite_id: int, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    inv = _find_my_invite(db, invite_id, user)
+    db.delete(inv)
+    db.commit()
+    return {"message": "초대를 거절했습니다."}
+
+@app.delete("/team/members/{member_user_id}")
+def team_remove_member(member_user_id: int, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    team, membership = get_membership(db, user)
+    if not team or membership.role != "owner":
+        raise HTTPException(status_code=403, detail="팀 대표만 팀원을 내보낼 수 있습니다.")
+    if member_user_id == user.id:
+        raise HTTPException(status_code=400, detail="대표 본인은 내보낼 수 없습니다.")
+    m = db.query(models.TeamMember).filter(models.TeamMember.team_id == team.id, models.TeamMember.user_id == member_user_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="해당 팀원을 찾을 수 없습니다.")
+    db.delete(m)
+    db.commit()
+    return {"message": "팀원을 내보냈습니다."}
+
+@app.post("/team/leave")
+def team_leave(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    team, membership = get_membership(db, user)
+    if not team:
+        raise HTTPException(status_code=400, detail="소속된 팀이 없습니다.")
+    if membership.role == "owner":
+        raise HTTPException(status_code=400, detail="대표는 팀을 탈퇴할 수 없습니다. 요금제 해지는 관리자에게 문의해주세요.")
+    db.delete(membership)
+    db.commit()
+    return {"message": "팀에서 탈퇴했습니다."}
+
+class AdminSetPlanBody(BaseModel):
+    email: str
+    plan: str = ""   # starter / standard / pro / "" (요금제 해지)
+
+@app.post("/admin/team/set-plan")
+def admin_set_team_plan(body: AdminSetPlanBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    owner = db.query(models.User).filter(func.lower(models.User.email) == _norm_email(body.email)).first()
+    if not owner:
+        raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
+    team = set_team_plan(db, owner, (body.plan or "").strip())
+    limit = team_seat_limit(team)
+    members_n, pending_n = team_counts(db, team)
+    return {
+        "email": owner.email,
+        "plan": team.plan or "",
+        "plan_label": _plan_label(team.plan),
+        "seat_limit": limit,
+        "members_count": members_n,
+        "pending_count": pending_n,
+        # 요금제를 낮춰서 이미 한도를 넘은 경우 — 자동으로 내보내지는 않고, 새 초대만 막힌다.
+        "over_limit": members_n > limit,
+    }
+
+@app.get("/admin/teams")
+def admin_list_teams(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    result = []
+    for t in db.query(models.Team).order_by(models.Team.created_at.desc()).all():
+        owner = db.query(models.User).filter(models.User.id == t.owner_id).first()
+        members_n, pending_n = team_counts(db, t)
+        limit = team_seat_limit(t)
+        result.append({
+            "owner_email": owner.email if owner else "(삭제됨)",
+            "company_name": owner.company_name if owner else "",
+            "plan": t.plan or "",
+            "plan_label": _plan_label(t.plan),
+            "seat_limit": limit,
+            "members_count": members_n,
+            "pending_count": pending_n,
+            "over_limit": members_n > limit,
+            "plan_updated_at": t.plan_updated_at.isoformat() if t.plan_updated_at else None,
+        })
+    return {"count": len(result), "teams": result}
 
 
 @app.get("/admin/refund-requests")
