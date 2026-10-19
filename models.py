@@ -165,3 +165,26 @@ class TeamInvite(Base):
     email      = Column(String, index=True, nullable=False)   # 소문자로 저장
     invited_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Subscription(Base):
+    """구독(정기결제) — 팀 대표 1명당 1개. 빌링키로 매월 자동 결제한다.
+    status: active(이용중) / cancel_scheduled(해지 예약 — 이용기간 종료일까지 사용) /
+            past_due(갱신 결제 실패 — 재시도 중, 유예기간 동안은 계속 사용 가능) / cancelled(종료)"""
+    __tablename__ = "subscriptions"
+    id                  = Column(Integer, primary_key=True, index=True)
+    user_id             = Column(Integer, ForeignKey("users.id"), unique=True, index=True)   # 결제하는 사람 = 팀 대표
+    plan                = Column(String, default="")        # starter / standard / pro
+    status              = Column(String, default="active")
+    billing_key         = Column(String, default="")        # 포트원 빌링키 (카드 등록 정보 — 외부에 노출 금지)
+    amount              = Column(Integer, default=0)        # 월 결제금액
+    anchor_day          = Column(Integer, default=1)        # 매월 결제일(처음 결제한 날의 '일')
+    period_start        = Column(DateTime, nullable=True)   # 현재 이용기간 시작 (UTC)
+    period_end          = Column(DateTime, nullable=True)   # 현재 이용기간 끝 = 다음 결제 시각 (UTC)
+    next_payment_id     = Column(String, default="")        # 포트원에 예약해 둔 다음 결제의 paymentId ("" 이면 예약 없음)
+    last_payment_id     = Column(String, default="")
+    fail_count          = Column(Integer, default=0)        # 갱신 결제 연속 실패 횟수
+    last_failed_at      = Column(DateTime, nullable=True)
+    last_check_at       = Column(DateTime, nullable=True)   # 갱신 확인을 마지막으로 시도한 시각 (과도한 조회 방지)
+    cancel_requested_at = Column(DateTime, nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow)

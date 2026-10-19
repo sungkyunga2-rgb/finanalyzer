@@ -129,11 +129,11 @@ CREDIT_PACKAGES = {
 }
 
 # 구독 요금제 — 월 분석 건수는 제한하지 않고 '사용자 수(seats)'로만 구분한다.
-# 가격은 아직 확정 전이라 여기에 넣지 않았다. 확정되면 "price" 항목만 추가하면 된다.
+# price = 월 구독료(원). 이 금액 그대로 카드에 청구된다.
 SUBSCRIPTION_PLANS = {
-    "starter":  {"label": "스타터",   "seats": 1},
-    "standard": {"label": "스탠다드", "seats": 3},
-    "pro":      {"label": "프로",     "seats": 10},
+    "starter":  {"label": "스타터",   "seats": 1,  "price": 199000},
+    "standard": {"label": "스탠다드", "seats": 3,  "price": 550000},
+    "pro":      {"label": "프로",     "seats": 10, "price": 1100000},
 }
 TEAM_INVITE_VALID_DAYS = 14   # 초대 유효기간 (지나면 수락 불가)
 TEAM_MAX_PENDING_INVITES = 20 # 수락 대기 초대 상한 (초대 남발 방지용 — 사용자 수 한도와는 별개)
@@ -354,13 +354,14 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
     return {
         "token": user.token, "email": user.email, "credits": user.credits,
         "company_name": user.company_name, "rep_name": user.rep_name, "nickname": user.nickname,
-        "business_number": user.business_number
+        "business_number": user.business_number,
+        "subscribed": user_has_subscription_access(db, user),
     }
 
 # 내 크레딧 조회
 @app.get("/me")
-def me(user: models.User = Depends(get_current_user)):
-    return {"email": user.email, "credits": user.credits}
+def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"email": user.email, "credits": user.credits, "subscribed": user_has_subscription_access(db, user)}
 
 # 비밀번호 재확인 후 상세 정보 조회
 class PasswordVerify(BaseModel):
@@ -475,10 +476,16 @@ def withdraw(
     pw_hash = hashlib.sha256(body.password.encode()).hexdigest()
     if pw_hash != user.password_hash:
         raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
+    live_sub = db.query(models.Subscription).filter(
+        models.Subscription.user_id == user.id, models.Subscription.status.in_(("active", "past_due"))
+    ).first()
+    if live_sub:
+        raise HTTPException(status_code=400, detail="구독 중에는 탈퇴할 수 없습니다. '구독' 메뉴에서 먼저 해지한 뒤 탈퇴해주세요.")
     db.query(models.Payment).filter(models.Payment.user_id == user.id).delete()
     db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).delete()
     db.query(models.AnalysisHistory).filter(models.AnalysisHistory.user_id == user.id).delete()
     db.query(models.PromoUse).filter(models.PromoUse.user_id == user.id).delete()
+    cleanup_user_subscription(db, user)   # 예약 결제 취소 + 빌링키 삭제
     cleanup_user_team(db, user)   # 팀 소속/초대 정리 (대표가 탈퇴하면 팀 해산)
     db.delete(user)
     db.commit()
@@ -670,8 +677,11 @@ async def analyze(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if user.credits < COST_PER_ANALYSIS:
-        raise HTTPException(status_code=402, detail=f"크레딧이 부족합니다. 현재 {user.credits}크레딧 (필요: {COST_PER_ANALYSIS}크레딧)")
+    # 구독(팀 요금제)이 유효하면 크레딧 없이 분석. 아니면 기존 크레딧 방식.
+    from fastapi.concurrency import run_in_threadpool
+    subscribed = await run_in_threadpool(user_has_subscription_access, db, user)
+    if not subscribed and user.credits < COST_PER_ANALYSIS:
+        raise HTTPException(status_code=402, detail=f"구독이 필요합니다. 구독하시면 분석 횟수 제한 없이 이용할 수 있어요. (기존 충전분 잔여: {user.credits // COST_PER_ANALYSIS}건)")
 
     prompt = """이 문서는 한국 기업/개인사업자의 재무제표입니다(이미지 또는 PDF, 1장 이상 첨부될 수 있음). 여러 장이 첨부된 경우 표지·재무상태표·손익계산서 등 서로 다른 페이지일 수 있으니, 페이지 번호(예: "1/5", "2/5")를 참고해 순서대로 모든 이미지를 함께 분석한 뒤 아래 항목들을 추출하세요. 절대로 짐작하지 말고, 각 숫자가 어느 페이지의 어느 항목(계정과목/코드)에서 나온 것인지 반드시 확인하고 추출하세요.
 
@@ -851,13 +861,14 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
     if data is None:
         raise HTTPException(status_code=500, detail=f"AI 분석 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
 
-    # 크레딧 차감
-    user.credits -= COST_PER_ANALYSIS
-    log = models.AnalysisLog(user_id=user.id, credits_used=COST_PER_ANALYSIS)
+    # 크레딧 차감 (구독 이용 중이면 차감 없이 이용 기록만 남김)
+    used = 0 if subscribed else COST_PER_ANALYSIS
+    user.credits -= used
+    log = models.AnalysisLog(user_id=user.id, credits_used=used)
     db.add(log)
     db.commit()
 
-    return {"data": data, "credits_used": COST_PER_ANALYSIS, "remaining_credits": user.credits}
+    return {"data": data, "credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed}
 
 # 직접 입력(수동) 분석 — AI 호출 없이 프론트에서 계산하지만, 크레딧 차감은 서버에서 검증
 @app.post("/analyze/manual")
@@ -865,8 +876,13 @@ def analyze_manual(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if user.credits < COST_PER_ANALYSIS:
-        raise HTTPException(status_code=402, detail=f"크레딧이 부족합니다. 현재 {user.credits}크레딧 (필요: {COST_PER_ANALYSIS}크레딧)")
+    subscribed = user_has_subscription_access(db, user)
+    if not subscribed and user.credits < COST_PER_ANALYSIS:
+        raise HTTPException(status_code=402, detail=f"구독이 필요합니다. 구독하시면 분석 횟수 제한 없이 이용할 수 있어요. (기존 충전분 잔여: {user.credits // COST_PER_ANALYSIS}건)")
+    if subscribed:
+        db.add(models.AnalysisLog(user_id=user.id, credits_used=0))   # 구독 이용 기록 (크레딧 차감 없음)
+        db.commit()
+        return {"credits_used": 0, "remaining_credits": user.credits, "subscribed": True}
     user.credits -= COST_PER_ANALYSIS
     log = models.AnalysisLog(user_id=user.id, credits_used=COST_PER_ANALYSIS)
     db.add(log)
@@ -1252,6 +1268,7 @@ def admin_get_user(email: str, _: bool = Depends(check_admin), db: Session = Dep
         "remaining_count": user.credits // COST_PER_ANALYSIS,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "team": admin_team_info(db, user),
+        "subscription": admin_subscription_info(db, user),
         "payments": [
             {"order_id": p.order_id, "amount": p.amount, "credits": p.credits, "package_id": p.package_id,
              "created_at": p.created_at.isoformat() if p.created_at else None}
@@ -1340,6 +1357,7 @@ def admin_delete_user(body: AdminDeleteUserBody, _: bool = Depends(check_admin),
     db.query(models.Payment).filter(models.Payment.user_id == user.id).delete()
     db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id).delete()
     db.query(models.RefundRequest).filter(models.RefundRequest.user_id == user.id).delete()
+    cleanup_user_subscription(db, user)   # 예약 결제 취소 + 빌링키 삭제
     cleanup_user_team(db, user)   # 팀 소속/초대 정리 (대표면 팀 해산)
     db.delete(user)
     db.commit()
@@ -1435,9 +1453,13 @@ def admin_team_info(db: Session, user):
         "pending_count": pending_n,
     }
 
+def admin_subscription_info(db: Session, user):
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == user.id).first()
+    return _sub_view(sub) if sub else None
+
 @app.get("/plans")
 def list_plans():
-    return [{"id": k, "label": v["label"], "seats": v["seats"]} for k, v in SUBSCRIPTION_PLANS.items()]
+    return [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"]} for k, v in SUBSCRIPTION_PLANS.items()]
 
 @app.get("/team/me")
 def team_me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1653,6 +1675,11 @@ def admin_set_team_plan(body: AdminSetPlanBody, _: bool = Depends(check_admin), 
     owner = db.query(models.User).filter(func.lower(models.User.email) == _norm_email(body.email)).first()
     if not owner:
         raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
+    live_sub = db.query(models.Subscription).filter(
+        models.Subscription.user_id == owner.id, models.Subscription.status.in_(SUB_LIVE_STATUSES)
+    ).first()
+    if live_sub:
+        raise HTTPException(status_code=400, detail="결제 중인 구독이 있는 회원은 요금제를 직접 바꿀 수 없습니다. 구독을 해지(종료)한 뒤 변경해주세요.")
     team = set_team_plan(db, owner, (body.plan or "").strip())
     limit = team_seat_limit(team)
     members_n, pending_n = team_counts(db, team)
@@ -2737,3 +2764,420 @@ def reset_password(body: ResetPasswordBody, db: Session = Depends(get_db)):
 
     send_temp_password_email(user.email, temp_password)
     return {"message": "임시비밀번호가 이메일로 발송되었습니다."}
+
+
+# ══════════════════════════════════════════════════════════════
+# 구독(정기결제) — 포트원 V2 빌링키
+#   흐름: ① 화면에서 카드 등록(빌링키 발급) → ② /subscription/start 가 첫 달을 바로 결제하고
+#         다음 달 결제를 포트원에 예약 → ③ 이용기간이 끝난 뒤 sync_subscription()이 예약 결제 결과를
+#         포트원에서 직접 조회해 기간을 연장하고 그다음 달을 다시 예약.
+#   ※ Render에는 스케줄러가 없으므로 웹훅 대신 '조회 시점 확인(lazy)'을 쓰고, 안전망으로
+#      /admin/subscriptions/sync 를 외부 cron(예: cron-job.org)이 하루 1번 호출하도록 할 수 있다.
+#   ※ 결제 성공 여부는 항상 포트원 조회(GET /payments/{id})로 확인한다. 응답이 끊겨도 이중 결제가 나지 않도록
+#      '요청 후 반드시 조회' 방식을 쓴다.
+# ══════════════════════════════════════════════════════════════
+from urllib.parse import quote as _urlquote
+import random as _random
+import string as _string
+
+SUB_RETRY_MAX = 3            # 갱신 결제 연속 실패가 이 횟수가 되면 구독 종료
+SUB_RETRY_GAP_HOURS = 24     # 실패 후 다음 재시도까지 최소 간격
+SUB_GRACE_DAYS = 5           # 갱신일 이후 이 기간이 지나면 결제가 안 돼도 종료
+SUB_CHECK_INTERVAL_MIN = 10  # 갱신 확인(포트원 조회) 최소 간격
+SUB_PENDING_WAIT_HOURS = 6   # 예약 결제가 아직 처리 전이면 이 시간까지는 기다림
+_SUB_BUSY = set()            # 같은 회원의 결제/갱신이 동시에 두 번 돌지 않게 하는 간단한 잠금
+
+SUB_LIVE_STATUSES = ("active", "cancel_scheduled", "past_due")
+
+
+def _new_sub_payment_id() -> str:
+    return "SUB" + datetime.utcnow().strftime("%y%m%d%H%M%S") + "".join(_random.choices(_string.ascii_uppercase + _string.digits, k=6))
+
+def _pt_call(method: str, path: str, body=None, timeout: int = 20):
+    """포트원 V2 REST 호출. (HTTP 상태코드 또는 None, 응답 JSON) 을 돌려준다. 예외는 던지지 않는다."""
+    if not PORTONE_SECRET_KEY:
+        return None, {"message": "서버에 PORTONE_SECRET_KEY가 설정되어 있지 않습니다."}
+    try:
+        r = httpx.request(
+            method, f"{PORTONE_API_BASE}{path}",
+            headers={"Authorization": f"PortOne {PORTONE_SECRET_KEY}", "Content-Type": "application/json"},
+            json=body, timeout=timeout,
+        )
+    except Exception as e:
+        return None, {"message": f"포트원 통신 오류: {e}"}
+    try:
+        data = r.json()
+    except Exception:
+        data = {}
+    return r.status_code, (data if isinstance(data, dict) else {})
+
+def sub_add_month(dt: datetime, anchor_day: int) -> datetime:
+    """dt의 다음 달 같은 '일'(없으면 말일). 1/31 → 2/28 → 3/31 처럼 결제일이 밀리지 않게 anchor_day 기준."""
+    import calendar
+    y = dt.year + (1 if dt.month == 12 else 0)
+    m = 1 if dt.month == 12 else dt.month + 1
+    d = min(anchor_day or dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=d)
+
+def _sub_customer(user) -> dict:
+    name = (user.rep_name or user.company_name or user.nickname or "피나회원").strip()
+    return {"id": f"fa-{user.id}", "name": {"full": name}, "email": user.email}
+
+def _sub_order_name(plan_id: str) -> str:
+    return f"피나 {SUBSCRIPTION_PLANS[plan_id]['label']} 월 구독"
+
+def _sub_charge(billing_key: str, payment_id: str, plan_id: str, amount: int, user):
+    """빌링키로 즉시 결제 후, 포트원 조회로 PAID·금액을 확인. (성공여부, 결제정보 또는 오류메시지)"""
+    st, data = _pt_call("POST", f"/payments/{_urlquote(payment_id, safe='')}/billing-key", {
+        "storeId": PORTONE_STORE_ID,
+        "billingKey": billing_key,
+        "orderName": _sub_order_name(plan_id),
+        "customer": _sub_customer(user),
+        "amount": {"total": amount},
+        "currency": "KRW",
+    })
+    # 요청 응답과 상관없이 실제 결제 상태를 조회해서 판단 (타임아웃인데 실제로는 결제된 경우의 이중 결제 방지)
+    st2, info = _pt_call("GET", f"/payments/{_urlquote(payment_id, safe='')}")
+    if st2 == 200:
+        if info.get("status") != "PAID":
+            return False, (data.get("message") or f"결제 미완료 상태: {info.get('status')}")
+        if (info.get("amount") or {}).get("total") != amount:
+            return False, "결제 금액이 일치하지 않습니다."
+        return True, info
+    return False, (data.get("message") or "결제에 실패했습니다.")
+
+def _sub_schedule(sub, user, when: datetime) -> str:
+    """다음 결제를 포트원에 예약. 성공하면 예약한 paymentId, 실패하면 "" (그 경우 만료 시점에 직접 결제로 대체)"""
+    if not sub.billing_key or when <= datetime.utcnow():
+        return ""
+    pid = _new_sub_payment_id()
+    st, _d = _pt_call("POST", f"/payments/{_urlquote(pid, safe='')}/schedule", {
+        "payment": {
+            "storeId": PORTONE_STORE_ID,
+            "billingKey": sub.billing_key,
+            "orderName": _sub_order_name(sub.plan),
+            "customer": _sub_customer(user),
+            "amount": {"total": sub.amount},
+            "currency": "KRW",
+        },
+        "timeToPay": when.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    })
+    return pid if st == 200 else ""
+
+def _sub_revoke_schedules(sub):
+    if sub.billing_key:
+        _pt_call("DELETE", "/payment-schedules", {"storeId": PORTONE_STORE_ID, "billingKey": sub.billing_key})
+
+def _sub_delete_billing_key(sub):
+    if sub.billing_key:
+        _pt_call("DELETE", f"/billing-keys/{_urlquote(sub.billing_key, safe='')}")
+
+def _sub_record_payment(db: Session, user_id: int, payment_id: str, amount: int, plan_id: str, pg_tx: str = ""):
+    if db.query(models.Payment).filter(models.Payment.order_id == payment_id).first():
+        return
+    db.add(models.Payment(user_id=user_id, order_id=payment_id, payment_key=pg_tx or "", amount=amount, credits=0, package_id=f"sub_{plan_id}"))
+
+def _sub_finish(db: Session, sub, owner, reason: str = ""):
+    """구독 종료: 예약 결제 취소 + 빌링키 삭제 + 팀 요금제 해제. (팀원은 자동으로 내보내지 않음)"""
+    _sub_revoke_schedules(sub)
+    _sub_delete_billing_key(sub)
+    sub.status = "cancelled"
+    sub.billing_key = ""
+    sub.next_payment_id = ""
+    db.commit()
+    try:
+        set_team_plan(db, owner, "")
+    except HTTPException:
+        pass
+    if reason:
+        notify_admin(f"[피나] 구독 종료 — {owner.email}", f"회원 {owner.email} 의 구독이 종료되었습니다.\n사유: {reason}\n플랜: {sub.plan} / 금액: {sub.amount}원")
+
+def _sub_try_renew(db: Session, sub, owner, now: datetime) -> bool:
+    """이용기간이 끝난 구독의 갱신을 한 번 시도. 기간이 연장되면 True."""
+    paid_id, pg_tx = "", ""
+
+    # 1) 예약해 둔 결제의 결과 확인
+    if sub.next_payment_id:
+        st, d = _pt_call("GET", f"/payments/{_urlquote(sub.next_payment_id, safe='')}")
+        wait_until = sub.period_end + timedelta(hours=SUB_PENDING_WAIT_HOURS)
+        if st == 200:
+            status = d.get("status")
+            if status == "PAID" and (d.get("amount") or {}).get("total") == sub.amount:
+                paid_id, pg_tx = sub.next_payment_id, d.get("pgTxId", "")
+            elif status in ("FAILED", "CANCELLED", "PARTIAL_CANCELLED"):
+                sub.fail_count = (sub.fail_count or 0) + 1
+                sub.last_failed_at = now
+                sub.status = "past_due"
+                sub.next_payment_id = ""
+                db.commit()
+                notify_admin(f"[피나] 구독 갱신 결제 실패 — {owner.email}", f"예약 결제가 실패했습니다. (결제번호 {d.get('id') or ''}, 상태 {status}) 자동 재시도 중입니다. 필요하면 고객에게 카드 확인을 안내해주세요.")
+                return False
+            elif now < wait_until:
+                return False        # 아직 처리 전 — 조금 더 기다림
+        elif st == 404:
+            if now < wait_until:
+                return False        # 예약 시각이 막 지났을 뿐일 수 있음
+        else:
+            return False            # 통신 오류 — 다음 확인 때 다시
+
+    # 2) 예약이 없거나 오래 처리되지 않았으면 직접 결제 (재시도 포함)
+    if not paid_id:
+        # 종료 조건은 '결제 실패 이력이 있을 때'만 적용한다. (실패 이력이 없는데 갱신 확인이 늦어진 경우는
+        # 서버 쪽 사정이므로 고객을 종료시키지 않고 지금이라도 결제를 시도한다)
+        if (sub.fail_count or 0) >= SUB_RETRY_MAX or ((sub.fail_count or 0) >= 1 and now > sub.period_end + timedelta(days=SUB_GRACE_DAYS)):
+            _sub_finish(db, sub, owner, reason="갱신 결제 실패가 반복되어 자동 종료")
+            return False
+        if sub.last_failed_at and now - sub.last_failed_at < timedelta(hours=SUB_RETRY_GAP_HOURS):
+            return False
+        pid = _new_sub_payment_id()
+        ok, info = _sub_charge(sub.billing_key, pid, sub.plan, sub.amount, owner)
+        if not ok:
+            sub.fail_count = (sub.fail_count or 0) + 1
+            sub.last_failed_at = now
+            sub.status = "past_due"
+            sub.next_payment_id = ""
+            db.commit()
+            if sub.fail_count >= SUB_RETRY_MAX:
+                _sub_finish(db, sub, owner, reason=f"갱신 결제 {sub.fail_count}회 연속 실패 ({info})")
+            return False
+        paid_id, pg_tx = pid, info.get("pgTxId", "")
+
+    # 3) 결제 확인됨 → 기간 연장 + 다음 달 예약
+    _sub_record_payment(db, sub.user_id, paid_id, sub.amount, sub.plan, pg_tx)
+    old_end = sub.period_end
+    sub.period_start = old_end
+    sub.period_end = sub_add_month(old_end, sub.anchor_day)
+    sub.status = "active"
+    sub.fail_count = 0
+    sub.last_failed_at = None
+    sub.last_payment_id = paid_id
+    sub.next_payment_id = ""
+    db.commit()
+    sub.next_payment_id = _sub_schedule(sub, owner, sub.period_end)
+    db.commit()
+    return True
+
+def sync_subscription(db: Session, sub, force: bool = False):
+    """이용기간이 지난 구독의 상태를 정리(해지 예약 종료 / 갱신 결제 확인). 기간 안이면 아무 일도 하지 않는다."""
+    now = datetime.utcnow()
+    if not sub or sub.status == "cancelled" or not sub.period_end or now < sub.period_end:
+        return
+    owner = db.query(models.User).filter(models.User.id == sub.user_id).first()
+    if not owner:
+        return
+    if sub.status == "cancel_scheduled":
+        _sub_finish(db, sub, owner)
+        return
+    if not force and sub.last_check_at and now - sub.last_check_at < timedelta(minutes=SUB_CHECK_INTERVAL_MIN):
+        return
+    if sub.user_id in _SUB_BUSY:
+        return
+    _SUB_BUSY.add(sub.user_id)
+    try:
+        sub.last_check_at = now
+        db.commit()
+        for _ in range(3):   # 오래 비어 있던 경우 밀린 달을 순서대로 처리
+            if sub.status == "cancelled" or now < sub.period_end:
+                break
+            if not _sub_try_renew(db, sub, owner, now):
+                break
+    finally:
+        _SUB_BUSY.discard(sub.user_id)
+
+def user_has_subscription_access(db: Session, user) -> bool:
+    """이 회원이 구독(팀 요금제)으로 분석할 수 있는지. 대표·팀원 모두 소속 팀의 요금제를 따른다."""
+    team, _m = get_membership(db, user)
+    if not team:
+        return False
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == team.owner_id).first()
+    if sub:
+        sync_subscription(db, sub)
+        db.refresh(team)
+    return bool(team.plan)
+
+def cleanup_user_subscription(db: Session, user):
+    """회원 탈퇴/삭제 시 구독 정리 — 예약 결제 취소, 빌링키 삭제. (commit은 호출한 쪽에서)"""
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == user.id).first()
+    if sub:
+        _sub_revoke_schedules(sub)
+        _sub_delete_billing_key(sub)
+        db.delete(sub)
+        db.flush()
+
+def _sub_view(sub) -> dict:
+    plan = SUBSCRIPTION_PLANS.get(sub.plan, {})
+    return {
+        "plan": sub.plan,
+        "plan_label": plan.get("label", sub.plan),
+        "seats": plan.get("seats", 0),
+        "status": sub.status,
+        "amount": sub.amount,
+        "period_start": sub.period_start.isoformat() if sub.period_start else None,
+        "period_end": sub.period_end.isoformat() if sub.period_end else None,
+        "cancel_scheduled": sub.status == "cancel_scheduled",
+        "fail_count": sub.fail_count or 0,
+    }
+
+@app.get("/subscription/me")
+def subscription_me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == user.id).first()
+    if sub:
+        sync_subscription(db, sub)
+        db.refresh(sub)
+    team, _m = get_membership(db, user)
+    if team:
+        db.refresh(team)
+    is_member = bool(team and team.owner_id != user.id)
+    live = bool(sub and sub.status in SUB_LIVE_STATUSES)
+    return {
+        "customer_id": f"fa-{user.id}",
+        "customer_name": _sub_customer(user)["name"]["full"],
+        "plans": [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"]} for k, v in SUBSCRIPTION_PLANS.items()],
+        "is_team_member": is_member,
+        "team_plan_label": _plan_label(team.plan) if is_member else None,
+        "access": bool(team and team.plan),
+        "subscription": _sub_view(sub) if live else None,
+        # 결제 없이 관리자가 요금제를 부여한 경우
+        "admin_plan_label": _plan_label(team.plan) if (team and team.owner_id == user.id and team.plan and not live) else None,
+    }
+
+class SubscriptionStartBody(BaseModel):
+    plan: str
+    billing_key: str
+
+@app.post("/subscription/start")
+def subscription_start(body: SubscriptionStartBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    plan = SUBSCRIPTION_PLANS.get(body.plan)
+    billing_key = (body.billing_key or "").strip()
+    if not plan:
+        raise HTTPException(status_code=400, detail="알 수 없는 요금제입니다.")
+    if not billing_key:
+        raise HTTPException(status_code=400, detail="카드 등록 정보가 없습니다. 다시 시도해주세요.")
+    team, _m = get_membership(db, user)
+    if team and team.owner_id != user.id:
+        raise HTTPException(status_code=400, detail="이미 다른 팀의 팀원으로 속해 있어 구독을 시작할 수 없습니다. 팀에서 먼저 탈퇴해주세요.")
+    existing = db.query(models.Subscription).filter(models.Subscription.user_id == user.id).first()
+    if existing and existing.status in SUB_LIVE_STATUSES:
+        raise HTTPException(status_code=400, detail="이미 구독 중입니다.")
+    if user.id in _SUB_BUSY:
+        raise HTTPException(status_code=409, detail="처리 중입니다. 잠시 후 다시 확인해주세요.")
+
+    _SUB_BUSY.add(user.id)
+    try:
+        pid = _new_sub_payment_id()
+        ok, info = _sub_charge(billing_key, pid, body.plan, plan["price"], user)
+        if not ok:
+            _pt_call("DELETE", f"/billing-keys/{_urlquote(billing_key, safe='')}")   # 결제 안 된 빌링키는 정리
+            raise HTTPException(status_code=400, detail=f"결제에 실패했습니다: {info}")
+        # ── 여기부터는 이미 결제된 상태 — 기록이 실패하면 결제번호를 남기고 관리자에게 알린다 ──
+        try:
+            now = datetime.utcnow()
+            sub = existing or models.Subscription(user_id=user.id)
+            sub.plan = body.plan
+            sub.status = "active"
+            sub.billing_key = billing_key
+            sub.amount = plan["price"]
+            sub.anchor_day = now.day
+            sub.period_start = now
+            sub.period_end = sub_add_month(now, now.day)
+            sub.last_payment_id = pid
+            sub.fail_count = 0
+            sub.last_failed_at = None
+            sub.last_check_at = None
+            sub.cancel_requested_at = None
+            sub.next_payment_id = ""
+            if not existing:
+                db.add(sub)
+            _sub_record_payment(db, user.id, pid, plan["price"], body.plan, info.get("pgTxId", ""))
+            db.commit()
+            sub.next_payment_id = _sub_schedule(sub, user, sub.period_end)
+            db.commit()
+            set_team_plan(db, user, body.plan)
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            notify_admin(f"[피나] 구독 결제는 되었으나 기록 실패 — {user.email}", f"결제번호 {pid}, 금액 {plan['price']}원, 플랜 {body.plan}. DB 기록 중 오류: {e}\n포트원 콘솔에서 확인 후 수동 처리가 필요합니다.")
+            raise HTTPException(status_code=500, detail=f"결제는 완료되었으나 처리 중 오류가 발생했습니다. 결제번호 {pid} 로 문의해주세요.")
+    finally:
+        _SUB_BUSY.discard(user.id)
+
+    notify_admin(f"[피나] 새 구독 시작 — {user.email}", f"{user.email} ({user.company_name}) 님이 {plan['label']} 구독을 시작했습니다. 월 {plan['price']:,}원 / 결제번호 {pid}")
+    db.refresh(sub)
+    return {"message": "구독이 시작되었습니다.", "subscription": _sub_view(sub)}
+
+@app.post("/subscription/cancel")
+def subscription_cancel(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == user.id).first()
+    if not sub or sub.status not in SUB_LIVE_STATUSES:
+        raise HTTPException(status_code=400, detail="해지할 구독이 없습니다.")
+    if sub.status == "cancel_scheduled":
+        raise HTTPException(status_code=400, detail="이미 해지 예약되어 있습니다.")
+    if sub.status == "past_due":
+        # 결제가 밀린 상태에서 해지하면 이용기간이 남아 있지 않으므로 바로 종료
+        _sub_finish(db, sub, user)
+        return {"message": "구독이 해지되었습니다.", "subscription": None}
+    _sub_revoke_schedules(sub)            # 다음 달 예약 결제 취소 (빌링키는 이용기간 종료 때까지 보관 — 해지 취소 가능)
+    sub.status = "cancel_scheduled"
+    sub.cancel_requested_at = datetime.utcnow()
+    sub.next_payment_id = ""
+    db.commit()
+    return {"message": "해지가 예약되었습니다. 이용기간 종료일까지 계속 사용할 수 있고, 이후 결제되지 않습니다.", "subscription": _sub_view(sub)}
+
+@app.post("/subscription/resume")
+def subscription_resume(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == user.id).first()
+    if not sub or sub.status != "cancel_scheduled":
+        raise HTTPException(status_code=400, detail="해지 예약된 구독이 없습니다.")
+    if not sub.period_end or datetime.utcnow() >= sub.period_end or not sub.billing_key:
+        raise HTTPException(status_code=400, detail="이용기간이 이미 끝나 해지를 취소할 수 없습니다. 새로 구독해주세요.")
+    sub.status = "active"
+    sub.cancel_requested_at = None
+    sub.next_payment_id = _sub_schedule(sub, user, sub.period_end)
+    db.commit()
+    return {"message": "해지 예약을 취소했습니다. 구독이 계속됩니다.", "subscription": _sub_view(sub)}
+
+# ── 관리자 ──────────────────────────────────────────────────────
+@app.post("/admin/subscriptions/sync")
+def admin_sync_subscriptions(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    """이용기간이 지난 모든 구독의 갱신을 확인한다. 외부 cron이 하루 1번 호출하도록 설정하면 안전망이 된다."""
+    now = datetime.utcnow()
+    subs = db.query(models.Subscription).filter(
+        models.Subscription.status.in_(SUB_LIVE_STATUSES), models.Subscription.period_end <= now
+    ).all()
+    before = {s.id: (s.status, s.period_end) for s in subs}
+    for s in subs:
+        sync_subscription(db, s, force=True)
+    changed = sum(1 for s in subs if (s.status, s.period_end) != before[s.id])
+    return {"checked": len(subs), "changed": changed}
+
+@app.get("/admin/subscriptions")
+def admin_list_subscriptions(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    rows = []
+    for s in db.query(models.Subscription).order_by(models.Subscription.created_at.desc()).all():
+        u = db.query(models.User).filter(models.User.id == s.user_id).first()
+        v = _sub_view(s)
+        v.update({"email": u.email if u else "(삭제됨)", "company_name": u.company_name if u else ""})
+        rows.append(v)
+    return {"count": len(rows), "subscriptions": rows}
+
+class AdminSubCancelBody(BaseModel):
+    email: str
+    immediate: bool = False   # True면 즉시 종료, False면 이용기간 종료 시 해지
+
+@app.post("/admin/subscription/cancel")
+def admin_cancel_subscription(body: AdminSubCancelBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    owner = db.query(models.User).filter(func.lower(models.User.email) == _norm_email(body.email)).first()
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == owner.id).first() if owner else None
+    if not sub or sub.status not in SUB_LIVE_STATUSES:
+        raise HTTPException(status_code=404, detail="해지할 구독이 없습니다.")
+    if body.immediate or sub.status == "past_due":
+        _sub_finish(db, sub, owner)
+    elif sub.status != "cancel_scheduled":
+        _sub_revoke_schedules(sub)
+        sub.status = "cancel_scheduled"
+        sub.cancel_requested_at = datetime.utcnow()
+        sub.next_payment_id = ""
+        db.commit()
+    return {"email": owner.email, "status": sub.status}
