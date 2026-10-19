@@ -1696,11 +1696,38 @@ def admin_set_team_plan(body: AdminSetPlanBody, _: bool = Depends(check_admin), 
 
 @app.get("/admin/teams")
 def admin_list_teams(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    """구독/팀 현황 — 팀(대표)별 요금제·구독 상태·팀원·수락 대기 초대·팀원별 최근 30일 분석 건수"""
+    from datetime import timedelta
+    hist_cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
     result = []
     for t in db.query(models.Team).order_by(models.Team.created_at.desc()).all():
         owner = db.query(models.User).filter(models.User.id == t.owner_id).first()
         members_n, pending_n = team_counts(db, t)
         limit = team_seat_limit(t)
+        sub = db.query(models.Subscription).filter(models.Subscription.user_id == t.owner_id).first()
+        members = []
+        for tm in (db.query(models.TeamMember).filter(models.TeamMember.team_id == t.id)
+                   .order_by(models.TeamMember.joined_at.asc()).all()):
+            u = db.query(models.User).filter(models.User.id == tm.user_id).first()
+            if not u:
+                continue
+            hist_n = (db.query(models.AnalysisHistory)
+                      .filter(models.AnalysisHistory.user_id == u.id,
+                              models.AnalysisHistory.created_at >= hist_cutoff).count())
+            members.append({
+                "email": u.email,
+                "nickname": u.nickname or "",
+                "company_name": u.company_name or "",
+                "role": tm.role,
+                "joined_at": tm.joined_at.isoformat() if tm.joined_at else None,
+                "history_count": hist_n,
+            })
+        invites = [{
+            "email": i.email,
+            "created_at": i.created_at.isoformat() if i.created_at else None,
+        } for i in (db.query(models.TeamInvite)
+                    .filter(models.TeamInvite.team_id == t.id, models.TeamInvite.created_at >= _invite_cutoff())
+                    .order_by(models.TeamInvite.created_at.desc()).all())]
         result.append({
             "owner_email": owner.email if owner else "(삭제됨)",
             "company_name": owner.company_name if owner else "",
@@ -1711,6 +1738,9 @@ def admin_list_teams(_: bool = Depends(check_admin), db: Session = Depends(get_d
             "pending_count": pending_n,
             "over_limit": members_n > limit,
             "plan_updated_at": t.plan_updated_at.isoformat() if t.plan_updated_at else None,
+            "subscription": _sub_view(sub) if sub else None,
+            "members": members,
+            "invites": invites,
         })
     return {"count": len(result), "teams": result}
 

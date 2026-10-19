@@ -156,6 +156,7 @@
     <button class="btn-ghost btn-full" onclick="toggleRefundList()" id="refundToggleBtn" style="margin-top:8px;">💸 환불 신청 내역 보기</button>
     <button class="btn-ghost btn-full" onclick="toggleCommunityList()" id="communityToggleBtn" style="margin-top:8px;">🗨️ 커뮤니티 게시글 관리</button>
     <button class="btn-ghost btn-full" onclick="togglePromoList()" id="promoToggleBtn" style="margin-top:8px;">🎟️ 프로모션 코드 관리</button>
+    <button class="btn-ghost btn-full" onclick="toggleTeamList()" id="teamToggleBtn" style="margin-top:8px;">👥 구독/팀 현황 보기</button>
     <button class="btn-ghost btn-full" onclick="toggleHistList()" id="histToggleBtn" style="margin-top:8px;">📊 회원 분석이력 보기</button>
     <button class="btn-ghost btn-full" onclick="toggleStats()" id="statsToggleBtn" style="margin-top:8px;">📈 방문 통계 보기</button>
   </div>
@@ -172,6 +173,9 @@
   <!-- 결과 -->
   <!-- 프로모션 코드 -->
   <div class="card hidden" id="promoCard"></div>
+
+  <!-- 구독/팀 현황 -->
+  <div class="card hidden" id="teamCard"></div>
 
   <!-- 회원 분석이력 -->
   <div class="card hidden" id="histCard"></div>
@@ -231,7 +235,7 @@ async function doLogin() {
 
 // 목록 카드는 한 번에 하나만 보이도록
 function hideOtherCards(keep) {
-  ["resultCard", "userListCard", "refundListCard", "communityListCard", "promoCard", "histCard", "statsCard"]
+  ["resultCard", "userListCard", "refundListCard", "communityListCard", "promoCard", "histCard", "teamCard", "statsCard"]
     .filter(id => id !== keep)
     .forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
   const labels = {
@@ -240,12 +244,13 @@ function hideOtherCards(keep) {
     communityToggleBtn: "🗨️ 커뮤니티 게시글 관리",
     promoToggleBtn: "🎟️ 프로모션 코드 관리",
     histToggleBtn: "📊 회원 분석이력 보기",
+    teamToggleBtn: "👥 구독/팀 현황 보기",
     statsToggleBtn: "📈 방문 통계 보기",
   };
   const cardOf = {
     listToggleBtn: "userListCard", refundToggleBtn: "refundListCard",
     communityToggleBtn: "communityListCard", promoToggleBtn: "promoCard", histToggleBtn: "histCard",
-    statsToggleBtn: "statsCard",
+    teamToggleBtn: "teamCard", statsToggleBtn: "statsCard",
   };
   Object.keys(labels).forEach(btnId => {
     if (cardOf[btnId] === keep) return;
@@ -904,6 +909,84 @@ function showChartTip(ev, date, visits, visitors) {
 function hideChartTip() {
   const tip = document.getElementById("chartTip");
   if (tip) tip.style.display = "none";
+}
+
+// ══════════════════════════════════════════════════════════
+// 구독/팀 현황
+// ══════════════════════════════════════════════════════════
+async function toggleTeamList() {
+  const card = document.getElementById("teamCard");
+  const btn = document.getElementById("teamToggleBtn");
+  if (!card.classList.contains("hidden")) {
+    card.classList.add("hidden");
+    btn.textContent = "👥 구독/팀 현황 보기";
+    return;
+  }
+  hideOtherCards("teamCard");
+  btn.textContent = "불러오는 중...";
+  try {
+    const d = await api("GET", "/admin/teams");
+    renderTeamCard(d);
+    card.classList.remove("hidden");
+    btn.textContent = "👥 목록 닫기";
+  } catch (e) {
+    toast("오류: " + e.message);
+    btn.textContent = "👥 구독/팀 현황 보기";
+  }
+}
+
+function subStatusLabel(s) {
+  return ({ active: "이용 중", cancel_scheduled: "해지 예정", past_due: "결제 실패(재시도 중)", cancelled: "종료" })[s] || s;
+}
+
+function renderTeamCard(d) {
+  const teams = d.teams || [];
+  const blocks = teams.map(t => {
+    const sub = t.subscription;
+    const subLine = sub
+      ? `<span class="tag ${sub.status === "active" ? "tag-on" : "tag-pct"}">${esc(subStatusLabel(sub.status))}</span>
+         월 ${Number(sub.amount || 0).toLocaleString("ko-KR")}원
+         · ${sub.status === "cancel_scheduled" ? "이용 종료" : "다음 결제"} ${esc(sub.period_end ? sub.period_end.slice(0, 10) : "-")}
+         ${sub.fail_count ? ` · 연속 실패 ${sub.fail_count}회` : ""}`
+      : `<span class="tag tag-off">결제 구독 없음</span> <span class="muted">(관리자 지정 요금제이거나 구독 종료)</span>`;
+    const mrows = (t.members || []).map(m => `<tr>
+      <td>${esc(m.email)}${m.nickname ? `<div class="muted">${esc(m.nickname)}</div>` : ""}</td>
+      <td>${m.role === "owner" ? "대표" : "팀원"}</td>
+      <td style="white-space:nowrap;">${esc(m.joined_at ? m.joined_at.slice(0, 10) : "-")}</td>
+      <td style="white-space:nowrap;text-align:right;">${m.history_count}건</td>
+      <td style="white-space:nowrap;">
+        <button class="btn-ghost btn-xs" onclick="jumpToUser('${esc(m.email).replace(/'/g, "\\'")}')">회원</button>
+        <button class="btn-ghost btn-xs" onclick="viewMemberHistories('${esc(m.email).replace(/'/g, "\\'")}')">분석이력</button>
+      </td></tr>`).join("");
+    const inv = (t.invites || []).length
+      ? `<div class="muted" style="margin-top:8px;line-height:1.7;">수락 대기 초대 ${t.invites.length}건: ${t.invites.map(i => esc(i.email) + " (" + esc(i.created_at ? i.created_at.slice(0, 10) : "-") + ")").join(", ")}</div>`
+      : "";
+    return `<div style="border:1px solid var(--border, #e3e8ef);border-radius:10px;padding:14px;margin-bottom:12px;">
+      <div style="font-weight:700;color:var(--navy);">${esc(t.owner_email)}${t.company_name ? ` <span class="muted" style="font-weight:400;">${esc(t.company_name)}</span>` : ""}</div>
+      <div style="margin:6px 0;">${esc(t.plan_label || "요금제 없음")} · 사용자 ${t.members_count}/${t.seat_limit}명${t.over_limit ? ' <span class="tag tag-pct">한도 초과</span>' : ""}</div>
+      <div style="margin-bottom:8px;">${subLine}</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>구성원</th><th>구분</th><th>합류일</th><th style="text-align:right;">분석(30일)</th><th></th></tr></thead>
+        <tbody>${mrows || '<tr><td colspan="5" class="muted" style="text-align:center;">구성원 없음</td></tr>'}</tbody>
+      </table></div>${inv}
+    </div>`;
+  }).join("");
+  const liveSubs = teams.filter(t => t.subscription && t.subscription.status !== "cancelled").length;
+  document.getElementById("teamCard").innerHTML = `
+    <div class="section-title" style="margin-top:0;">구독/팀 현황 (팀 ${teams.length}개 · 결제 구독 ${liveSubs}건)</div>
+    ${blocks || '<p class="muted">아직 팀(구독)이 없습니다.</p>'}`;
+}
+
+// 팀원의 분석이력으로 바로 이동 (이메일로 검색된 이력 목록을 연다)
+async function viewMemberHistories(email) {
+  hideOtherCards("histCard");
+  try {
+    await loadHistories(email);
+    document.getElementById("histCard").classList.remove("hidden");
+    const b = document.getElementById("histToggleBtn");
+    if (b) b.textContent = "📊 목록 닫기";
+    document.getElementById("histCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) { toast("오류: " + e.message); }
 }
 
 // ══════════════════════════════════════════════════════════
