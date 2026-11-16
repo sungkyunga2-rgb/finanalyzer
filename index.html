@@ -702,9 +702,9 @@
     </div>
 
     <div id="hometaxSection">
-    <h2 style="font-size:20px;font-weight:600;margin:2rem 0 .4rem;letter-spacing:-0.02em;">홈택스 자료로 분석</h2>
+    <h2 style="font-size:20px;font-weight:600;margin:2rem 0 .4rem;letter-spacing:-0.02em;">원클릭 분석</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
-      국세청 홈택스 자료(국세 체납, 부가세 과세표준, 소득금액, 매입금액)와 재무 수치를 입력하면 업체의 상태를 한눈에 분석합니다. 재무제표가 없어도 분석할 수 있어요.
+      인증 한 번으로 홈택스 자료(국세 체납, 부가세 과세표준, 소득금액, 매입금액)를 연동하면 AI가 업체 상태를 분석하고 예상 한도까지 알려드립니다. 재무제표가 없어도 분석할 수 있어요.
     </p>
 
     <!-- 홈택스 자동 불러오기 (인증하면 아래 빈칸이 자동으로 채워짐 — 연동 준비 중) -->
@@ -720,80 +720,204 @@
       <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 자동 연동은 준비 중입니다. 지금은 아래에 직접 입력해 주세요.</p>
     </div>
 
-    <!-- 업체 정보 -->
+    <style>
+      #hometaxSection .ht-req { color:#A32D2D; font-size:11px; font-weight:600; margin-left:2px; }
+      #hometaxSection .ht-opt { color:var(--text3); font-size:11px; margin-left:2px; }
+      #hometaxSection .ht-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
+      #hometaxSection .ht-grid .field { margin-bottom:0; }
+      #hometaxSection .ht-sub { font-size:12px; font-weight:600; color:var(--text2); margin:14px 0 8px; }
+      #hometaxSection .ht-missing { border-color:#A32D2D !important; background:#FFF6F6 !important; }
+      #hometaxSection .ht-missing-box { outline:2px solid #A32D2D; outline-offset:4px; border-radius:8px; }
+      #hometaxSection select, #hometaxSection textarea { width:100%; padding:10px 12px; border:1px solid var(--border-strong); border-radius:10px; font-size:14px; font-family:inherit; background:var(--surface, #fff); color:inherit; }
+      #hometaxSection .ht-inline { display:flex; gap:16px; flex-wrap:wrap; font-size:14px; }
+      #hometaxSection .ht-inline label { display:flex; align-items:center; gap:6px; cursor:pointer; }
+      #hometaxSection .ht-inline input { width:auto; }
+      #hometaxSection .ht-legend { font-size:12px; color:var(--text3); margin:-.5rem 0 1rem; }
+    </style>
+    <p class="ht-legend"><span class="ht-req">필수</span> 표시는 상담 시 꼭 확인할 항목입니다. 나머지는 아는 만큼만 입력하세요.</p>
+
+    <!-- 1. 업체 정보 -->
     <div class="card">
       <div class="card-title">업체 정보</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="ht-grid">
+        <div class="field" style="grid-column:1/-1;"><label>회사이름<span class="ht-req">필수</span></label><input type="text" id="ht-company" placeholder="예: (주)씨앤지파트너스" /></div>
+        <div class="field"><label>대표자명<span class="ht-opt">선택</span></label><input type="text" id="ht-rep" placeholder="예: 홍길동" /></div>
+        <div class="field"><label>사업자등록번호<span class="ht-opt">선택</span></label><input type="text" id="ht-biz" placeholder="예: 123-45-67890" /></div>
+        <div class="field"><label>업태 / 업종<span class="ht-req">필수</span> <span class="ht-opt">사업자등록증 기준</span></label><input type="text" id="ht-industry" placeholder="예: 제조업 / 플라스틱 제품" /></div>
+        <div class="field"><label>창업년월<span class="ht-req">필수</span></label><input type="month" id="ht-founded" /></div>
+        <div class="field"><label>주 생산 품목<span class="ht-req">필수</span> <span class="ht-opt">매출 높은 아이템</span></label><input type="text" id="ht-product" placeholder="예: 식품 포장 용기" /></div>
+        <div class="field"><label>실제 하는 일<span class="ht-opt">선택</span></label><input type="text" id="ht-work" placeholder="예: 납품용 용기 OEM 생산" /></div>
+        <div class="field" style="grid-column:1/-1;"><label>사업장 소재지<span class="ht-opt">선택</span></label><input type="text" id="ht-location" placeholder="예: 경기도 고양시 덕양구" /></div>
         <div class="field" style="grid-column:1/-1;">
-          <label>회사이름 <span style="color:var(--danger);font-size:11px;">필수</span></label>
-          <input type="text" id="ht-company" placeholder="예: (주)씨앤지파트너스" />
-        </div>
-        <div class="field">
-          <label>대표자명 <span style="color:var(--text3);font-size:11px;">선택</span></label>
-          <input type="text" id="ht-rep" placeholder="예: 홍길동" />
-        </div>
-        <div class="field">
-          <label>사업자등록번호 <span style="color:var(--text3);font-size:11px;">선택</span></label>
-          <input type="text" id="ht-biz" placeholder="예: 123-45-67890" />
-        </div>
-        <div class="field" style="grid-column:1/-1;margin-bottom:0;">
           <label>사업자 구분</label>
-          <div style="display:flex;gap:16px;font-size:14px;">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-biztype" value="personal" checked style="width:auto;" /> 개인사업자</label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-biztype" value="corp" style="width:auto;" /> 법인사업자</label>
+          <div class="ht-inline">
+            <label><input type="radio" name="ht-biztype" value="personal" checked /> 개인사업자</label>
+            <label><input type="radio" name="ht-biztype" value="corp" /> 법인사업자</label>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 국세 체납 -->
+    <!-- 2. 매출 (연도별) -->
     <div class="card">
-      <div class="card-title">국세 체납 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">납세증명서 기준</span></div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin-bottom:10px;">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-arrears" value="unknown" checked style="width:auto;" onchange="htToggleArrears()" /> 아직 확인 못 함</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-arrears" value="none" style="width:auto;" onchange="htToggleArrears()" /> 체납 없음</label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-arrears" value="has" style="width:auto;" onchange="htToggleArrears()" /> 체납 있음</label>
-      </div>
-      <div id="ht-arrears-detail" style="display:none;grid-template-columns:1fr 1fr;gap:10px;">
-        <div class="field" style="margin-bottom:0;">
-          <label>체납액 (원)</label>
-          <input type="text" inputmode="numeric" id="ht-arrears-amount" placeholder="예: 3,500,000" oninput="formatMoneyInput(this)" />
-        </div>
-        <div class="field" style="margin-bottom:0;">
-          <label>세목·비고 <span style="color:var(--text3);font-size:11px;">선택</span></label>
-          <input type="text" id="ht-arrears-note" placeholder="예: 부가세, 분납 중" />
-        </div>
-      </div>
-    </div>
-
-    <!-- 연도별 자료 -->
-    <div class="card">
-      <div class="card-title">연도별 자료 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">최근 3개년 · 비교하려면 2개년 이상 입력</span></div>
+      <div class="card-title">매출 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">최근 3개년 + 올해</span></div>
       <p style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px;">
-        매출은 <b>부가가치세 과세표준증명</b>, 매입은 <b>전자세금계산서 매입 합계표</b>, 소득은 <b>소득금액증명</b>의 대표자 종합소득금액 기준입니다. 모르는 항목은 비워 두어도 됩니다.
+        매출은 <b>부가가치세 과세표준증명</b> 기준입니다. 매입(전자세금계산서 합계표)과 대표자 종합소득금액(소득금액증명)은 선택입니다. 매출이 없던 해는 0을 입력하세요.
       </p>
       <div id="ht-years"></div>
+      <div style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--surface2);">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:14px;font-weight:600;margin-bottom:8px;">
+          <input type="number" id="ht-ytd-year" style="width:90px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-weight:600;font-family:inherit;" />
+          <span>년 현재</span>
+          <select id="ht-ytd-month" style="width:auto;padding:6px 8px;"><option value="">선택</option>
+            <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option>
+            <option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select>
+          <span>월까지 매출<span class="ht-req">필수</span></span>
+        </div>
+        <div class="ht-grid">
+          <div class="field"><label>누적 매출 (원)</label><input type="text" inputmode="numeric" id="ht-ytd-sales" placeholder="예: 150,000,000" oninput="formatMoneyInput(this)" /></div>
+        </div>
+      </div>
     </div>
 
-    <!-- 재무 수치 (선택) -->
+    <!-- 3. 신용 -->
+    <div class="card">
+      <div class="card-title">신용</div>
+      <div class="ht-sub" style="margin-top:0;">대표자 신용점수<span class="ht-req">필수</span></div>
+      <div class="ht-grid">
+        <div class="field"><label>KCB</label><input type="number" inputmode="numeric" id="ht-kcb" placeholder="예: 850" min="0" max="1000" /></div>
+        <div class="field"><label>NICE</label><input type="number" inputmode="numeric" id="ht-nice" placeholder="예: 870" min="0" max="1000" /></div>
+      </div>
+      <div class="ht-sub" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span>신용점수 (공동대표·배우자)<span class="ht-req">필수</span></span>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;"><input type="checkbox" id="ht-co-none" style="width:auto;" onchange="htToggleCo()" /> 해당 없음</label>
+      </div>
+      <div class="ht-grid" id="ht-co-wrap">
+        <div class="field"><label>KCB</label><input type="number" inputmode="numeric" id="ht-co-kcb" placeholder="예: 800" min="0" max="1000" /></div>
+        <div class="field"><label>NICE</label><input type="number" inputmode="numeric" id="ht-co-nice" placeholder="예: 820" min="0" max="1000" /></div>
+      </div>
+      <div class="ht-sub">신용회복<span class="ht-opt">선택</span></div>
+      <div class="ht-grid">
+        <div class="field"><label>종류</label><input type="text" id="ht-rec-type" placeholder="예: 개인회생, 신용회복위원회" /></div>
+        <div class="field"><label>몇 회차</label><input type="text" id="ht-rec-round" placeholder="예: 24/60회" /></div>
+        <div class="field"><label>성실 납부 여부</label>
+          <select id="ht-rec-faithful"><option value="">선택</option><option value="yes">성실 납부 중</option><option value="no">연체 있음</option></select></div>
+      </div>
+    </div>
+
+    <!-- 4. 국세 체납 -->
+    <div class="card" id="ht-arrears-card">
+      <div class="card-title">국세 체납<span class="ht-req">필수</span> <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">금액, 기간</span></div>
+      <div class="ht-inline" style="margin-bottom:10px;">
+        <label><input type="radio" name="ht-arrears" value="unknown" checked onchange="htToggleArrears()" /> 아직 확인 못 함</label>
+        <label><input type="radio" name="ht-arrears" value="none" onchange="htToggleArrears()" /> 체납 없음</label>
+        <label><input type="radio" name="ht-arrears" value="has" onchange="htToggleArrears()" /> 체납 있음</label>
+      </div>
+      <div id="ht-arrears-detail" style="display:none;">
+        <div class="ht-grid">
+          <div class="field"><label>종합소득세 금액 (원)</label><input type="text" inputmode="numeric" id="ht-ar-income" oninput="formatMoneyInput(this)" placeholder="0" /></div>
+          <div class="field"><label>종합소득세 기간</label><input type="text" id="ht-arp-income" placeholder="예: 2024.05~" /></div>
+          <div class="field"><label>법인세 금액 (원)</label><input type="text" inputmode="numeric" id="ht-ar-corp" oninput="formatMoneyInput(this)" placeholder="0" /></div>
+          <div class="field"><label>법인세 기간</label><input type="text" id="ht-arp-corp" placeholder="예: 2025.03~" /></div>
+          <div class="field"><label>부가세 금액 (원)</label><input type="text" inputmode="numeric" id="ht-ar-vat" oninput="formatMoneyInput(this)" placeholder="0" /></div>
+          <div class="field"><label>부가세 기간</label><input type="text" id="ht-arp-vat" placeholder="예: 2025년 1기" /></div>
+          <div class="field"><label>4대보험 금액 (원)</label><input type="text" inputmode="numeric" id="ht-ar-ins" oninput="formatMoneyInput(this)" placeholder="0" /></div>
+          <div class="field"><label>4대보험 기간</label><input type="text" id="ht-arp-ins" placeholder="예: 3개월" /></div>
+        </div>
+      </div>
+      <div class="field" style="margin:10px 0 0;"><label>기타 연체·체납·가압류<span class="ht-opt">선택</span></label><input type="text" id="ht-ar-other" placeholder="예: 카드 연체 30일, 지방세 체납" /></div>
+    </div>
+
+    <!-- 5. 기대출 -->
+    <div class="card" id="ht-loans-card">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span>기대출<span class="ht-req">필수</span> <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">기관 / 시기 / 금액</span></span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer;"><input type="checkbox" id="ht-loans-none" style="width:auto;" onchange="htToggleLoans()" /> 기대출 없음</label>
+      </div>
+      <div id="ht-loans"></div>
+      <button type="button" class="btn" id="ht-loan-add" style="padding:6px 12px;font-size:13px;margin-top:4px;" onclick="htAddLoan()">+ 대출 추가</button>
+    </div>
+
+    <!-- 6. 필요자금 -->
+    <div class="card">
+      <div class="card-title">필요자금<span class="ht-req">필수</span></div>
+      <div class="ht-grid">
+        <div class="field"><label>최대 (원)</label><input type="text" inputmode="numeric" id="ht-need-max" placeholder="예: 100,000,000" oninput="formatMoneyInput(this)" /></div>
+        <div class="field"><label>최소 (원)</label><input type="text" inputmode="numeric" id="ht-need-min" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
+        <div class="field" style="grid-column:1/-1;"><label>용도<span class="ht-opt">선택</span></label><input type="text" id="ht-need-purpose" placeholder="예: 원자재 구입, 설비 투자" /></div>
+      </div>
+    </div>
+
+    <!-- 7. 대표자 -->
+    <div class="card">
+      <div class="card-title">대표자</div>
+      <div class="ht-grid">
+        <div class="field"><label>나이 (만)<span class="ht-req">필수</span></label><input type="number" inputmode="numeric" id="ht-age" placeholder="예: 38" min="15" max="100" /></div>
+        <div class="field"><label>동종업계 경력 (년)<span class="ht-req">필수</span></label><input type="number" inputmode="decimal" id="ht-career" placeholder="예: 10" min="0" step="0.5" /></div>
+        <div class="field"><label>보유 자산<span class="ht-opt">선택 · 집, 차량</span></label><input type="text" id="ht-rep-assets" placeholder="예: 아파트 자가, 차량 1대" /></div>
+        <div class="field"><label>혼인 여부<span class="ht-opt">선택</span></label>
+          <select id="ht-marital"><option value="">선택</option><option value="married">기혼</option><option value="single">미혼</option></select></div>
+        <div class="field" style="grid-column:1/-1;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;"><input type="checkbox" id="ht-woman" style="width:auto;" /> 여성 대표</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. 고용 -->
+    <div class="card">
+      <div class="card-title">고용</div>
+      <div class="ht-grid">
+        <div class="field"><label>직원 수<span class="ht-req">필수</span> <span class="ht-opt">4대보험 가입 기준</span></label><input type="number" inputmode="numeric" id="ht-employees" placeholder="예: 5" min="0" /></div>
+        <div class="field"><label>추가 채용 예정 인원<span class="ht-opt">선택</span></label><input type="number" inputmode="numeric" id="ht-hire" placeholder="예: 2" min="0" /></div>
+        <div class="field"><label>내일채움공제<span class="ht-opt">선택 · 가입 여부, 인원</span></label><input type="text" id="ht-naeil" placeholder="예: 가입 2명" /></div>
+        <div class="field"><label>노란우산공제<span class="ht-opt">선택</span></label>
+          <select id="ht-umbrella"><option value="">선택</option><option value="yes">가입</option><option value="no">미가입</option></select></div>
+      </div>
+    </div>
+
+    <!-- 9. 기업 현황 -->
+    <div class="card">
+      <div class="card-title">기업 현황 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">선택</span></div>
+      <div class="ht-grid">
+        <div class="field"><label>기업 인증<span class="ht-opt">특허, ISO 인증 등</span></label><input type="text" id="ht-certs" placeholder="예: 벤처기업, 특허 2건, ISO9001" /></div>
+        <div class="field"><label>연구소 · 연구개발전담부서</label>
+          <select id="ht-lab"><option value="">선택</option><option value="lab">기업부설연구소</option><option value="dept">연구개발전담부서</option><option value="none">없음</option></select></div>
+        <div class="field"><label>수출 여부<span class="ht-opt">수출실적증명원</span></label><input type="text" id="ht-export" placeholder="예: 2025년 수출 3억 원" /></div>
+        <div class="field"><label>공장 보유</label>
+          <select id="ht-factory"><option value="">선택</option><option value="own">자가</option><option value="rent">임차</option><option value="none">없음</option></select></div>
+      </div>
+    </div>
+
+    <!-- 10. 재무 수치 (선택) -->
     <div class="card">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
         <span>재무 수치 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">선택 · 표준재무제표증명 등</span></span>
         <button type="button" class="btn" style="padding:4px 12px;font-size:12px;" id="ht-fin-toggle" onclick="htToggleFin()">입력하기</button>
       </div>
       <p style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:0;" id="ht-fin-hint">
-        총자산과 총부채를 입력하면 부채비율·이자보상배수·자본잠식·사업 안정성 점수를 함께 분석합니다.
+        총자산과 총부채를 입력하면 부채비율·이자보상배수·자본잠식·사업 안정성 점수를 계산합니다. 비율만 알고 있으면 아래 "직접 입력" 칸에 넣어도 됩니다.
       </p>
       <div id="ht-fin-wrap" class="hidden" style="margin-top:12px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="field" style="margin-bottom:0;"><label>총자산 (원)</label><input type="text" inputmode="numeric" id="ht-assets" placeholder="예: 200,000,000" oninput="formatMoneyInput(this)" /></div>
-          <div class="field" style="margin-bottom:0;"><label>총부채 (원)</label><input type="text" inputmode="numeric" id="ht-debt" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
-          <div class="field" style="margin-bottom:0;"><label>자본금 (원) <span style="color:var(--text3);font-size:11px;">선택</span></label><input type="text" inputmode="numeric" id="ht-capital" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
-          <div class="field" style="margin-bottom:0;"><label>영업이익 (연, 원) <span style="color:var(--text3);font-size:11px;">선택</span></label><input type="text" inputmode="text" id="ht-opincome" placeholder="예: 30,000,000" oninput="htSignedMoney(this)" /></div>
-          <div class="field" style="margin-bottom:0;"><label>이자비용 (연, 원) <span style="color:var(--text3);font-size:11px;">선택 · 0이면 무차입</span></label><input type="text" inputmode="numeric" id="ht-interest" placeholder="예: 3,600,000" oninput="formatMoneyInput(this)" /></div>
-          <div class="field" style="margin-bottom:0;"><label>당기순이익 (연, 원) <span style="color:var(--text3);font-size:11px;">선택</span></label><input type="text" inputmode="text" id="ht-netincome" placeholder="예: 25,000,000" oninput="htSignedMoney(this)" /></div>
+        <div class="ht-grid">
+          <div class="field"><label>총자산 (원)</label><input type="text" inputmode="numeric" id="ht-assets" placeholder="예: 200,000,000" oninput="formatMoneyInput(this)" /></div>
+          <div class="field"><label>총부채 (원)</label><input type="text" inputmode="numeric" id="ht-debt" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
+          <div class="field"><label>자본금 (원)</label><input type="text" inputmode="numeric" id="ht-capital" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
+          <div class="field"><label>영업이익 (연, 원)</label><input type="text" inputmode="text" id="ht-opincome" placeholder="예: 30,000,000" oninput="htSignedMoney(this)" /></div>
+          <div class="field"><label>이자비용 (연, 원) <span class="ht-opt">0이면 무차입</span></label><input type="text" inputmode="numeric" id="ht-interest" placeholder="예: 3,600,000" oninput="formatMoneyInput(this)" /></div>
+          <div class="field"><label>당기순이익 (연, 원)</label><input type="text" inputmode="text" id="ht-netincome" placeholder="예: 25,000,000" oninput="htSignedMoney(this)" /></div>
+        </div>
+        <div class="ht-sub">비율 직접 입력 <span class="ht-opt">총자산·총부채가 없을 때만 사용</span></div>
+        <div class="ht-grid">
+          <div class="field"><label>부채비율 (%) <span class="ht-opt">부채총계÷자본총계×100</span></label><input type="text" inputmode="decimal" id="ht-dr-direct" placeholder="예: 180" /></div>
+          <div class="field"><label>이자보상배수 (배) <span class="ht-opt">영업이익÷이자비용</span></label><input type="text" inputmode="decimal" id="ht-icr-direct" placeholder="예: 2.5" /></div>
         </div>
       </div>
+    </div>
+
+    <!-- 11. 추가사항 -->
+    <div class="card">
+      <div class="card-title">추가사항 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">선택</span></div>
+      <textarea id="ht-memo" rows="4" placeholder="상담 중 확인한 특이사항을 적어 두세요."></textarea>
     </div>
 
     <button class="btn btn-primary btn-full" id="ht-analyze-btn" onclick="doHometaxAnalyze()">입력 정보로 분석하기</button>
@@ -2700,14 +2824,15 @@ function applyEditedFields() {
 }
 
 // ── 홈택스 자료 분석 ───────────────────────────────────────────────
-// 입력(input) 구조 — 홈택스 자동 수집(CODEF 등)을 붙일 때도 이 형태로만 채워주면 된다.
-//   {
-//     company_name, rep_name, business_number,
-//     biz_type: "personal" | "corp",
-//     arrears: { status: "none" | "has" | "unknown", amount, note },
-//     years: [ { year, vat, purchase, income } ],   // vat=부가세 과세표준(매출), purchase=매입금액, income=대표자 종합소득금액
-//     fin: { assets, liabilities, capital_stock, operating_income, interest_expense, net_income }   // 선택
-//   }
+// 입력(input) 구조 — 인콜일지 항목. 홈택스 자동 수집(CODEF 등)도 이 형태(일부만 있어도 됨)로 채운다.
+//   company_name, rep_name, business_number, biz_type("personal"|"corp"),
+//   industry, founded("YYYY-MM"), main_product, actual_work, location,
+//   years: [{ year, vat, purchase, income }], ytd: { year, month, sales },
+//   credit: { kcb, nice, co_none, co_kcb, co_nice, recovery: { type, round, faithful("yes"|"no"|"") } },
+//   arrears: { status("none"|"has"|"unknown"), amount, items: { income_tax, corp_tax, vat, insurance }, periods: {...}, other },
+//   loans_none, loans: [{ org, date, amount }], need: { max, min, purpose },
+//   rep: { age, career, assets_note, marital, woman }, employees, hire_plan, naeil, umbrella, certs, lab, export, factory,
+//   fin: { assets, liabilities, capital_stock, operating_income, interest_expense, net_income, debt_ratio, icr } | null, memo
 
 // ==== HOMETAX-ANALYSIS-START (화면과 무관한 순수 계산 — 테스트에서 이 구간만 잘라 실행) ====
 function htNum(v) {
@@ -2771,7 +2896,91 @@ function calcStability(fin) {
            erosionStatus, erosionClass, net, items, total, max, pct, grade };
 }
 
-function analyzeHometax(input) {
+// ── 예상 한도 ──
+// ※ 임시 기준(운전자금 기준): 최근 매출 × 25% − 총부채, 매출 20% 이상 감소 시 20% 감액, 최대 5억.
+//    기관별 기준·예외를 받으면 이 표와 estimateLimit()만 바꾸면 된다.
+const HT_LIMIT_RULE = {
+  salesRatio: 0.25,       // 기준 매출 대비 운전자금 소요 비율
+  lowRatio: 0.7,          // 하한 = 상한 × 0.7
+  declineCut: 0.2,        // 매출 20% 이상 감소 시 감액 비율
+  cap: 500000000,         // 최대 한도
+  minUseful: 10000000,    // 이보다 작으면 "신청 실익 낮음"
+  unit: 1000000,          // 백만 원 단위로 내림
+};
+
+function estimateLimit(input, ctx) {
+  const R = HT_LIMIT_RULE;
+  const lv = ctx.vatLatest;
+  if (!lv || !(lv.vat > 0)) {
+    return { available: false, status: "none", low: 0, high: 0, steps: [], notes: [],
+             text: "매출(부가세 과세표준)을 입력하면 예상 한도를 계산합니다." };
+  }
+  const steps = [];
+  const notes = [];
+  let amt = lv.vat * R.salesRatio;
+  steps.push({ label: `${lv.year}년 매출 × ${Math.round(R.salesRatio * 100)}% (운전자금 기준)`, amount: amt });
+
+  const fin = ctx.financial;
+  if (ctx.loansTotal > 0) {
+    amt -= ctx.loansTotal;
+    steps.push({ label: "기대출 합계 차감", amount: -ctx.loansTotal });
+  } else if (ctx.loansNone) {
+    // 기대출 없음 — 차감 없음
+  } else if (fin && fin.liabilities > 0) {
+    amt -= fin.liabilities;
+    steps.push({ label: "총부채 차감", amount: -fin.liabilities });
+  } else {
+    notes.push("기대출 금액이 없어 기존 차입금을 빼지 않았습니다. 기존 대출이 있으면 한도가 줄어듭니다.");
+  }
+  if (lv.vatYoy !== null && lv.vatYoy <= -20) {
+    const cut = Math.max(amt, 0) * R.declineCut;
+    amt -= cut;
+    steps.push({ label: `매출 ${Math.abs(lv.vatYoy).toFixed(0)}% 감소로 ${Math.round(R.declineCut * 100)}% 감액`, amount: -cut });
+  }
+  if (amt > R.cap) {
+    steps.push({ label: `최대 한도 ${Math.round(R.cap / 100000000)}억 원 적용`, amount: R.cap - amt });
+    amt = R.cap;
+  }
+  amt = Math.max(0, amt);
+  const high = Math.floor(amt / R.unit) * R.unit;
+  const low = Math.floor(high * R.lowRatio / R.unit) * R.unit;
+
+  const ar = (input.arrears && input.arrears.status) || "unknown";
+  if (ar === "has") {
+    return { available: true, status: "blocked", low: 0, high: 0, calcLow: low, calcHigh: high, steps, notes,
+             text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소하면 아래 계산 금액 수준을 기대할 수 있습니다." };
+  }
+  if (fin && fin.capitalEroded) {
+    return { available: true, status: "blocked", low: 0, high: 0, calcLow: low, calcHigh: high, steps, notes,
+             text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다. 자본 확충 후 다시 확인하세요." };
+  }
+  if (ar === "unknown") notes.push("체납 여부를 확인하지 않았습니다. 체납이 있으면 신청이 어렵습니다.");
+  if (ctx.creditLow) notes.push("대표자 신용점수가 낮아 실제 한도가 줄거나 보증이 어려울 수 있습니다.");
+  if (ctx.recoveryBad) notes.push("신용회복 납부에 연체가 있어 대부분의 기관에서 지원이 제한될 수 있습니다.");
+  if (high < R.minUseful) {
+    return { available: true, status: "low", low, high, steps, notes,
+             text: "산출된 한도가 작아 신청 실익이 낮을 수 있습니다." };
+  }
+  return { available: true, status: "ok", low, high, steps, notes,
+           text: "입력 자료 기준으로 계산한 예상 한도입니다." };
+}
+
+// 필요자금과 예상 한도 비교
+function htNeedFit(need, L) {
+  if (!need || (need.max === null && need.min === null) || !L || !L.available) return null;
+  const max = need.max !== null ? need.max : need.min, min = need.min !== null ? need.min : need.max;
+  const high = L.status === "blocked" ? 0 : L.high;
+  if (max <= high) return { level: "safe", min, max, text: "필요자금이 예상 한도 안에 있습니다." };
+  if (min <= high) return { level: "warn", min, max, text: "필요자금 최소는 예상 한도 안이지만, 최대 금액은 한도를 넘습니다." };
+  return { level: "danger", min, max, text: "필요자금 최소 금액도 예상 한도를 넘습니다. 금액을 낮추거나 여러 기관으로 나눠 진행하는 방안을 검토하세요." };
+}
+
+// 신용점수 기준 (임시: 600점 미만 위험, 700점 미만 주의)
+const HT_CREDIT_RULE = { danger: 600, warn: 700 };
+
+function analyzeHometax(input, opts) {
+  opts = opts || {};
+  const today = opts.today ? new Date(opts.today) : new Date();
   const biz = input.biz_type === "corp" ? "corp" : "personal";
   const rows = (input.years || [])
     .map(y => ({ year: parseInt(y.year, 10), vat: htNum(y.vat), purchase: htNum(y.purchase), income: htNum(y.income) }))
@@ -2794,10 +3003,12 @@ function analyzeHometax(input) {
 
   // 1) 국세 체납
   const ar = input.arrears || { status: "unknown" };
-  const arAmount = htNum(ar.amount);
+  const arItems = ar.items || {};
+  const arSum = Object.values(arItems).reduce((a, v) => a + (htNum(v) || 0), 0);
+  const arAmount = htNum(ar.amount) || (arSum > 0 ? arSum : null);
   let arrears;
   if (ar.status === "has") {
-    arrears = { level: "danger", label: "체납 있음", amount: arAmount, note: ar.note || "",
+    arrears = { level: "danger", label: "체납 있음", amount: arAmount, note: ar.note || "", items: arItems, periods: ar.periods || {},
       text: `국세 체납${arAmount ? " " + Math.round(arAmount).toLocaleString("ko-KR") + "원" : ""}이 확인됩니다. 체납이 있으면 납세증명서 발급이 되지 않아 대부분의 정책자금 신청이 어렵습니다. 완납 또는 분납 승인 후 진행해야 합니다.` };
     flags.push({ level: "danger", title: "국세 체납", text: arrears.text });
   } else if (ar.status === "none") {
@@ -2818,6 +3029,18 @@ function analyzeHometax(input) {
     else if (lv.vatYoy < 0) { vat = { level: "warn", rows: vatRows, latest: lv, text: `${lv.year}년 매출이 전년 대비 ${Math.abs(lv.vatYoy).toFixed(1)}% 감소했습니다.` };
       flags.push({ level: "warn", title: "매출 감소", text: vat.text }); }
     else vat = { level: "safe", rows: vatRows, latest: lv, text: `${lv.year}년 매출이 전년 대비 ${lv.vatYoy.toFixed(1)}% 증가했습니다.` };
+  }
+
+  // 2-1) 올해 누적 매출 → 연 환산
+  const yt = input.ytd || {};
+  const ytMonth = htNum(yt.month), ytSales = htNum(yt.sales), ytYear = htNum(yt.year) || today.getFullYear();
+  if (ytMonth && ytMonth >= 1 && ytMonth <= 12 && ytSales !== null) {
+    const annual = ytSales / ytMonth * 12;
+    const prevRow = rows.find(r => r.year === ytYear - 1 && r.vat !== null);
+    const yoy = prevRow ? htYoy(annual, prevRow.vat) : null;
+    vat.ytd = { year: ytYear, month: ytMonth, sales: ytSales, annual, yoy };
+    if (yoy !== null && yoy <= -20) flags.push({ level: "warn", title: "올해 매출 감소 추세",
+      text: `${ytYear}년 ${ytMonth}월까지 매출을 1년으로 환산하면 약 ${Math.round(annual).toLocaleString("ko-KR")}원으로, 전년 대비 ${Math.abs(yoy).toFixed(1)}% 적습니다.` });
   }
 
   // 3) 대표자 소득금액
@@ -2860,6 +3083,77 @@ function analyzeHometax(input) {
     if (financial.iceClass === "danger" && financial.ice !== null) flags.push({ level: "danger", title: "이자보상배수 위험", text: `이자보상배수 ${financial.ice.toFixed(2)}배로 영업이익이 이자를 충당하지 못합니다.` });
   }
 
+  // 5-1) 비율만 직접 입력한 경우
+  let ratios = null;
+  if (!financial && input.fin && (htNum(input.fin.debt_ratio) !== null || htNum(input.fin.icr) !== null)) {
+    const d = htNum(input.fin.debt_ratio), c = htNum(input.fin.icr);
+    ratios = {
+      dr: d, drClass: d === null ? "info" : d < 0 ? "danger" : d > 400 ? "danger" : d > 200 ? "warn" : "safe",
+      icr: c, icrClass: c === null ? "info" : c < 1 ? "danger" : c < 2 ? "warn" : "safe",
+    };
+    if (d !== null && d < 0) flags.push({ level: "danger", title: "자본잠식", text: `부채비율이 ${d}%(마이너스)로, 자본총계가 마이너스인 완전자본잠식 상태입니다.` });
+    else if (ratios.drClass === "danger") flags.push({ level: "danger", title: "부채비율 위험", text: `부채비율 ${d}%로 위험 수준입니다.` });
+    else if (ratios.drClass === "warn") flags.push({ level: "warn", title: "부채비율 주의", text: `부채비율 ${d}%로 주의 수준입니다.` });
+    if (ratios.icrClass === "danger") flags.push({ level: "danger", title: "이자보상배수 위험", text: `이자보상배수 ${c}배로 영업이익이 이자를 충당하지 못합니다.` });
+  }
+
+  // 6) 신용
+  const cr = input.credit || {};
+  const scoreLevel = v => v === null ? "info" : v < HT_CREDIT_RULE.danger ? "danger" : v < HT_CREDIT_RULE.warn ? "warn" : "safe";
+  const repScores = [htNum(cr.kcb), htNum(cr.nice)].filter(v => v !== null);
+  const repMin = repScores.length ? Math.min(...repScores) : null;
+  const coScores = cr.co_none ? [] : [htNum(cr.co_kcb), htNum(cr.co_nice)].filter(v => v !== null);
+  const coMin = coScores.length ? Math.min(...coScores) : null;
+  const rec = cr.recovery || {};
+  const recActive = !!(rec.type || rec.round || rec.faithful);
+  const credit = { kcb: htNum(cr.kcb), nice: htNum(cr.nice), coNone: !!cr.co_none, coKcb: htNum(cr.co_kcb), coNice: htNum(cr.co_nice),
+                   repLevel: scoreLevel(repMin), coLevel: scoreLevel(coMin), recovery: recActive ? rec : null };
+  if (credit.repLevel === "danger") flags.push({ level: "danger", title: "대표자 신용점수 낮음", text: `대표자 신용점수가 ${repMin}점으로 낮아 보증·대출 심사가 어려울 수 있습니다.` });
+  else if (credit.repLevel === "warn") flags.push({ level: "warn", title: "대표자 신용점수 주의", text: `대표자 신용점수가 ${repMin}점입니다. 기관에 따라 심사에 불리할 수 있습니다.` });
+  if (credit.coLevel === "danger" || credit.coLevel === "warn") flags.push({ level: "warn", title: "공동대표·배우자 신용점수", text: `공동대표·배우자 신용점수가 ${coMin}점입니다. 연대보증이나 공동 심사 시 영향을 줄 수 있습니다.` });
+  if (recActive) {
+    if (rec.faithful === "no") flags.push({ level: "danger", title: "신용회복 연체", text: `신용회복(${rec.type || "종류 미입력"}) 납부에 연체가 있습니다.` });
+    else flags.push({ level: "warn", title: "신용회복 진행 중", text: `신용회복(${rec.type || "종류 미입력"}${rec.round ? ", " + rec.round : ""}) 진행 중입니다. 성실 납부 기간과 기관별 지원 가능 여부를 확인하세요.` });
+  }
+  if (arrears && (input.arrears || {}).other) flags.push({ level: "warn", title: "기타 연체·체납·가압류", text: String(input.arrears.other) });
+
+  // 7) 기대출
+  const loans = (input.loans || []).filter(l => l && (l.org || l.date || htNum(l.amount) !== null));
+  const loansTotal = loans.reduce((a, l) => a + (htNum(l.amount) || 0), 0);
+  const loanInfo = { none: !!input.loans_none, list: loans, total: loansTotal,
+                     salesRatio: (lv && lv.vat > 0 && loansTotal > 0) ? loansTotal / lv.vat * 100 : null };
+  if (loanInfo.salesRatio !== null && loanInfo.salesRatio >= 50) flags.push({ level: "warn", title: "기대출 많음", text: `기대출 합계가 최근 매출의 ${loanInfo.salesRatio.toFixed(1)}%입니다. 추가 한도가 크게 줄어들 수 있습니다.` });
+
+  // 8) 업체 개요
+  let bizAge = null;
+  const fm = /^(\d{4})-(\d{1,2})/.exec(input.founded || "");
+  if (fm) {
+    const months = (today.getFullYear() - parseInt(fm[1], 10)) * 12 + (today.getMonth() + 1 - parseInt(fm[2], 10));
+    if (months >= 0) bizAge = { months, years: Math.floor(months / 12), rest: months % 12 };
+  }
+  const rp = input.rep || {};
+  const profile = { industry: input.industry || "", product: input.main_product || "", work: input.actual_work || "",
+                    location: input.location || "", founded: input.founded || "", bizAge,
+                    employees: htNum(input.employees), hire: htNum(input.hire_plan),
+                    age: htNum(rp.age), career: htNum(rp.career), assets: rp.assets_note || "", marital: rp.marital || "", woman: !!rp.woman };
+
+  // 9) 우대·참고 요소
+  const prefs = [];
+  if (profile.age !== null && profile.age <= 39) prefs.push({ tag: "청년 대표", text: `대표자 만 ${profile.age}세 — 청년(만 39세 이하) 우대 대상` });
+  if (bizAge && bizAge.months < 84) prefs.push({ tag: "창업기업", text: `업력 ${bizAge.years}년 ${bizAge.rest}개월 — 창업 7년 이내 기업 지원 대상` });
+  if (profile.woman) prefs.push({ tag: "여성 대표", text: "여성기업 우대 대상 (여성기업 확인서 발급 여부 확인)" });
+  if (profile.career !== null && profile.career >= 10) prefs.push({ tag: "업계 경력", text: `동종업계 경력 ${profile.career}년` });
+  if (profile.employees !== null && profile.employees < 5) prefs.push({ tag: "소상공인", text: `상시근로자 ${profile.employees}명 — 소상공인 해당 가능 (제조·건설·운수업은 10명 미만)` });
+  if (profile.hire !== null && profile.hire > 0) prefs.push({ tag: "고용 창출", text: `추가 채용 예정 ${profile.hire}명 — 고용 연계 우대 가능` });
+  if (input.naeil) prefs.push({ tag: "내일채움공제", text: String(input.naeil) });
+  if (input.umbrella === "yes") prefs.push({ tag: "노란우산공제", text: "노란우산공제 가입" });
+  if (input.certs) prefs.push({ tag: "기업 인증", text: String(input.certs) });
+  if (input.lab === "lab") prefs.push({ tag: "기업부설연구소", text: "기업부설연구소 보유 — 기술·R&D 지원 우대" });
+  if (input.lab === "dept") prefs.push({ tag: "연구개발전담부서", text: "연구개발전담부서 보유 — 기술·R&D 지원 우대" });
+  if (input.export) prefs.push({ tag: "수출", text: String(input.export) });
+  if (input.factory === "own") prefs.push({ tag: "공장 자가", text: "공장 자가 보유 — 담보 활용 가능" });
+  if (input.factory === "rent") prefs.push({ tag: "공장 임차", text: "공장 임차 사용" });
+
   flags.sort((a, b) => htLevelRank(b.level) - htLevelRank(a.level));
   const worst = flags.length ? flags[0].level : "safe";
   const dangerN = flags.filter(f => f.level === "danger").length;
@@ -2871,7 +3165,18 @@ function analyzeHometax(input) {
         : worst === "warn" ? "진행은 가능하나 사전에 확인해 두면 좋은 항목이 있습니다."
         : "입력된 자료 기준으로 눈에 띄는 위험 요인이 없습니다.",
   };
-  return { biz, rows, arrears, vat, income, purchase, financial, flags, overall };
+  const limit = estimateLimit(input, { vatLatest: lv, financial, loansTotal, loansNone: !!input.loans_none,
+                                       creditLow: credit.repLevel === "danger" || credit.repLevel === "warn",
+                                       recoveryBad: !!(recActive && rec.faithful === "no") });
+  limit.need = htNeedFit(input.need, limit);
+  if (limit.need && limit.need.level === "danger") {
+    flags.push({ level: "warn", title: "필요자금이 예상 한도 초과", text: limit.need.text });
+    flags.sort((a, b) => htLevelRank(b.level) - htLevelRank(a.level));
+    const w = flags[0].level;
+    if (overall.level === "safe" && w === "warn") { overall.level = "warn"; overall.title = `주의 항목 ${flags.filter(f => f.level === "warn").length}건`; overall.text = "진행은 가능하나 사전에 확인해 두면 좋은 항목이 있습니다."; }
+    else if (overall.level === "warn") overall.title = `주의 항목 ${flags.filter(f => f.level === "warn").length}건`;
+  }
+  return { biz, rows, arrears, vat, income, purchase, financial, ratios, credit, loans: loanInfo, profile, prefs, flags, overall, limit };
 }
 // ==== HOMETAX-ANALYSIS-END ====
 
@@ -2879,6 +3184,41 @@ function analyzeHometax(input) {
 const HT_LEVEL_COLOR = { safe: "#0F6E56", warn: "#B8860B", danger: "#A32D2D", info: "#185FA5" };
 const HT_LEVEL_BG    = { safe: "#E1F5EE", warn: "#FEF6D8", danger: "#FCEBEB", info: "#EBF2FA" };
 const HT_LEVEL_ICON  = { safe: "✅", warn: "⚠️", danger: "🚨", info: "ℹ️" };
+
+// 입력창의 단순 항목 ↔ input 객체 경로 (인콜일지 순서)
+// type: text / money(콤마 금액) / signed(마이너스 가능 금액) / int / num / dec(마이너스·소수 가능) / check
+const HT_FIELDS = [
+  ["company_name", "ht-company", "text"], ["rep_name", "ht-rep", "text"], ["business_number", "ht-biz", "text"],
+  ["industry", "ht-industry", "text"], ["founded", "ht-founded", "text"], ["main_product", "ht-product", "text"],
+  ["actual_work", "ht-work", "text"], ["location", "ht-location", "text"],
+  ["ytd.year", "ht-ytd-year", "int"], ["ytd.month", "ht-ytd-month", "int"], ["ytd.sales", "ht-ytd-sales", "money"],
+  ["credit.kcb", "ht-kcb", "int"], ["credit.nice", "ht-nice", "int"],
+  ["credit.co_none", "ht-co-none", "check"], ["credit.co_kcb", "ht-co-kcb", "int"], ["credit.co_nice", "ht-co-nice", "int"],
+  ["credit.recovery.type", "ht-rec-type", "text"], ["credit.recovery.round", "ht-rec-round", "text"], ["credit.recovery.faithful", "ht-rec-faithful", "text"],
+  ["arrears.items.income_tax", "ht-ar-income", "money"], ["arrears.periods.income_tax", "ht-arp-income", "text"],
+  ["arrears.items.corp_tax", "ht-ar-corp", "money"], ["arrears.periods.corp_tax", "ht-arp-corp", "text"],
+  ["arrears.items.vat", "ht-ar-vat", "money"], ["arrears.periods.vat", "ht-arp-vat", "text"],
+  ["arrears.items.insurance", "ht-ar-ins", "money"], ["arrears.periods.insurance", "ht-arp-ins", "text"],
+  ["arrears.other", "ht-ar-other", "text"],
+  ["loans_none", "ht-loans-none", "check"],
+  ["need.max", "ht-need-max", "money"], ["need.min", "ht-need-min", "money"], ["need.purpose", "ht-need-purpose", "text"],
+  ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
+  ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"],
+  ["employees", "ht-employees", "int"], ["hire_plan", "ht-hire", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
+  ["certs", "ht-certs", "text"], ["lab", "ht-lab", "text"], ["export", "ht-export", "text"], ["factory", "ht-factory", "text"],
+  ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
+  ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
+  ["fin.debt_ratio", "ht-dr-direct", "dec"], ["fin.icr", "ht-icr-direct", "dec"],
+  ["memo", "ht-memo", "text"],
+];
+
+function htGet(obj, path) { return path.split(".").reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj); }
+function htSet(obj, path, v) {
+  const ks = path.split("."); let o = obj;
+  ks.slice(0, -1).forEach(k => { if (!o[k] || typeof o[k] !== "object") o[k] = {}; o = o[k]; });
+  o[ks[ks.length - 1]] = v;
+}
+function htEmpty(v) { return v === null || v === undefined || v === "" || v === false; }
 
 // 마이너스(-) 입력이 필요한 금액 칸(소득금액·영업이익·당기순이익)
 function htSignedMoney(el) {
@@ -2899,7 +3239,27 @@ function htMoney(id) {
 function htSetMoney(id, v) {
   const el = document.getElementById(id);
   if (!el) return;
-  el.value = (v === null || v === undefined || isNaN(v)) ? "" : Number(Math.round(v)).toLocaleString("ko-KR");
+  el.value = (v === null || v === undefined || isNaN(v)) ? "" : (v < 0 ? "-" : "") + Math.abs(Math.round(v)).toLocaleString("ko-KR");
+}
+
+function htReadField(id, type) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  if (type === "check") return !!el.checked;
+  if (type === "money" || type === "signed") return htMoney(id);
+  const raw = String(el.value || "").trim();
+  if (type === "text") return raw;
+  if (raw === "") return null;
+  const n = type === "int" ? parseInt(raw.replace(/,/g, ""), 10) : parseFloat(raw.replace(/,/g, ""));
+  return isNaN(n) ? null : n;
+}
+
+function htWriteField(id, type, v) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (type === "check") { el.checked = !!v; return; }
+  if (type === "money" || type === "signed") { htSetMoney(id, v); return; }
+  el.value = (v === null || v === undefined) ? "" : String(v);
 }
 
 function htBuildYears(preset) {
@@ -2913,84 +3273,118 @@ function htBuildYears(preset) {
         <input type="number" id="ht-y${i}-year" value="${y}" style="width:90px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-weight:600;font-family:inherit;" />
         <span style="font-size:13px;color:var(--text2);">년</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-        <div class="field" style="margin-bottom:0;"><label>매출 · 부가세 과세표준 (원)</label><input type="text" inputmode="numeric" id="ht-y${i}-vat" placeholder="예: 300,000,000" oninput="formatMoneyInput(this)" /></div>
-        <div class="field" style="margin-bottom:0;"><label>매입금액 (원)</label><input type="text" inputmode="numeric" id="ht-y${i}-purchase" placeholder="예: 210,000,000" oninput="formatMoneyInput(this)" /></div>
-        <div class="field" style="margin-bottom:0;"><label>대표자 종합소득금액 (원)</label><input type="text" inputmode="text" id="ht-y${i}-income" placeholder="예: 45,000,000" oninput="htSignedMoney(this)" /></div>
+      <div class="ht-grid">
+        <div class="field"><label>매출 · 부가세 과세표준 (원)<span class="ht-req">필수</span></label><input type="text" inputmode="numeric" id="ht-y${i}-vat" placeholder="예: 300,000,000" oninput="formatMoneyInput(this)" /></div>
+        <div class="field"><label>매입금액 (원)<span class="ht-opt">선택</span></label><input type="text" inputmode="numeric" id="ht-y${i}-purchase" placeholder="예: 210,000,000" oninput="formatMoneyInput(this)" /></div>
+        <div class="field"><label>대표자 종합소득금액 (원)<span class="ht-opt">선택</span></label><input type="text" inputmode="text" id="ht-y${i}-income" placeholder="예: 45,000,000" oninput="htSignedMoney(this)" /></div>
       </div>
     </div>`).join("");
   if (preset && preset.length) {
     preset.forEach((y, i) => {
-      htSetMoney(`ht-y${i}-vat`, y.vat); htSetMoney(`ht-y${i}-purchase`, y.purchase);
-      const inc = document.getElementById(`ht-y${i}-income`);
-      if (inc && y.income !== null && y.income !== undefined) inc.value = (y.income < 0 ? "-" : "") + Math.abs(Math.round(y.income)).toLocaleString("ko-KR");
+      htSetMoney(`ht-y${i}-vat`, y.vat); htSetMoney(`ht-y${i}-purchase`, y.purchase); htSetMoney(`ht-y${i}-income`, y.income);
     });
   }
 }
 
+// 기대출 목록 (기관 / 시기 / 금액)
+function htRenderLoans(list) {
+  const box = document.getElementById("ht-loans");
+  if (!box) return;
+  const rows = (list && list.length) ? list : [{ org: "", date: "", amount: null }];
+  box.innerHTML = rows.map((l, i) => `
+    <div class="ht-grid ht-loan-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end;margin-bottom:8px;">
+      <div class="field"><label>기관</label><input type="text" id="ht-loan-${i}-org" placeholder="예: 신용보증기금" /></div>
+      <div class="field"><label>시기</label><input type="text" id="ht-loan-${i}-date" placeholder="예: 2024.03" /></div>
+      <div class="field"><label>금액 (원)</label><input type="text" inputmode="numeric" id="ht-loan-${i}-amount" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
+      <div style="display:flex;align-items:end;"><button type="button" class="btn" style="padding:8px 12px;font-size:12px;" onclick="htRemoveLoan(${i})">삭제</button></div>
+    </div>`).join("");
+  rows.forEach((l, i) => {
+    document.getElementById(`ht-loan-${i}-org`).value = l.org || "";
+    document.getElementById(`ht-loan-${i}-date`).value = l.date || "";
+    htSetMoney(`ht-loan-${i}-amount`, l.amount);
+  });
+  htToggleLoans();
+}
+function htReadLoans() {
+  const list = [];
+  for (let i = 0; document.getElementById(`ht-loan-${i}-org`); i++) {
+    const l = { org: document.getElementById(`ht-loan-${i}-org`).value.trim(),
+                date: document.getElementById(`ht-loan-${i}-date`).value.trim(),
+                amount: htMoney(`ht-loan-${i}-amount`) };
+    if (l.org || l.date || l.amount !== null) list.push(l);
+  }
+  return list;
+}
+function htAddLoan() { const l = htReadLoans(); l.push({ org: "", date: "", amount: null }); htRenderLoans(l.length ? l : null); }
+function htRemoveLoan(i) {
+  const all = [];
+  for (let k = 0; document.getElementById(`ht-loan-${k}-org`); k++) {
+    if (k === i) continue;
+    all.push({ org: document.getElementById(`ht-loan-${k}-org`).value.trim(), date: document.getElementById(`ht-loan-${k}-date`).value.trim(), amount: htMoney(`ht-loan-${k}-amount`) });
+  }
+  htRenderLoans(all);
+}
+function htToggleLoans() {
+  const none = document.getElementById("ht-loans-none");
+  const off = !!(none && none.checked);
+  document.querySelectorAll("#ht-loans input, #ht-loans button, #ht-loan-add").forEach(el => { el.disabled = off; });
+  const box = document.getElementById("ht-loans"); if (box) box.style.opacity = off ? .45 : 1;
+}
+function htToggleCo() {
+  const off = document.getElementById("ht-co-none").checked;
+  ["ht-co-kcb", "ht-co-nice"].forEach(id => { const el = document.getElementById(id); el.disabled = off; if (off) el.value = ""; });
+  document.getElementById("ht-co-wrap").style.opacity = off ? .45 : 1;
+}
+
 function htToggleArrears() {
   const v = (document.querySelector('input[name="ht-arrears"]:checked') || {}).value;
-  document.getElementById("ht-arrears-detail").style.display = v === "has" ? "grid" : "none";
+  document.getElementById("ht-arrears-detail").style.display = v === "has" ? "block" : "none";
 }
 
 function htToggleFin(forceOpen) {
   const wrap = document.getElementById("ht-fin-wrap");
-  const open = forceOpen === true ? true : wrap.classList.contains("hidden");
+  const open = forceOpen === true ? true : forceOpen === false ? false : wrap.classList.contains("hidden");
   wrap.classList.toggle("hidden", !open);
   document.getElementById("ht-fin-toggle").textContent = open ? "접기" : "입력하기";
 }
 
 // 입력창 → input 객체
 function htReadForm() {
-  const years = [];
+  const input = {};
+  HT_FIELDS.forEach(([path, id, type]) => htSet(input, path, htReadField(id, type)));
+  input.biz_type = (document.querySelector('input[name="ht-biztype"]:checked') || {}).value || "personal";
+  input.arrears.status = (document.querySelector('input[name="ht-arrears"]:checked') || {}).value || "unknown";
+  const items = input.arrears.items || {};
+  const sum = Object.values(items).reduce((a, v) => a + (v || 0), 0);
+  input.arrears.amount = sum > 0 ? sum : null;
+  input.years = [];
   for (let i = 0; document.getElementById(`ht-y${i}-year`); i++) {
-    years.push({
+    input.years.push({
       year: parseInt(document.getElementById(`ht-y${i}-year`).value, 10),
       vat: htMoney(`ht-y${i}-vat`), purchase: htMoney(`ht-y${i}-purchase`), income: htMoney(`ht-y${i}-income`),
     });
   }
-  const finVals = { assets: htMoney("ht-assets"), liabilities: htMoney("ht-debt"), capital_stock: htMoney("ht-capital"),
-                    operating_income: htMoney("ht-opincome"), interest_expense: htMoney("ht-interest"), net_income: htMoney("ht-netincome") };
-  const hasFin = Object.values(finVals).some(v => v !== null);
-  return {
-    company_name: document.getElementById("ht-company").value.trim(),
-    rep_name: document.getElementById("ht-rep").value.trim(),
-    business_number: document.getElementById("ht-biz").value.trim(),
-    biz_type: (document.querySelector('input[name="ht-biztype"]:checked') || {}).value || "personal",
-    arrears: {
-      status: (document.querySelector('input[name="ht-arrears"]:checked') || {}).value || "unknown",
-      amount: htMoney("ht-arrears-amount"),
-      note: document.getElementById("ht-arrears-note").value.trim(),
-    },
-    years,
-    fin: hasFin ? finVals : null,
-  };
+  input.loans = input.loans_none ? [] : htReadLoans();
+  if (!Object.values(input.fin || {}).some(v => v !== null)) input.fin = null;
+  return input;
 }
 
-// input 객체 → 입력창 (홈택스 자동 수집 결과나 저장된 이력을 불러올 때 사용)
+// input 객체 → 입력창 (자동 수집 결과·저장된 이력 불러오기)
 function htFillForm(input) {
   if (!input) return;
-  document.getElementById("ht-company").value = input.company_name || "";
-  document.getElementById("ht-rep").value = input.rep_name || "";
-  document.getElementById("ht-biz").value = input.business_number || "";
+  HT_FIELDS.forEach(([path, id, type]) => htWriteField(id, type, htGet(input, path)));
   const bt = document.querySelector(`input[name="ht-biztype"][value="${input.biz_type === "corp" ? "corp" : "personal"}"]`);
   if (bt) bt.checked = true;
   const st = (input.arrears && input.arrears.status) || "unknown";
   const ar = document.querySelector(`input[name="ht-arrears"][value="${st}"]`);
   if (ar) ar.checked = true;
-  htSetMoney("ht-arrears-amount", input.arrears && input.arrears.amount);
-  document.getElementById("ht-arrears-note").value = (input.arrears && input.arrears.note) || "";
   htToggleArrears();
   const ys = (input.years || []).slice().sort((a, b) => b.year - a.year);
   htBuildYears(ys.length ? ys : null);
-  const f = input.fin || {};
-  htSetMoney("ht-assets", f.assets); htSetMoney("ht-debt", f.liabilities); htSetMoney("ht-capital", f.capital_stock);
-  ["ht-opincome:operating_income", "ht-netincome:net_income"].forEach(p => {
-    const [id, key] = p.split(":"); const el = document.getElementById(id);
-    el.value = (f[key] === null || f[key] === undefined) ? "" : (f[key] < 0 ? "-" : "") + Math.abs(Math.round(f[key])).toLocaleString("ko-KR");
-  });
-  htSetMoney("ht-interest", f.interest_expense);
+  htRenderLoans(input.loans || []);
+  htToggleCo();
   htToggleFin(!!input.fin);
+  if (!document.getElementById("ht-ytd-year").value) document.getElementById("ht-ytd-year").value = new Date().getFullYear();
 }
 
 function initHometaxPage() {
@@ -3001,36 +3395,79 @@ function initHometaxPage() {
   const biz = document.getElementById("ht-biz");
   if (biz && !biz.value && userBizNumber) biz.value = userBizNumber;
   if (!document.getElementById("ht-y0-year")) htBuildYears();
+  if (!document.getElementById("ht-loan-0-org")) htRenderLoans(null);
+  const yy = document.getElementById("ht-ytd-year");
+  if (yy && !yy.value) yy.value = new Date().getFullYear();
+}
+
+// 필수 항목(인콜일지 노란색) 확인 → [{ label, id }]
+function htMissing(input) {
+  const miss = [];
+  const need = (cond, label, id) => { if (cond) miss.push({ label, id }); };
+  need(!input.company_name, "회사이름", "ht-company");
+  need(!input.industry, "업태/업종", "ht-industry");
+  need(!input.founded, "창업년월", "ht-founded");
+  need(!input.main_product, "주 생산 품목", "ht-product");
+  input.years.forEach((y, i) => need(y.vat === null, `${y.year || ""}년 매출`, `ht-y${i}-vat`));
+  need(!input.ytd || input.ytd.month === null, "올해 매출 기준 월", "ht-ytd-month");
+  need(!input.ytd || input.ytd.sales === null, "올해 누적 매출", "ht-ytd-sales");
+  need(input.credit.kcb === null, "대표자 KCB 신용점수", "ht-kcb");
+  need(input.credit.nice === null, "대표자 NICE 신용점수", "ht-nice");
+  if (!input.credit.co_none) {
+    need(input.credit.co_kcb === null, "공동대표·배우자 KCB (없으면 '해당 없음')", "ht-co-kcb");
+    need(input.credit.co_nice === null, "공동대표·배우자 NICE (없으면 '해당 없음')", "ht-co-nice");
+  }
+  need(input.arrears.status === "unknown", "국세 체납 여부", "ht-arrears-card");
+  need(!input.loans_none && !input.loans.some(l => l.amount !== null), "기대출 (없으면 '기대출 없음')", "ht-loans-card");
+  need(input.need.max === null, "필요자금 최대", "ht-need-max");
+  need(input.need.min === null, "필요자금 최소", "ht-need-min");
+  need(input.rep.age === null, "대표자 나이", "ht-age");
+  need(input.rep.career === null, "동종업계 경력", "ht-career");
+  need(input.employees === null, "직원 수", "ht-employees");
+  return miss;
+}
+
+function htMarkMissing(miss) {
+  document.querySelectorAll("#hometaxSection .ht-missing").forEach(el => el.classList.remove("ht-missing"));
+  document.querySelectorAll("#hometaxSection .ht-missing-box").forEach(el => el.classList.remove("ht-missing-box"));
+  miss.forEach(m => {
+    const el = document.getElementById(m.id);
+    if (!el) return;
+    if (el.classList.contains("card")) el.classList.add("ht-missing-box"); else el.classList.add("ht-missing");
+    const clear = () => { el.classList.remove("ht-missing", "ht-missing-box"); };
+    el.addEventListener("input", clear, { once: true });
+    el.addEventListener("change", clear, { once: true });
+  });
 }
 
 // 홈택스 자동 수집 — 아직 연동 전. 수집 업체(CODEF 등)를 붙일 때 이 함수만 채우면 된다.
 // mode: "direct"(상담 중 화면에서 바로 인증) / "link"(고객에게 인증 링크 전송)
-// 반환값은 위 input 구조 — 받아서 htFillForm(input) 으로 입력창에 채운다.
+// 반환값은 input 객체와 같은 구조(일부 항목만 있어도 됨) — 빈칸에만 채운다.
 async function fetchHometaxFromProvider(mode) {
   throw new Error("홈택스 자동 불러오기는 준비 중입니다.");
 }
+
 // 자동 수집 결과를 입력창의 "빈칸"에만 채운다 (사용자가 이미 적은 값은 덮어쓰지 않는다)
-function htMergeForm(input) {
+function htMergeForm(inc) {
   const cur = htReadForm();
-  const merged = JSON.parse(JSON.stringify(input));
-  // 업체 정보 — 입력된 값 우선
-  ["company_name", "rep_name", "business_number"].forEach(k => { if (cur[k]) merged[k] = cur[k]; });
-  // 체납 — 사용자가 이미 확인 결과를 골랐으면 유지
-  if (cur.arrears.status !== "unknown") merged.arrears = cur.arrears;
+  const merged = JSON.parse(JSON.stringify(cur));
+  HT_FIELDS.forEach(([path]) => {
+    const v = htGet(inc, path);
+    if (htEmpty(htGet(cur, path)) && !htEmpty(v)) htSet(merged, path, v);
+  });
+  if (inc.biz_type) merged.biz_type = inc.biz_type;
+  if (cur.arrears.status === "unknown" && inc.arrears && inc.arrears.status) merged.arrears.status = inc.arrears.status;
   // 연도별 자료 — 같은 연도의 이미 입력한 칸은 유지
   const byYear = {};
-  (merged.years || []).forEach(y => { byYear[y.year] = y; });
+  (inc.years || []).forEach(y => { byYear[y.year] = Object.assign({ vat: null, purchase: null, income: null }, y); });
   cur.years.forEach(y => {
     if (!y.year) return;
     const t = byYear[y.year] || (byYear[y.year] = { year: y.year, vat: null, purchase: null, income: null });
     ["vat", "purchase", "income"].forEach(k => { if (y[k] !== null) t[k] = y[k]; });
   });
   merged.years = Object.values(byYear);
-  // 재무 수치 — 이미 입력한 칸은 유지
-  const fin = Object.assign({}, merged.fin || {});
-  Object.keys(cur.fin || {}).forEach(k => { if (cur.fin[k] !== null) fin[k] = cur.fin[k]; });
-  merged.fin = Object.values(fin).some(v => v !== null && v !== undefined) ? fin : null;
-  merged.biz_type = (merged.biz_type || cur.biz_type);
+  if (!cur.loans.length && !cur.loans_none && inc.loans && inc.loans.length) merged.loans = inc.loans;
+  if (merged.fin && !Object.values(merged.fin).some(v => v !== null && v !== undefined)) merged.fin = null;
   return merged;
 }
 
@@ -3038,7 +3475,7 @@ async function htStartAuto(mode) {
   try {
     const input = await fetchHometaxFromProvider(mode);
     htFillForm(htMergeForm(input));
-    toast("홈택스 자료로 빈칸을 채웠어요. 내용을 확인한 뒤 분석해 주세요.");
+    toast("홈택스 자료로 빈칸을 채웠어요. 나머지 필수 항목을 확인한 뒤 분석해 주세요.");
   } catch (e) {
     toast(e.message);
   }
@@ -3048,12 +3485,19 @@ async function doHometaxAnalyze() {
   if (!token) { showPage("login"); return; }
   const input = htReadForm();
 
-  if (!input.company_name) { toast("회사이름을 입력해 주세요."); return; }
-  const hasYear = input.years.some(y => y.year && (y.vat !== null || y.purchase !== null || y.income !== null));
-  if (!hasYear && input.arrears.status === "unknown" && !input.fin) { toast("분석할 자료를 한 가지 이상 입력해 주세요."); return; }
-  if (input.arrears.status === "has" && !input.arrears.amount && !confirm("체납액이 입력되지 않았습니다.\n이대로 분석할까요?")) return;
   const yrs = input.years.map(y => y.year).filter(Boolean);
   if (new Set(yrs).size !== yrs.length) { toast("연도가 중복되었습니다. 연도를 확인해 주세요."); return; }
+  const miss = htMissing(input);
+  htMarkMissing(miss);
+  if (miss.length) {
+    const first = document.getElementById(miss[0].id);
+    if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+    toast(`필수 항목 ${miss.length}개를 확인해 주세요: ${miss.slice(0, 3).map(m => m.label).join(", ")}${miss.length > 3 ? " 외" : ""}`);
+    return;
+  }
+  if (input.need.min !== null && input.need.max !== null && input.need.min > input.need.max) {
+    toast("필요자금 최소가 최대보다 큽니다."); return;
+  }
 
   if (!userHasSub && userCredits < 10) { openPaymentModal(); return; }
 
@@ -3117,6 +3561,48 @@ function htTextBox(text, level) {
   return `<div style="font-size:13px;line-height:1.7;color:#2d3748;background:#f0f4f8;border-left:4px solid ${HT_LEVEL_COLOR[level] || "#185FA5"};border-radius:10px;padding:10px 14px;margin-top:10px;">${escapeHtml(text)}</div>`;
 }
 
+// 금액을 "1억 2,500만원" 형태로
+function htKwon(n) {
+  if (n === null || n === undefined || isNaN(n)) return "-";
+  const neg = n < 0; n = Math.abs(Math.round(n));
+  const eok = Math.floor(n / 100000000);
+  const man = Math.floor((n % 100000000) / 10000);
+  let t = eok ? `${eok.toLocaleString("ko-KR")}억${man ? " " + man.toLocaleString("ko-KR") + "만" : ""}원`
+              : man ? `${man.toLocaleString("ko-KR")}만원` : `${n.toLocaleString("ko-KR")}원`;
+  return (neg ? "-" : "") + t;
+}
+
+function htLimitCard(L) {
+  if (!L || !L.available) {
+    return `<div class="card" style="border-top:4px solid #185FA5;">
+      <div class="card-title">💰 예상 한도</div>
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;">${escapeHtml(L ? L.text : "")}</p></div>`;
+  }
+  const blocked = L.status === "blocked";
+  const color = blocked ? "#A32D2D" : L.status === "low" ? "#B8860B" : "#185FA5";
+  const bg = blocked ? "#FCEBEB" : L.status === "low" ? "#FEF6D8" : "#EBF2FA";
+  const main = blocked
+    ? `<div style="font-size:22px;font-weight:800;color:${color};">현재 신청 어려움</div>
+       <div style="font-size:12px;color:var(--text3);margin-top:4px;">해소 후 기대 금액: 약 ${htKwon(L.calcLow)} ~ ${htKwon(L.calcHigh)}</div>`
+    : `<div style="font-size:12px;color:var(--text3);margin-bottom:2px;">예상 한도</div>
+       <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:${color};letter-spacing:-0.02em;line-height:1.35;">약 <span style="white-space:nowrap;">${htKwon(L.low)}</span> ~ <span style="white-space:nowrap;">${htKwon(L.high)}</span></div>`;
+  const steps = L.steps.map(st => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#4a4a45;padding:4px 0;border-bottom:1px dashed #e5e4e0;">
+      <span>${escapeHtml(st.label)}</span><b style="white-space:nowrap;">${st.amount < 0 ? "−" + htKwon(-st.amount) : htKwon(st.amount)}</b></div>`).join("");
+  const notes = L.notes.map(n => `<div style="font-size:12px;color:#8a6d00;margin-top:4px;">• ${escapeHtml(n)}</div>`).join("");
+  return `<div class="card" style="border-top:4px solid ${color};">
+    <div class="card-title">💰 예상 한도</div>
+    <div style="background:${bg};border-radius:12px;padding:14px 16px;">${main}
+      <div style="font-size:12px;color:#4a4a45;margin-top:6px;">${escapeHtml(L.text)}</div></div>
+    <div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px;">계산 근거</div>${steps}</div>
+    ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
+      <div style="font-size:12px;color:var(--text3);">필요자금</div>
+      <div style="font-size:15px;font-weight:700;color:${HT_LEVEL_COLOR[L.need.level]};">${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</div>
+      <div style="font-size:12px;color:#4a4a45;margin-top:2px;">${HT_LEVEL_ICON[L.need.level]} ${escapeHtml(L.need.text)}</div></div>` : ""}
+    ${notes}
+    <p style="font-size:11px;color:var(--text3);line-height:1.6;margin-top:10px;">※ 최근 매출의 25%에서 기대출(없으면 총부채)을 뺀 운전자금 기준의 참고용 추정치입니다. 기관별 기준·예외와 신용도는 반영되지 않았으며, 실제 한도는 심사 결과에 따라 달라집니다.</p>
+  </div>`;
+}
+
 function renderHometaxResults(r, input) {
   const wrap = document.getElementById("ht-results");
   const o = r.overall;
@@ -3140,16 +3626,52 @@ function renderHometaxResults(r, input) {
       ${flagsHtml}
     </div>`;
 
+  // 예상 한도
+  html += htLimitCard(r.limit);
+
+  // 업체 개요
+  const pf = r.profile || {};
+  const kv = (k, v) => v ? `<div style="display:flex;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid #f0efeb;"><span style="width:110px;flex-shrink:0;color:var(--text3);">${k}</span><span style="color:#1a1a18;">${v}</span></div>` : "";
+  html += htCard("업체 개요", "info", `
+    ${kv("업태 / 업종", escapeHtml(pf.industry))}
+    ${kv("주 생산 품목", escapeHtml(pf.product))}
+    ${kv("실제 하는 일", escapeHtml(pf.work))}
+    ${kv("사업장 소재지", escapeHtml(pf.location))}
+    ${kv("창업년월 · 업력", pf.founded ? escapeHtml(pf.founded) + (pf.bizAge ? ` · <b>${pf.bizAge.years}년 ${pf.bizAge.rest}개월</b>` : "") : "")}
+    ${kv("직원 수", pf.employees !== null && pf.employees !== undefined ? `${pf.employees}명${pf.hire ? ` (추가 채용 예정 ${pf.hire}명)` : ""}` : "")}
+    ${kv("대표자", [pf.age !== null && pf.age !== undefined ? `만 ${pf.age}세` : "", pf.career !== null && pf.career !== undefined ? `동종업계 경력 ${pf.career}년` : "", pf.woman ? "여성 대표" : "", pf.marital === "married" ? "기혼" : pf.marital === "single" ? "미혼" : ""].filter(Boolean).join(" · "))}
+    ${kv("보유 자산", escapeHtml(pf.assets))}`);
+
+  // 신용 · 기대출
+  if (r.credit) {
+    const c = r.credit, sc = (v, lvl) => v === null ? "-" : `<b style="color:${HT_LEVEL_COLOR[lvl]}">${v}점</b>`;
+    const lvRank = Math.max(htLevelRank(c.repLevel), htLevelRank(c.coLevel), c.recovery ? (c.recovery.faithful === "no" ? 3 : 2) : 0);
+    const loanRows = (r.loans.list || []).map(l => `<tr><td>${escapeHtml(l.org || "-")}</td><td>${escapeHtml(l.date || "-")}</td><td style="text-align:right;">${htWon(htNum(l.amount))}</td></tr>`).join("");
+    html += htCard("신용 · 기대출", lvRank >= 3 ? "danger" : lvRank === 2 ? "warn" : "safe", `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+        <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:var(--text3);">대표자</div><div style="font-size:14px;margin-top:4px;">KCB ${sc(c.kcb, c.repLevel)} · NICE ${sc(c.nice, c.repLevel)}</div></div>
+        <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:var(--text3);">공동대표 · 배우자</div><div style="font-size:14px;margin-top:4px;">${c.coNone ? "해당 없음" : `KCB ${sc(c.coKcb, c.coLevel)} · NICE ${sc(c.coNice, c.coLevel)}`}</div></div>
+      </div>
+      ${c.recovery ? `<div style="font-size:13px;margin-top:10px;">신용회복: ${escapeHtml(c.recovery.type || "-")}${c.recovery.round ? " · " + escapeHtml(c.recovery.round) : ""} · <b style="color:${c.recovery.faithful === "no" ? "#A32D2D" : "#0F6E56"}">${c.recovery.faithful === "no" ? "연체 있음" : c.recovery.faithful === "yes" ? "성실 납부 중" : "납부 상태 미입력"}</b></div>` : ""}
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin:14px 0 6px;">기대출 ${r.loans.none ? "· 없음" : `합계 <b style="color:#1a1a18;">${htWon(r.loans.total)}</b>${r.loans.salesRatio !== null ? ` (최근 매출의 ${r.loans.salesRatio.toFixed(1)}%)` : ""}`}</div>
+      ${loanRows ? `<div class="table-wrap"><table style="width:100%;font-size:12px;border-collapse:collapse;"><thead><tr style="color:var(--text3);text-align:left;"><th>기관</th><th>시기</th><th style="text-align:right;">금액</th></tr></thead><tbody>${loanRows}</tbody></table></div>` : ""}
+      <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 신용점수 기준(임시): 700점 미만 주의, 600점 미만 위험</p>`);
+  }
+
   // 국세 체납
   html += htCard("국세 체납", r.arrears.level, `
     <div style="font-size:20px;font-weight:700;color:${HT_LEVEL_COLOR[r.arrears.level]};">${r.arrears.label}${r.arrears.amount ? " · " + htWon(r.arrears.amount) : ""}</div>
     ${r.arrears.note ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(r.arrears.note)}</div>` : ""}
+    ${r.arrears.items ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">${[["income_tax", "종합소득세"], ["corp_tax", "법인세"], ["vat", "부가세"], ["insurance", "4대보험"]]
+      .filter(([k]) => r.arrears.items[k]).map(([k, n]) => `<span style="font-size:12px;background:#FCEBEB;color:#A32D2D;border-radius:8px;padding:4px 8px;">${n} <b>${htWon(r.arrears.items[k])}</b>${r.arrears.periods && r.arrears.periods[k] ? " · " + escapeHtml(r.arrears.periods[k]) : ""}</span>`).join("")}</div>` : ""}
+    ${input.arrears && input.arrears.other ? `<div style="font-size:12px;color:#8a6d00;margin-top:8px;">기타 연체·체납·가압류: ${escapeHtml(input.arrears.other)}</div>` : ""}
     ${htTextBox(r.arrears.text, r.arrears.level)}`);
 
   // 매출
   html += htCard("매출 · 부가세 과세표준", r.vat.level,
     (r.vat.rows.length ? htBars(r.vat.rows, "vat", "#185FA5") +
       `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${r.vat.rows.filter(x => x.vatYoy !== null).map(x => `<span>${x.year}년 전년 대비 <b style="color:${x.vatYoy < 0 ? "#A32D2D" : "#0F6E56"}">${htPctText(x.vatYoy)}</b></span>`).join("")}</div>` : "") +
+    (r.vat.ytd ? `<div style="font-size:13px;margin-top:10px;background:#f9f9f8;border-radius:10px;padding:10px 12px;">${r.vat.ytd.year}년 ${r.vat.ytd.month}월까지 <b>${htWon(r.vat.ytd.sales)}</b> → 연 환산 약 <b>${htKwon(r.vat.ytd.annual)}</b>${r.vat.ytd.yoy !== null ? ` (전년 대비 <b style="color:${r.vat.ytd.yoy < 0 ? "#A32D2D" : "#0F6E56"}">${htPctText(r.vat.ytd.yoy)}</b>)` : ""}</div>` : "") +
     htTextBox(r.vat.text, r.vat.level));
 
   // 대표자 소득
@@ -3191,12 +3713,29 @@ function renderHometaxResults(r, input) {
         <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;"><div style="height:100%;width:${f.pct}%;background:${gc};border-radius:20px;"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">${f.items.map(it => `<span style="font-size:11px;background:#fff;border:1px solid #e5e4e0;border-radius:8px;padding:4px 8px;">${it.label} <b>${it.score}/${it.max}</b> ${it.comment}</span>`).join("")}</div>
       </div>`);
+  } else if (r.ratios) {
+    const q = r.ratios;
+    html += htCard("재무 분석", htLevelRank(q.drClass) >= 3 || htLevelRank(q.icrClass) >= 3 ? "danger" : (q.drClass === "warn" || q.icrClass === "warn" ? "warn" : "safe"), `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+        <div style="background:#fff;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;border-top:4px solid ${HT_LEVEL_COLOR[q.drClass]};"><div style="font-size:12px;color:#9b9a95;margin-bottom:6px;">📊 부채비율</div><div style="font-size:24px;font-weight:700;color:${HT_LEVEL_COLOR[q.drClass]};">${q.dr !== null ? q.dr + "%" : "-"}</div><div style="font-size:11px;color:#9b9a95;margin-top:6px;">${q.dr !== null && q.dr < 0 ? "마이너스 = 자본잠식(부채가 자산보다 많음)" : "400% 초과 위험 · 200% 이하 양호"}</div></div>
+        <div style="background:#fff;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;border-top:4px solid ${HT_LEVEL_COLOR[q.icrClass]};"><div style="font-size:12px;color:#9b9a95;margin-bottom:6px;">💰 이자보상배수</div><div style="font-size:24px;font-weight:700;color:${HT_LEVEL_COLOR[q.icrClass]};">${q.icr !== null ? q.icr + "배" : "-"}</div><div style="font-size:11px;color:#9b9a95;margin-top:6px;">${q.icr !== null && q.icr < 0 ? "마이너스 = 영업손실" : "1배 미만 위험 · 2배 이상 양호"}</div></div>
+      </div>
+      <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 직접 입력한 비율입니다. 총자산·총부채를 입력하면 자본잠식과 사업 안정성 점수까지 계산합니다.</p>`);
   } else {
     html += `<div class="card" style="background:var(--surface2);">
       <div class="card-title" style="margin-bottom:.4rem;">재무 분석</div>
       <p style="font-size:13px;color:var(--text2);line-height:1.6;">재무 수치(총자산·총부채 등)가 입력되지 않아 부채비율·이자보상배수·사업 안정성 점수는 분석하지 않았습니다. 입력창의 "재무 수치"를 채우고 다시 분석해 보세요.</p>
     </div>`;
   }
+
+  // 우대·참고 요소
+  if (r.prefs && r.prefs.length) {
+    html += htCard("우대 · 참고 요소", "info", r.prefs.map(p => `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #f0efeb;">
+      <span style="flex-shrink:0;font-size:11px;font-weight:700;color:#185FA5;background:#EBF2FA;border-radius:8px;padding:3px 8px;">${escapeHtml(p.tag)}</span>
+      <span style="font-size:13px;color:#2d3748;line-height:1.6;">${escapeHtml(p.text)}</span></div>`).join(""));
+  }
+  // 추가사항
+  if (input.memo) html += htCard("추가사항", "info", `<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:#2d3748;">${escapeHtml(input.memo)}</div>`);
 
   html += `<p class="note" style="margin-bottom:12px;">※ 입력하신 자료를 기준으로 자동 계산한 참고용 분석이며, 실제 심사 결과와 다를 수 있습니다. 중요한 의사결정 전에 홈택스 원본 서류를 반드시 확인하세요.</p>
     <div style="display:flex;gap:8px;margin-bottom:24px;">
@@ -3424,7 +3963,7 @@ function renderHistoryList() {
 
   el.innerHTML = historyItems.map(h => {
     const company = h.company_name ? escapeHtml(h.company_name) : "상호 미입력";
-    const kind = h.source_type === "manual" ? "직접 입력" : h.source_type === "hometax" ? "홈택스 분석" : "재무제표 분석";
+    const kind = h.source_type === "manual" ? "직접 입력" : h.source_type === "hometax" ? "원클릭 분석" : "재무제표 분석";
     const revenue = (h.revenue !== null && h.revenue !== undefined)
       ? `매출 ${Number(h.revenue).toLocaleString("ko-KR")}원` : "매출 미인식";
     const grade = histGradeBadge(h);
