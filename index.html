@@ -2935,7 +2935,13 @@ function estimateLimit(input, ctx) {
     mk({ short: "재단", org: "지역신용보증재단", low: per.low, high: per.high }),
     mk({ short: "기금", org: "신용보증기금 · 기술보증기금", low: per.low, high: per.high }),
   ];
-  const base = { available: true, sales, small, per, combos, steps: [], notes: [] };
+  const orgs = (small ? [{ name: "소상공인시장진흥공단", low: per.low, high: per.high }] : []).concat([
+    { name: "지역신용보증재단", low: per.low, high: per.high },
+    { name: "신용보증기금", low: per.low, high: per.high },
+    { name: "기술보증기금", low: per.low, high: per.high },
+    { name: "미소금융", low: R.miso.min, high: R.miso.max },
+  ]);
+  const base = { available: true, sales, small, per, combos, orgs, steps: [], notes: [] };
   const ar = (input.arrears && input.arrears.status) || "unknown";
   if (ar === "has") return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: combos[0].low, calcHigh: combos[0].high,
     text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요." });
@@ -3547,6 +3553,12 @@ function htLimitCard(L) {
     <div class="card-title">💰 예상 한도</div>
     <div style="background:#EBF2FA;border-radius:12px;padding:14px 16px;">
       <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:#185FA5;letter-spacing:-0.02em;line-height:1.35;">약 ${range(L.low, L.high)}</div>
+    </div>
+    <div style="margin-top:12px;">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 기관</div>
+      <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
+        <span style="font-weight:600;color:#1a1a18;">${escapeHtml(o.name)}</span>
+        <span style="font-weight:600;color:#185FA5;white-space:nowrap;">${htKwon(o.low)} ~ ${htKwon(o.high)}</span></div>`).join("")}</div>
     </div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
       <div style="font-size:12px;color:var(--text3);">필요자금</div>
