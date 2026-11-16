@@ -701,6 +701,107 @@
       <button class="btn btn-primary btn-full" id="manualAnalyzeBtn" style="margin-top:1rem;" onclick="doManualAnalyze()">입력 정보로 분석하기</button>
     </div>
 
+    <div id="hometaxSection">
+    <h2 style="font-size:20px;font-weight:600;margin:2rem 0 .4rem;letter-spacing:-0.02em;">홈택스 자료로 분석</h2>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
+      국세청 홈택스 자료(국세 체납, 부가세 과세표준, 소득금액, 매입금액)와 재무 수치를 입력하면 업체의 상태를 한눈에 분석합니다. 재무제표가 없어도 분석할 수 있어요.
+    </p>
+
+    <!-- 홈택스 자동 불러오기 (인증하면 아래 빈칸이 자동으로 채워짐 — 연동 준비 중) -->
+    <div class="card" id="ht-auto-card" style="background:var(--surface2);">
+      <div class="card-title" style="margin-bottom:.4rem;">홈택스 인증으로 자동 채우기</div>
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:10px;">
+        공동인증서·휴대폰·간편인증으로 인증하면 아래 빈칸이 자동으로 채워집니다. 이미 입력한 칸은 그대로 두고, 비어 있는 칸만 채웁니다.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 홈택스 인증하기</button>
+        <button type="button" class="btn" onclick="htStartAuto('link')">📨 고객에게 인증 링크 보내기</button>
+      </div>
+      <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 자동 연동은 준비 중입니다. 지금은 아래에 직접 입력해 주세요.</p>
+    </div>
+
+    <!-- 업체 정보 -->
+    <div class="card">
+      <div class="card-title">업체 정보</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="field" style="grid-column:1/-1;">
+          <label>회사이름 <span style="color:var(--danger);font-size:11px;">필수</span></label>
+          <input type="text" id="ht-company" placeholder="예: (주)씨앤지파트너스" />
+        </div>
+        <div class="field">
+          <label>대표자명 <span style="color:var(--text3);font-size:11px;">선택</span></label>
+          <input type="text" id="ht-rep" placeholder="예: 홍길동" />
+        </div>
+        <div class="field">
+          <label>사업자등록번호 <span style="color:var(--text3);font-size:11px;">선택</span></label>
+          <input type="text" id="ht-biz" placeholder="예: 123-45-67890" />
+        </div>
+        <div class="field" style="grid-column:1/-1;margin-bottom:0;">
+          <label>사업자 구분</label>
+          <div style="display:flex;gap:16px;font-size:14px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-biztype" value="personal" checked style="width:auto;" /> 개인사업자</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-biztype" value="corp" style="width:auto;" /> 법인사업자</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 국세 체납 -->
+    <div class="card">
+      <div class="card-title">국세 체납 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">납세증명서 기준</span></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin-bottom:10px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-arrears" value="unknown" checked style="width:auto;" onchange="htToggleArrears()" /> 아직 확인 못 함</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-arrears" value="none" style="width:auto;" onchange="htToggleArrears()" /> 체납 없음</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="ht-arrears" value="has" style="width:auto;" onchange="htToggleArrears()" /> 체납 있음</label>
+      </div>
+      <div id="ht-arrears-detail" style="display:none;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="field" style="margin-bottom:0;">
+          <label>체납액 (원)</label>
+          <input type="text" inputmode="numeric" id="ht-arrears-amount" placeholder="예: 3,500,000" oninput="formatMoneyInput(this)" />
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>세목·비고 <span style="color:var(--text3);font-size:11px;">선택</span></label>
+          <input type="text" id="ht-arrears-note" placeholder="예: 부가세, 분납 중" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 연도별 자료 -->
+    <div class="card">
+      <div class="card-title">연도별 자료 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">최근 3개년 · 비교하려면 2개년 이상 입력</span></div>
+      <p style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px;">
+        매출은 <b>부가가치세 과세표준증명</b>, 매입은 <b>전자세금계산서 매입 합계표</b>, 소득은 <b>소득금액증명</b>의 대표자 종합소득금액 기준입니다. 모르는 항목은 비워 두어도 됩니다.
+      </p>
+      <div id="ht-years"></div>
+    </div>
+
+    <!-- 재무 수치 (선택) -->
+    <div class="card">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>재무 수치 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">선택 · 표준재무제표증명 등</span></span>
+        <button type="button" class="btn" style="padding:4px 12px;font-size:12px;" id="ht-fin-toggle" onclick="htToggleFin()">입력하기</button>
+      </div>
+      <p style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:0;" id="ht-fin-hint">
+        총자산과 총부채를 입력하면 부채비율·이자보상배수·자본잠식·사업 안정성 점수를 함께 분석합니다.
+      </p>
+      <div id="ht-fin-wrap" class="hidden" style="margin-top:12px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field" style="margin-bottom:0;"><label>총자산 (원)</label><input type="text" inputmode="numeric" id="ht-assets" placeholder="예: 200,000,000" oninput="formatMoneyInput(this)" /></div>
+          <div class="field" style="margin-bottom:0;"><label>총부채 (원)</label><input type="text" inputmode="numeric" id="ht-debt" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
+          <div class="field" style="margin-bottom:0;"><label>자본금 (원) <span style="color:var(--text3);font-size:11px;">선택</span></label><input type="text" inputmode="numeric" id="ht-capital" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
+          <div class="field" style="margin-bottom:0;"><label>영업이익 (연, 원) <span style="color:var(--text3);font-size:11px;">선택</span></label><input type="text" inputmode="text" id="ht-opincome" placeholder="예: 30,000,000" oninput="htSignedMoney(this)" /></div>
+          <div class="field" style="margin-bottom:0;"><label>이자비용 (연, 원) <span style="color:var(--text3);font-size:11px;">선택 · 0이면 무차입</span></label><input type="text" inputmode="numeric" id="ht-interest" placeholder="예: 3,600,000" oninput="formatMoneyInput(this)" /></div>
+          <div class="field" style="margin-bottom:0;"><label>당기순이익 (연, 원) <span style="color:var(--text3);font-size:11px;">선택</span></label><input type="text" inputmode="text" id="ht-netincome" placeholder="예: 25,000,000" oninput="htSignedMoney(this)" /></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="ht-analyze-btn" onclick="doHometaxAnalyze()">입력 정보로 분석하기</button>
+
+    <!-- ── 결과창 ── -->
+    <div id="ht-results" class="hidden" style="margin-top:1.5rem;"></div>
+    </div>
+
     <!-- 분석 상태/결과 영역 (분석 방식에 따라 해당 카드 바로 아래로 이동) -->
     <div id="resultsWrap">
       <!-- 상태 바 -->
@@ -1555,6 +1656,7 @@ function showPage(name) {
     const mCompany = document.getElementById("m-company");
     if (mCompany && userCompanyName && !mCompany.value) mCompany.value = userCompanyName;
     prefillManualFields();
+    initHometaxPage();
   }
   if (name === "charge") {
     loadSubscription();
@@ -2597,6 +2699,514 @@ function applyEditedFields() {
   toast("수정한 값으로 다시 계산했습니다.");
 }
 
+// ── 홈택스 자료 분석 ───────────────────────────────────────────────
+// 입력(input) 구조 — 홈택스 자동 수집(CODEF 등)을 붙일 때도 이 형태로만 채워주면 된다.
+//   {
+//     company_name, rep_name, business_number,
+//     biz_type: "personal" | "corp",
+//     arrears: { status: "none" | "has" | "unknown", amount, note },
+//     years: [ { year, vat, purchase, income } ],   // vat=부가세 과세표준(매출), purchase=매입금액, income=대표자 종합소득금액
+//     fin: { assets, liabilities, capital_stock, operating_income, interest_expense, net_income }   // 선택
+//   }
+
+// ==== HOMETAX-ANALYSIS-START (화면과 무관한 순수 계산 — 테스트에서 이 구간만 잘라 실행) ====
+function htNum(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+// 전년 대비 증감률(%) — 비교 대상이 0 이하이면 계산하지 않는다
+function htYoy(cur, prev) {
+  if (cur === null || prev === null || prev === undefined || prev <= 0) return null;
+  return (cur - prev) / prev * 100;
+}
+
+function htLevelRank(l) { return l === "danger" ? 3 : l === "warn" ? 2 : l === "info" ? 1 : 0; }
+
+// 재무 수치 → 기존 "직접 입력 분석"과 같은 기준으로 부채비율·이자보상배수·자본잠식·안정성 점수를 계산
+function calcStability(fin) {
+  if (!fin) return null;
+  const assets = htNum(fin.assets), liabilities = htNum(fin.liabilities);
+  if (assets === null || liabilities === null || assets <= 0) return null;
+  const equity = assets - liabilities;
+  const capitalStock = htNum(fin.capital_stock);
+  const op = htNum(fin.operating_income), interest = htNum(fin.interest_expense), net = htNum(fin.net_income);
+
+  const capitalEroded = equity <= 0;
+  const dr = equity > 0 ? liabilities / equity * 100 : null;
+  const noInt = interest === 0 && op !== null;
+  const ice = (interest !== null && interest > 0 && op !== null) ? op / interest : null;
+
+  const drClass = capitalEroded ? "danger" : (dr === null ? "warn" : dr > 400 ? "danger" : dr > 200 ? "warn" : "safe");
+  const iceClass = noInt ? "safe" : (ice === null ? "warn" : ice < 1 ? "danger" : ice < 2 ? "warn" : "safe");
+
+  let erosionStatus, erosionClass;
+  if (capitalEroded) { erosionStatus = "완전자본잠식"; erosionClass = "danger"; }
+  else if (capitalStock && equity < capitalStock) {
+    const r = (capitalStock - equity) / capitalStock * 100;
+    erosionStatus = `부분자본잠식 (${r.toFixed(1)}%)`; erosionClass = r >= 50 ? "danger" : "warn";
+  } else { erosionStatus = "정상"; erosionClass = "safe"; }
+
+  const items = [];
+  if (capitalEroded) items.push({ label: "부채비율", score: 2, max: 30, comment: "위험" });
+  else if (dr !== null) {
+    const s = dr <= 200 ? 30 : dr <= 300 ? 24 : dr <= 400 ? 16 : dr <= 500 ? 8 : 2;
+    items.push({ label: "부채비율", score: s, max: 30, comment: dr <= 200 ? "우수" : dr <= 400 ? "보통" : "위험" });
+  }
+  if (noInt) items.push({ label: "이자보상배수", score: 25, max: 25, comment: "우수" });
+  else if (ice !== null) {
+    const s = ice >= 3 ? 25 : ice >= 2 ? 20 : ice >= 1 ? 12 : 3;
+    items.push({ label: "이자보상배수", score: s, max: 25, comment: ice >= 2 ? "우수" : ice >= 1 ? "보통" : "위험" });
+  }
+  { const s = erosionClass === "safe" ? 20 : erosionClass === "warn" ? 10 : 0;
+    items.push({ label: "자본건전성", score: s, max: 20, comment: erosionClass === "safe" ? "우수" : erosionClass === "warn" ? "주의" : "위험" }); }
+  if (net !== null) items.push({ label: "수익성", score: net > 0 ? 25 : 0, max: 25, comment: net > 0 ? "우수" : "위험" });
+
+  const total = items.reduce((a, b) => a + b.score, 0);
+  const max = items.reduce((a, b) => a + b.max, 0) || 100;
+  const pct = Math.round(total / max * 100);
+  const grade = pct >= 80 ? "A (우수)" : pct >= 60 ? "B (양호)" : pct >= 40 ? "C (주의)" : "D (위험)";
+  return { assets, liabilities, equity, dr, drClass, ice, iceClass, noInt, capitalEroded,
+           erosionStatus, erosionClass, net, items, total, max, pct, grade };
+}
+
+function analyzeHometax(input) {
+  const biz = input.biz_type === "corp" ? "corp" : "personal";
+  const rows = (input.years || [])
+    .map(y => ({ year: parseInt(y.year, 10), vat: htNum(y.vat), purchase: htNum(y.purchase), income: htNum(y.income) }))
+    .filter(y => y.year && (y.vat !== null || y.purchase !== null || y.income !== null))
+    .sort((a, b) => a.year - b.year);
+
+  rows.forEach((r, i) => {
+    const prev = (i > 0 && rows[i - 1].year === r.year - 1) ? rows[i - 1] : null;   // 바로 전년도가 있을 때만 비교
+    r.vatYoy = prev ? htYoy(r.vat, prev.vat) : null;
+    r.purchaseYoy = prev ? htYoy(r.purchase, prev.purchase) : null;
+    // 소득은 마이너스가 있을 수 있어 전년이 양수일 때만 증감률을 계산
+    r.incomeYoy = prev ? htYoy(r.income, prev.income) : null;
+    r.purchaseRatio = (r.vat !== null && r.vat > 0 && r.purchase !== null) ? r.purchase / r.vat * 100 : null;
+    r.margin = (r.vat !== null && r.purchase !== null) ? r.vat - r.purchase : null;
+    r.marginRate = (r.margin !== null && r.vat > 0) ? r.margin / r.vat * 100 : null;
+    r.incomeRate = (biz === "personal" && r.vat !== null && r.vat > 0 && r.income !== null) ? r.income / r.vat * 100 : null;
+  });
+  const lastWith = key => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i][key] !== null) return rows[i]; return null; };
+  const flags = [];
+
+  // 1) 국세 체납
+  const ar = input.arrears || { status: "unknown" };
+  const arAmount = htNum(ar.amount);
+  let arrears;
+  if (ar.status === "has") {
+    arrears = { level: "danger", label: "체납 있음", amount: arAmount, note: ar.note || "",
+      text: `국세 체납${arAmount ? " " + Math.round(arAmount).toLocaleString("ko-KR") + "원" : ""}이 확인됩니다. 체납이 있으면 납세증명서 발급이 되지 않아 대부분의 정책자금 신청이 어렵습니다. 완납 또는 분납 승인 후 진행해야 합니다.` };
+    flags.push({ level: "danger", title: "국세 체납", text: arrears.text });
+  } else if (ar.status === "none") {
+    arrears = { level: "safe", label: "체납 없음", amount: null, note: "", text: "국세 체납이 없는 것으로 확인됩니다. 정책자금 신청 시 납세증명서 발급에 문제가 없습니다." };
+  } else {
+    arrears = { level: "warn", label: "미확인", amount: null, note: "", text: "체납 여부를 아직 확인하지 않았습니다. 납세증명서 발급 가능 여부를 먼저 확인해 주세요." };
+    flags.push({ level: "warn", title: "체납 여부 미확인", text: arrears.text });
+  }
+
+  // 2) 매출(부가세 과세표준)
+  const vatRows = rows.filter(r => r.vat !== null);
+  const lv = lastWith("vat");
+  let vat = { level: "info", rows: vatRows, latest: lv, text: "매출(부가세 과세표준)을 입력하면 추이를 분석합니다." };
+  if (lv) {
+    if (lv.vatYoy === null) vat = { level: "info", rows: vatRows, latest: lv, text: `${lv.year}년 매출 ${Math.round(lv.vat).toLocaleString("ko-KR")}원입니다. 전년도 자료를 함께 입력하면 증감 추이를 볼 수 있습니다.` };
+    else if (lv.vatYoy <= -20) { vat = { level: "danger", rows: vatRows, latest: lv, text: `${lv.year}년 매출이 전년 대비 ${Math.abs(lv.vatYoy).toFixed(1)}% 크게 감소했습니다. 매출 감소 사유(일시적 요인인지)를 확인하고 소명 자료를 준비해야 합니다.` };
+      flags.push({ level: "danger", title: "매출 급감", text: vat.text }); }
+    else if (lv.vatYoy < 0) { vat = { level: "warn", rows: vatRows, latest: lv, text: `${lv.year}년 매출이 전년 대비 ${Math.abs(lv.vatYoy).toFixed(1)}% 감소했습니다.` };
+      flags.push({ level: "warn", title: "매출 감소", text: vat.text }); }
+    else vat = { level: "safe", rows: vatRows, latest: lv, text: `${lv.year}년 매출이 전년 대비 ${lv.vatYoy.toFixed(1)}% 증가했습니다.` };
+  }
+
+  // 3) 대표자 소득금액
+  const incRows = rows.filter(r => r.income !== null);
+  const li = lastWith("income");
+  let income = { level: "info", rows: incRows, latest: li, text: "소득금액을 입력하면 분석합니다." };
+  if (li) {
+    const comment = biz === "corp"
+      ? "법인 대표의 급여·배당 등 개인 소득입니다. 대표자 신용·상환능력을 확인하는 용도로 참고하세요."
+      : (li.incomeRate !== null ? `매출 대비 소득률은 ${li.incomeRate.toFixed(1)}%입니다.` : "");
+    if (li.income <= 0) { income = { level: "danger", rows: incRows, latest: li, text: `${li.year}년 대표자 소득금액이 ${li.income < 0 ? "결손(마이너스)" : "0원"}입니다. 개인 상환능력을 소명하기 어려울 수 있어 보완 방안이 필요합니다. ${comment}`.trim() };
+      flags.push({ level: "danger", title: "대표자 소득 없음·결손", text: income.text }); }
+    else if (biz === "personal" && li.incomeRate !== null && li.incomeRate < 3) { income = { level: "warn", rows: incRows, latest: li, text: `${li.year}년 소득금액은 ${Math.round(li.income).toLocaleString("ko-KR")}원으로, 매출 대비 소득률이 ${li.incomeRate.toFixed(1)}%로 낮습니다. 필요경비 비중이 높아 상환 여력이 작게 평가될 수 있습니다.` };
+      flags.push({ level: "warn", title: "낮은 소득률", text: income.text }); }
+    else if (li.incomeYoy !== null && li.incomeYoy <= -30) { income = { level: "warn", rows: incRows, latest: li, text: `${li.year}년 소득금액이 전년 대비 ${Math.abs(li.incomeYoy).toFixed(1)}% 감소했습니다. ${comment}`.trim() };
+      flags.push({ level: "warn", title: "소득 감소", text: income.text }); }
+    else income = { level: "safe", rows: incRows, latest: li, text: `${li.year}년 소득금액은 ${Math.round(li.income).toLocaleString("ko-KR")}원입니다. ${comment}`.trim() };
+  }
+
+  // 4) 매입금액
+  const purRows = rows.filter(r => r.purchase !== null);
+  const lp = lastWith("purchase");
+  let purchase = { level: "info", rows: purRows, latest: lp, text: "매입금액을 입력하면 분석합니다." };
+  if (lp) {
+    const base = "※ 매입은 세금계산서 합계표 기준이라 인건비·임차료 등은 포함되지 않아 실제 이익률과는 다릅니다.";
+    if (lp.purchaseRatio === null) purchase = { level: "info", rows: purRows, latest: lp, text: `${lp.year}년 매입 ${Math.round(lp.purchase).toLocaleString("ko-KR")}원입니다. 같은 해 매출을 함께 입력하면 매입률을 분석합니다.` };
+    else if (lp.purchaseRatio >= 100) { purchase = { level: "danger", rows: purRows, latest: lp, text: `${lp.year}년 매입이 매출의 ${lp.purchaseRatio.toFixed(1)}%로 매출을 넘습니다. 원가 구조 또는 자료 누락 여부를 확인해야 합니다. ${base}` };
+      flags.push({ level: "danger", title: "매입이 매출 초과", text: purchase.text }); }
+    else if (lp.purchaseRatio >= 90) { purchase = { level: "warn", rows: purRows, latest: lp, text: `${lp.year}년 매입률이 ${lp.purchaseRatio.toFixed(1)}%로 높아 남는 마진이 매우 작습니다. ${base}` };
+      flags.push({ level: "warn", title: "높은 매입률", text: purchase.text }); }
+    else purchase = { level: "safe", rows: purRows, latest: lp, text: `${lp.year}년 매입률은 ${lp.purchaseRatio.toFixed(1)}%이고 매출에서 매입을 뺀 금액은 ${Math.round(lp.margin).toLocaleString("ko-KR")}원(${lp.marginRate.toFixed(1)}%)입니다. ${base}` };
+  }
+
+  // 5) 재무(기존 분석)
+  const financial = calcStability(input.fin);
+  if (financial) {
+    if (financial.capitalEroded) flags.push({ level: "danger", title: "자본잠식", text: "자본총계가 0 이하인 완전자본잠식 상태입니다." });
+    else if (financial.drClass === "danger") flags.push({ level: "danger", title: "부채비율 위험", text: `부채비율 ${financial.dr.toFixed(1)}%로 위험 수준입니다.` });
+    else if (financial.drClass === "warn") flags.push({ level: "warn", title: "부채비율 주의", text: `부채비율 ${financial.dr.toFixed(1)}%로 주의 수준입니다.` });
+    if (financial.iceClass === "danger" && financial.ice !== null) flags.push({ level: "danger", title: "이자보상배수 위험", text: `이자보상배수 ${financial.ice.toFixed(2)}배로 영업이익이 이자를 충당하지 못합니다.` });
+  }
+
+  flags.sort((a, b) => htLevelRank(b.level) - htLevelRank(a.level));
+  const worst = flags.length ? flags[0].level : "safe";
+  const dangerN = flags.filter(f => f.level === "danger").length;
+  const warnN = flags.filter(f => f.level === "warn").length;
+  const overall = {
+    level: worst,
+    title: worst === "danger" ? `중요 확인 항목 ${dangerN}건` : worst === "warn" ? `주의 항목 ${warnN}건` : "특이사항 없음",
+    text: worst === "danger" ? "정책자금 진행 전에 반드시 해결하거나 소명해야 할 항목이 있습니다."
+        : worst === "warn" ? "진행은 가능하나 사전에 확인해 두면 좋은 항목이 있습니다."
+        : "입력된 자료 기준으로 눈에 띄는 위험 요인이 없습니다.",
+  };
+  return { biz, rows, arrears, vat, income, purchase, financial, flags, overall };
+}
+// ==== HOMETAX-ANALYSIS-END ====
+
+// ── 입력창 ────────────────────────────────────────────────────────
+const HT_LEVEL_COLOR = { safe: "#0F6E56", warn: "#B8860B", danger: "#A32D2D", info: "#185FA5" };
+const HT_LEVEL_BG    = { safe: "#E1F5EE", warn: "#FEF6D8", danger: "#FCEBEB", info: "#EBF2FA" };
+const HT_LEVEL_ICON  = { safe: "✅", warn: "⚠️", danger: "🚨", info: "ℹ️" };
+
+// 마이너스(-) 입력이 필요한 금액 칸(소득금액·영업이익·당기순이익)
+function htSignedMoney(el) {
+  const neg = /^\s*-/.test(el.value);
+  const digits = el.value.replace(/[^0-9]/g, "");
+  el.value = digits ? (neg ? "-" : "") + Number(digits).toLocaleString("ko-KR") : (neg ? "-" : "");
+}
+
+function htMoney(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const raw = el.value.replace(/,/g, "").trim();
+  if (raw === "" || raw === "-") return null;
+  const n = parseFloat(raw);
+  return isNaN(n) ? null : n;
+}
+
+function htSetMoney(id, v) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = (v === null || v === undefined || isNaN(v)) ? "" : Number(Math.round(v)).toLocaleString("ko-KR");
+}
+
+function htBuildYears(preset) {
+  const box = document.getElementById("ht-years");
+  if (!box) return;
+  const thisYear = new Date().getFullYear();
+  const years = (preset && preset.length) ? preset.map(y => y.year) : [thisYear - 1, thisYear - 2, thisYear - 3];
+  box.innerHTML = years.map((y, i) => `
+    <div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <input type="number" id="ht-y${i}-year" value="${y}" style="width:90px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-weight:600;font-family:inherit;" />
+        <span style="font-size:13px;color:var(--text2);">년</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+        <div class="field" style="margin-bottom:0;"><label>매출 · 부가세 과세표준 (원)</label><input type="text" inputmode="numeric" id="ht-y${i}-vat" placeholder="예: 300,000,000" oninput="formatMoneyInput(this)" /></div>
+        <div class="field" style="margin-bottom:0;"><label>매입금액 (원)</label><input type="text" inputmode="numeric" id="ht-y${i}-purchase" placeholder="예: 210,000,000" oninput="formatMoneyInput(this)" /></div>
+        <div class="field" style="margin-bottom:0;"><label>대표자 종합소득금액 (원)</label><input type="text" inputmode="text" id="ht-y${i}-income" placeholder="예: 45,000,000" oninput="htSignedMoney(this)" /></div>
+      </div>
+    </div>`).join("");
+  if (preset && preset.length) {
+    preset.forEach((y, i) => {
+      htSetMoney(`ht-y${i}-vat`, y.vat); htSetMoney(`ht-y${i}-purchase`, y.purchase);
+      const inc = document.getElementById(`ht-y${i}-income`);
+      if (inc && y.income !== null && y.income !== undefined) inc.value = (y.income < 0 ? "-" : "") + Math.abs(Math.round(y.income)).toLocaleString("ko-KR");
+    });
+  }
+}
+
+function htToggleArrears() {
+  const v = (document.querySelector('input[name="ht-arrears"]:checked') || {}).value;
+  document.getElementById("ht-arrears-detail").style.display = v === "has" ? "grid" : "none";
+}
+
+function htToggleFin(forceOpen) {
+  const wrap = document.getElementById("ht-fin-wrap");
+  const open = forceOpen === true ? true : wrap.classList.contains("hidden");
+  wrap.classList.toggle("hidden", !open);
+  document.getElementById("ht-fin-toggle").textContent = open ? "접기" : "입력하기";
+}
+
+// 입력창 → input 객체
+function htReadForm() {
+  const years = [];
+  for (let i = 0; document.getElementById(`ht-y${i}-year`); i++) {
+    years.push({
+      year: parseInt(document.getElementById(`ht-y${i}-year`).value, 10),
+      vat: htMoney(`ht-y${i}-vat`), purchase: htMoney(`ht-y${i}-purchase`), income: htMoney(`ht-y${i}-income`),
+    });
+  }
+  const finVals = { assets: htMoney("ht-assets"), liabilities: htMoney("ht-debt"), capital_stock: htMoney("ht-capital"),
+                    operating_income: htMoney("ht-opincome"), interest_expense: htMoney("ht-interest"), net_income: htMoney("ht-netincome") };
+  const hasFin = Object.values(finVals).some(v => v !== null);
+  return {
+    company_name: document.getElementById("ht-company").value.trim(),
+    rep_name: document.getElementById("ht-rep").value.trim(),
+    business_number: document.getElementById("ht-biz").value.trim(),
+    biz_type: (document.querySelector('input[name="ht-biztype"]:checked') || {}).value || "personal",
+    arrears: {
+      status: (document.querySelector('input[name="ht-arrears"]:checked') || {}).value || "unknown",
+      amount: htMoney("ht-arrears-amount"),
+      note: document.getElementById("ht-arrears-note").value.trim(),
+    },
+    years,
+    fin: hasFin ? finVals : null,
+  };
+}
+
+// input 객체 → 입력창 (홈택스 자동 수집 결과나 저장된 이력을 불러올 때 사용)
+function htFillForm(input) {
+  if (!input) return;
+  document.getElementById("ht-company").value = input.company_name || "";
+  document.getElementById("ht-rep").value = input.rep_name || "";
+  document.getElementById("ht-biz").value = input.business_number || "";
+  const bt = document.querySelector(`input[name="ht-biztype"][value="${input.biz_type === "corp" ? "corp" : "personal"}"]`);
+  if (bt) bt.checked = true;
+  const st = (input.arrears && input.arrears.status) || "unknown";
+  const ar = document.querySelector(`input[name="ht-arrears"][value="${st}"]`);
+  if (ar) ar.checked = true;
+  htSetMoney("ht-arrears-amount", input.arrears && input.arrears.amount);
+  document.getElementById("ht-arrears-note").value = (input.arrears && input.arrears.note) || "";
+  htToggleArrears();
+  const ys = (input.years || []).slice().sort((a, b) => b.year - a.year);
+  htBuildYears(ys.length ? ys : null);
+  const f = input.fin || {};
+  htSetMoney("ht-assets", f.assets); htSetMoney("ht-debt", f.liabilities); htSetMoney("ht-capital", f.capital_stock);
+  ["ht-opincome:operating_income", "ht-netincome:net_income"].forEach(p => {
+    const [id, key] = p.split(":"); const el = document.getElementById(id);
+    el.value = (f[key] === null || f[key] === undefined) ? "" : (f[key] < 0 ? "-" : "") + Math.abs(Math.round(f[key])).toLocaleString("ko-KR");
+  });
+  htSetMoney("ht-interest", f.interest_expense);
+  htToggleFin(!!input.fin);
+}
+
+function initHometaxPage() {
+  const co = document.getElementById("ht-company");
+  if (co && !co.value && userCompanyName) co.value = userCompanyName;
+  const rep = document.getElementById("ht-rep");
+  if (rep && !rep.value && userRepName) rep.value = userRepName;
+  const biz = document.getElementById("ht-biz");
+  if (biz && !biz.value && userBizNumber) biz.value = userBizNumber;
+  if (!document.getElementById("ht-y0-year")) htBuildYears();
+}
+
+// 홈택스 자동 수집 — 아직 연동 전. 수집 업체(CODEF 등)를 붙일 때 이 함수만 채우면 된다.
+// mode: "direct"(상담 중 화면에서 바로 인증) / "link"(고객에게 인증 링크 전송)
+// 반환값은 위 input 구조 — 받아서 htFillForm(input) 으로 입력창에 채운다.
+async function fetchHometaxFromProvider(mode) {
+  throw new Error("홈택스 자동 불러오기는 준비 중입니다.");
+}
+// 자동 수집 결과를 입력창의 "빈칸"에만 채운다 (사용자가 이미 적은 값은 덮어쓰지 않는다)
+function htMergeForm(input) {
+  const cur = htReadForm();
+  const merged = JSON.parse(JSON.stringify(input));
+  // 업체 정보 — 입력된 값 우선
+  ["company_name", "rep_name", "business_number"].forEach(k => { if (cur[k]) merged[k] = cur[k]; });
+  // 체납 — 사용자가 이미 확인 결과를 골랐으면 유지
+  if (cur.arrears.status !== "unknown") merged.arrears = cur.arrears;
+  // 연도별 자료 — 같은 연도의 이미 입력한 칸은 유지
+  const byYear = {};
+  (merged.years || []).forEach(y => { byYear[y.year] = y; });
+  cur.years.forEach(y => {
+    if (!y.year) return;
+    const t = byYear[y.year] || (byYear[y.year] = { year: y.year, vat: null, purchase: null, income: null });
+    ["vat", "purchase", "income"].forEach(k => { if (y[k] !== null) t[k] = y[k]; });
+  });
+  merged.years = Object.values(byYear);
+  // 재무 수치 — 이미 입력한 칸은 유지
+  const fin = Object.assign({}, merged.fin || {});
+  Object.keys(cur.fin || {}).forEach(k => { if (cur.fin[k] !== null) fin[k] = cur.fin[k]; });
+  merged.fin = Object.values(fin).some(v => v !== null && v !== undefined) ? fin : null;
+  merged.biz_type = (merged.biz_type || cur.biz_type);
+  return merged;
+}
+
+async function htStartAuto(mode) {
+  try {
+    const input = await fetchHometaxFromProvider(mode);
+    htFillForm(htMergeForm(input));
+    toast("홈택스 자료로 빈칸을 채웠어요. 내용을 확인한 뒤 분석해 주세요.");
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function doHometaxAnalyze() {
+  if (!token) { showPage("login"); return; }
+  const input = htReadForm();
+
+  if (!input.company_name) { toast("회사이름을 입력해 주세요."); return; }
+  const hasYear = input.years.some(y => y.year && (y.vat !== null || y.purchase !== null || y.income !== null));
+  if (!hasYear && input.arrears.status === "unknown" && !input.fin) { toast("분석할 자료를 한 가지 이상 입력해 주세요."); return; }
+  if (input.arrears.status === "has" && !input.arrears.amount && !confirm("체납액이 입력되지 않았습니다.\n이대로 분석할까요?")) return;
+  const yrs = input.years.map(y => y.year).filter(Boolean);
+  if (new Set(yrs).size !== yrs.length) { toast("연도가 중복되었습니다. 연도를 확인해 주세요."); return; }
+
+  if (!userHasSub && userCredits < 10) { openPaymentModal(); return; }
+
+  const btn = document.getElementById("ht-analyze-btn");
+  btn.disabled = true; btn.textContent = "분석 중...";
+  try {
+    const dr = await api("POST", "/analyze/manual");   // 구독/횟수 확인 (직접 입력 분석과 동일한 이용 기준)
+    userCredits = dr.remaining_credits;
+    localStorage.setItem("fa_credits", userCredits);
+    updateCreditBadges();
+  } catch (e) {
+    toast(e.message);
+    if (e.message.includes("부족") || e.message.includes("구독이 필요")) openPaymentModal();
+    btn.disabled = false; btn.textContent = "입력 정보로 분석하기";
+    return;
+  }
+  btn.disabled = false; btn.textContent = "입력 정보로 분석하기";
+
+  const r = analyzeHometax(input);
+  window.currentHistoryId = null;
+  renderHometaxResults(r, input);
+  const latestVat = r.vat && r.vat.latest ? r.vat.latest.vat : null;
+  window.currentStabilityGrade = r.financial ? { label: r.financial.grade, score: r.financial.total, max: r.financial.max } : null;
+  saveAnalysisHistory({
+    company_name: input.company_name, rep_name: input.rep_name, business_number: input.business_number,
+    revenue: latestVat, hometax: input,
+  }, "hometax");
+  document.getElementById("ht-results").scrollIntoView({ behavior: "smooth", block: "start" });
+  toast(userHasSub ? "분석 완료" : `분석 완료 · 잔여횟수 ${Math.floor(userCredits / 10)}건`);
+}
+
+// ── 결과창 ────────────────────────────────────────────────────────
+function htWon(n) { return n === null || n === undefined ? "-" : Math.round(n).toLocaleString("ko-KR") + "원"; }
+function htPctText(n) { return n === null || n === undefined ? "-" : (n > 0 ? "+" : "") + n.toFixed(1) + "%"; }
+
+// 연도별 가로 막대 (값이 음수이면 빨간색, 폭은 절댓값 기준)
+function htBars(rows, key, color) {
+  const vals = rows.map(r => Math.abs(r[key] || 0));
+  const max = Math.max(...vals, 1);
+  return rows.map(r => {
+    const v = r[key]; const neg = v < 0;
+    const w = Math.max(2, Math.round(Math.abs(v) / max * 100));
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="width:42px;font-size:12px;color:#6b6a65;flex-shrink:0;">${r.year}</div>
+      <div style="flex:1;background:#eef0f2;border-radius:6px;height:18px;overflow:hidden;"><div style="width:${w}%;height:100%;background:${neg ? "#A32D2D" : color};border-radius:6px;"></div></div>
+      <div style="min-width:112px;text-align:right;font-size:12px;font-weight:600;color:#1a1a18;">${htWon(v)}</div>
+    </div>`;
+  }).join("");
+}
+
+function htCard(title, level, body) {
+  const c = HT_LEVEL_COLOR[level] || "#185FA5";
+  return `<div class="card" style="border-top:4px solid ${c};">
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <span>${title}</span>
+      ${level === "info" ? "" : `<span style="background:${HT_LEVEL_BG[level]};color:${c};font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;text-transform:none;letter-spacing:0;">${HT_LEVEL_ICON[level]} ${level === "safe" ? "양호" : level === "warn" ? "주의" : "위험"}</span>`}
+    </div>${body}</div>`;
+}
+
+function htTextBox(text, level) {
+  return `<div style="font-size:13px;line-height:1.7;color:#2d3748;background:#f0f4f8;border-left:4px solid ${HT_LEVEL_COLOR[level] || "#185FA5"};border-radius:10px;padding:10px 14px;margin-top:10px;">${escapeHtml(text)}</div>`;
+}
+
+function renderHometaxResults(r, input) {
+  const wrap = document.getElementById("ht-results");
+  const o = r.overall;
+  const oc = HT_LEVEL_COLOR[o.level];
+
+  // 종합 요약
+  const flagsHtml = r.flags.length ? r.flags.map(f => `
+    <div style="display:flex;gap:8px;align-items:flex-start;background:${HT_LEVEL_BG[f.level]};border-radius:10px;padding:10px 12px;margin-top:8px;">
+      <span>${HT_LEVEL_ICON[f.level]}</span>
+      <div><div style="font-size:13px;font-weight:700;color:${HT_LEVEL_COLOR[f.level]};">${escapeHtml(f.title)}</div>
+      <div style="font-size:12px;color:#4a4a45;line-height:1.6;margin-top:2px;">${escapeHtml(f.text)}</div></div>
+    </div>`).join("") : `<div style="font-size:13px;color:var(--text2);margin-top:8px;">확인이 필요한 항목이 없습니다.</div>`;
+  let html = `
+    <div style="font-size:16px;font-weight:600;margin-bottom:.75rem;">🏢 ${escapeHtml(input.company_name)} <span style="font-size:12px;font-weight:400;color:var(--text3);">${r.biz === "corp" ? "법인사업자" : "개인사업자"}</span></div>
+    <div class="card" style="border-top:4px solid ${oc};">
+      <div class="card-title">종합 요약</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="background:${HT_LEVEL_BG[o.level]};color:${oc};font-size:18px;font-weight:700;padding:6px 16px;border-radius:24px;">${HT_LEVEL_ICON[o.level]} ${o.title}</div>
+        <div style="font-size:13px;color:var(--text2);">${o.text}</div>
+      </div>
+      ${flagsHtml}
+    </div>`;
+
+  // 국세 체납
+  html += htCard("국세 체납", r.arrears.level, `
+    <div style="font-size:20px;font-weight:700;color:${HT_LEVEL_COLOR[r.arrears.level]};">${r.arrears.label}${r.arrears.amount ? " · " + htWon(r.arrears.amount) : ""}</div>
+    ${r.arrears.note ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(r.arrears.note)}</div>` : ""}
+    ${htTextBox(r.arrears.text, r.arrears.level)}`);
+
+  // 매출
+  html += htCard("매출 · 부가세 과세표준", r.vat.level,
+    (r.vat.rows.length ? htBars(r.vat.rows, "vat", "#185FA5") +
+      `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${r.vat.rows.filter(x => x.vatYoy !== null).map(x => `<span>${x.year}년 전년 대비 <b style="color:${x.vatYoy < 0 ? "#A32D2D" : "#0F6E56"}">${htPctText(x.vatYoy)}</b></span>`).join("")}</div>` : "") +
+    htTextBox(r.vat.text, r.vat.level));
+
+  // 대표자 소득
+  html += htCard(r.biz === "corp" ? "대표자 소득금액 (급여·배당 등)" : "대표자 종합소득금액", r.income.level,
+    (r.income.rows.length ? htBars(r.income.rows, "income", "#0F6E56") +
+      `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${r.income.rows.filter(x => x.incomeRate !== null).map(x => `<span>${x.year}년 소득률 <b>${x.incomeRate.toFixed(1)}%</b></span>`).join("")}</div>` : "") +
+    htTextBox(r.income.text, r.income.level));
+
+  // 매입
+  const pairRows = r.purchase.rows;
+  html += htCard("매입금액", r.purchase.level,
+    (pairRows.length ? htBars(pairRows, "purchase", "#B8860B") +
+      `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${pairRows.filter(x => x.purchaseRatio !== null).map(x => `<span>${x.year}년 매입률 <b>${x.purchaseRatio.toFixed(1)}%</b> · 매출-매입 <b>${htWon(x.margin)}</b></span>`).join("")}</div>` : "") +
+    htTextBox(r.purchase.text, r.purchase.level));
+
+  // 재무(기존 분석)
+  const f = r.financial;
+  if (f) {
+    const metric = (label, value, level, sub) => `<div style="background:#fff;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;border-top:4px solid ${HT_LEVEL_COLOR[level]};">
+      <div style="font-size:12px;color:#9b9a95;margin-bottom:6px;">${label}</div>
+      <div style="font-size:24px;font-weight:700;color:${HT_LEVEL_COLOR[level]};">${value}</div>
+      <div style="font-size:11px;color:#9b9a95;margin-top:6px;">${sub}</div></div>`;
+    const gc = f.pct >= 80 ? "#0F6E56" : f.pct >= 60 ? "#185FA5" : f.pct >= 40 ? "#B8860B" : "#A32D2D";
+    html += htCard("재무 분석", f.erosionClass === "danger" || f.drClass === "danger" ? "danger" : (f.drClass === "warn" || f.erosionClass === "warn" ? "warn" : "safe"), `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+        ${metric("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "N/A", f.drClass, "400% 초과 위험 · 200% 이하 양호")}
+        ${metric("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass, f.noInt ? "이자 상환 부담 없음" : "1배 미만 위험 · 2배 이상 양호")}
+        ${metric("🏢 자본잠식", f.erosionStatus, f.erosionClass, "자본총계 " + htWon(f.equity))}
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--text2);">
+        <span>총자산 <b>${htWon(f.assets)}</b></span><span>총부채 <b>${htWon(f.liabilities)}</b></span>
+      </div>
+      <div style="margin-top:14px;background:#f9f9f8;border-radius:12px;padding:12px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+          <div style="font-size:12px;color:#9b9a95;font-weight:600;">🏆 사업 안정성 종합점수</div>
+          <div style="font-size:22px;font-weight:700;color:${gc};">${f.total}<span style="font-size:12px;">/${f.max}</span></div>
+          <div style="background:${HT_LEVEL_BG[f.pct >= 80 ? "safe" : f.pct >= 60 ? "info" : f.pct >= 40 ? "warn" : "danger"]};color:${gc};font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px;">${f.grade}</div>
+        </div>
+        <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;"><div style="height:100%;width:${f.pct}%;background:${gc};border-radius:20px;"></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">${f.items.map(it => `<span style="font-size:11px;background:#fff;border:1px solid #e5e4e0;border-radius:8px;padding:4px 8px;">${it.label} <b>${it.score}/${it.max}</b> ${it.comment}</span>`).join("")}</div>
+      </div>`);
+  } else {
+    html += `<div class="card" style="background:var(--surface2);">
+      <div class="card-title" style="margin-bottom:.4rem;">재무 분석</div>
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;">재무 수치(총자산·총부채 등)가 입력되지 않아 부채비율·이자보상배수·사업 안정성 점수는 분석하지 않았습니다. 입력창의 "재무 수치"를 채우고 다시 분석해 보세요.</p>
+    </div>`;
+  }
+
+  html += `<p class="note" style="margin-bottom:12px;">※ 입력하신 자료를 기준으로 자동 계산한 참고용 분석이며, 실제 심사 결과와 다를 수 있습니다. 중요한 의사결정 전에 홈택스 원본 서류를 반드시 확인하세요.</p>
+    <div style="display:flex;gap:8px;margin-bottom:24px;">
+      <button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ 입력 수정하기</button>
+    </div>`;
+
+  wrap.innerHTML = html;
+  wrap.classList.remove("hidden");
+}
+
 // ── 팀 관리 (구독 요금제별 사용자 수) ───────────────────────────────
 // 한도 검사는 서버가 한다. 여기서는 버튼을 숨기거나 안내 문구를 보여주는 역할만 한다.
 function goTeam() {
@@ -2814,7 +3424,7 @@ function renderHistoryList() {
 
   el.innerHTML = historyItems.map(h => {
     const company = h.company_name ? escapeHtml(h.company_name) : "상호 미입력";
-    const kind = h.source_type === "manual" ? "직접 입력" : "재무제표 분석";
+    const kind = h.source_type === "manual" ? "직접 입력" : h.source_type === "hometax" ? "홈택스 분석" : "재무제표 분석";
     const revenue = (h.revenue !== null && h.revenue !== undefined)
       ? `매출 ${Number(h.revenue).toLocaleString("ko-KR")}원` : "매출 미인식";
     const grade = histGradeBadge(h);
@@ -2824,7 +3434,9 @@ function renderHistoryList() {
     const left = histDaysLeft(h.expires_at);
     if (left !== null) sub.push(left > 0 ? `보관 ${left}일 남음` : "보관기간 만료 임박");
 
-    const btn = h.printed
+    const btn = h.source_type === "hometax"
+      ? `<button class="hist-btn ready" onclick="openHistoryReport(${h.id}, this)">결과 보기</button>`
+      : h.printed
       ? `<button class="hist-btn done" disabled title="이미 출력한 리포트입니다">출력완료</button>`
       : `<button class="hist-btn ready" onclick="openHistoryReport(${h.id}, this)">출력가능</button>`;
 
@@ -2846,6 +3458,17 @@ async function openHistoryReport(historyId, btn) {
     const res = await api("GET", "/history/" + historyId);
     const d = res.data || {};
     if (!d || !Object.keys(d).length) throw new Error("저장된 분석 결과를 불러오지 못했습니다.");
+
+    // 홈택스 분석 이력은 홈택스 분석 화면에서 결과를 다시 보여준다
+    if (res.history && res.history.source_type === "hometax" && d.hometax) {
+      window.currentHistoryId = historyId;
+      showPage("dashboard");
+      htFillForm(d.hometax);
+      renderHometaxResults(analyzeHometax(d.hometax), d.hometax);
+      document.getElementById("ht-results").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (btn) { btn.disabled = false; btn.textContent = "결과 보기"; }
+      return;
+    }
 
     window.currentHistoryId = historyId;
     window.currentHistoryPrinted = !!(res.history && res.history.printed);
@@ -4802,6 +5425,13 @@ async function adminViewHistory(historyId) {
     // 관리자 열람은 출력완료로 기록하지 않음
     window.currentHistoryId = null;
     window.currentHistoryPrinted = false;
+
+    if (d.history && d.history.source_type === "hometax" && d.data.hometax) {
+      showPage("dashboard");
+      htFillForm(d.data.hometax);
+      renderHometaxResults(analyzeHometax(d.data.hometax), d.data.hometax);
+      return;
+    }
 
     showPage("dashboard");
     moveResultsAfter(d.history && d.history.source_type === "manual" ? "manualCard" : "imageCard");
