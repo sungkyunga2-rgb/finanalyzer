@@ -721,204 +721,202 @@
     </div>
 
     <style>
-      #hometaxSection .ht-req { color:#A32D2D; font-size:11px; font-weight:600; margin-left:2px; }
-      #hometaxSection .ht-opt { color:var(--text3); font-size:11px; margin-left:2px; }
-      #hometaxSection .ht-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
-      #hometaxSection .ht-grid .field { margin-bottom:0; }
-      #hometaxSection .ht-sub { font-size:12px; font-weight:600; color:var(--text2); margin:14px 0 8px; }
+      #hometaxSection .ht-req { color:#A32D2D; font-weight:700; margin-left:1px; }
+      #hometaxSection .ht-sheet { padding:0; overflow:hidden; }
+      #hometaxSection .ht-row { display:grid; grid-template-columns:116px 1fr; border-bottom:1px solid var(--border); }
+      #hometaxSection .ht-row:last-child { border-bottom:none; }
+      #hometaxSection .ht-head { background:var(--surface2); font-size:13px; font-weight:600; color:var(--text1, #1a1a18); padding:12px 14px; display:flex; align-items:center; line-height:1.4; }
+      #hometaxSection .ht-body { padding:10px 14px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+      #hometaxSection .ht-line { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:8px; align-items:end; }
+      #hometaxSection .ht-f { display:flex; flex-direction:column; gap:3px; min-width:0; }
+      #hometaxSection .ht-f > span { font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      #hometaxSection .ht-f input, #hometaxSection .ht-f select, #hometaxSection textarea {
+        width:100%; padding:8px 10px; border:1px solid var(--border-strong); border-radius:8px; font-size:14px; font-family:inherit;
+        background:var(--surface, #fff); color:inherit; box-sizing:border-box; min-width:0; }
+      #hometaxSection .ht-chk { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; white-space:nowrap; padding:8px 0; }
+      #hometaxSection .ht-chk input { width:auto; margin:0; }
+      #hometaxSection .ht-radios { display:flex; gap:14px; flex-wrap:wrap; font-size:14px; }
+      #hometaxSection .ht-radios label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+      #hometaxSection .ht-radios input { width:auto; margin:0; }
       #hometaxSection .ht-missing { border-color:#A32D2D !important; background:#FFF6F6 !important; }
-      #hometaxSection .ht-missing-box { outline:2px solid #A32D2D; outline-offset:4px; border-radius:8px; }
-      #hometaxSection select, #hometaxSection textarea { width:100%; padding:10px 12px; border:1px solid var(--border-strong); border-radius:10px; font-size:14px; font-family:inherit; background:var(--surface, #fff); color:inherit; }
-      #hometaxSection .ht-inline { display:flex; gap:16px; flex-wrap:wrap; font-size:14px; }
-      #hometaxSection .ht-inline label { display:flex; align-items:center; gap:6px; cursor:pointer; }
-      #hometaxSection .ht-inline input { width:auto; }
-      #hometaxSection .ht-legend { font-size:12px; color:var(--text3); margin:-.5rem 0 1rem; }
+      #hometaxSection .ht-missing-box { box-shadow:inset 3px 0 0 #A32D2D; background:#FFF8F8; }
+      #hometaxSection .ht-loan-row { display:grid; grid-template-columns:1.2fr 1fr 1.2fr auto; gap:6px; align-items:center; }
+      #hometaxSection .ht-loan-row input { width:100%; padding:8px 10px; border:1px solid var(--border-strong); border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; min-width:0; }
+      #hometaxSection .ht-x { border:none; background:none; color:var(--text3); font-size:18px; cursor:pointer; padding:0 4px; }
+      #hometaxSection .ht-link { border:none; background:none; color:#185FA5; font-size:13px; cursor:pointer; padding:0; text-align:left; width:fit-content; }
+      @media (max-width: 560px) {
+        #hometaxSection .ht-row { grid-template-columns:1fr; }
+        #hometaxSection .ht-head { padding:8px 14px; font-size:12px; }
+        #hometaxSection .ht-loan-row { grid-template-columns:1fr 1fr; }
+        #hometaxSection .ht-loan-row .ht-loan-amt { grid-column:1 / 2; }
+      }
     </style>
-    <p class="ht-legend"><span class="ht-req">필수</span> 표시는 상담 시 꼭 확인할 항목입니다. 나머지는 아는 만큼만 입력하세요.</p>
 
-    <!-- 1. 업체 정보 -->
-    <div class="card">
-      <div class="card-title">업체 정보</div>
-      <div class="ht-grid">
-        <div class="field" style="grid-column:1/-1;"><label>회사이름<span class="ht-req">필수</span></label><input type="text" id="ht-company" placeholder="예: (주)씨앤지파트너스" /></div>
-        <div class="field"><label>대표자명<span class="ht-opt">선택</span></label><input type="text" id="ht-rep" placeholder="예: 홍길동" /></div>
-        <div class="field"><label>사업자등록번호<span class="ht-opt">선택</span></label><input type="text" id="ht-biz" placeholder="예: 123-45-67890" /></div>
-        <div class="field"><label>업태 / 업종<span class="ht-req">필수</span> <span class="ht-opt">사업자등록증 기준</span></label><input type="text" id="ht-industry" placeholder="예: 제조업 / 플라스틱 제품" /></div>
-        <div class="field"><label>창업년월<span class="ht-req">필수</span></label><input type="month" id="ht-founded" /></div>
-        <div class="field"><label>주 생산 품목<span class="ht-req">필수</span> <span class="ht-opt">매출 높은 아이템</span></label><input type="text" id="ht-product" placeholder="예: 식품 포장 용기" /></div>
-        <div class="field"><label>실제 하는 일<span class="ht-opt">선택</span></label><input type="text" id="ht-work" placeholder="예: 납품용 용기 OEM 생산" /></div>
-        <div class="field" style="grid-column:1/-1;"><label>사업장 소재지<span class="ht-opt">선택</span></label><input type="text" id="ht-location" placeholder="예: 경기도 고양시 덕양구" /></div>
-        <div class="field" style="grid-column:1/-1;">
-          <label>사업자 구분</label>
-          <div class="ht-inline">
+    <div class="card ht-sheet">
+      <!-- 기본 정보 -->
+      <div class="ht-row">
+        <div class="ht-head">업체</div>
+        <div class="ht-body">
+          <div class="ht-line">
+            <label class="ht-f" style="grid-column:span 2;"><span>회사이름<b class="ht-req">*</b></span><input type="text" id="ht-company" placeholder="(주)씨앤지파트너스" /></label>
+            <label class="ht-f"><span>대표자명</span><input type="text" id="ht-rep" placeholder="홍길동" /></label>
+            <label class="ht-f"><span>사업자등록번호</span><input type="text" id="ht-biz" placeholder="123-45-67890" /></label>
+          </div>
+          <div class="ht-line">
+            <label class="ht-f" style="grid-column:span 2;"><span>업태 / 업종<b class="ht-req">*</b></span><input type="text" id="ht-industry" placeholder="제조업 / 플라스틱 제품" /></label>
+            <label class="ht-f"><span>창업년월<b class="ht-req">*</b></span><input type="month" id="ht-founded" /></label>
+            <label class="ht-f"><span>사업장 소재지</span><input type="text" id="ht-location" placeholder="경기 고양시" /></label>
+          </div>
+          <div class="ht-radios">
             <label><input type="radio" name="ht-biztype" value="personal" checked /> 개인사업자</label>
             <label><input type="radio" name="ht-biztype" value="corp" /> 법인사업자</label>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 2. 매출 (연도별) -->
-    <div class="card">
-      <div class="card-title">매출 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">최근 3개년 + 올해</span></div>
-      <p style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px;">
-        매출은 <b>부가가치세 과세표준증명</b> 기준입니다. 매입(전자세금계산서 합계표)과 대표자 종합소득금액(소득금액증명)은 선택입니다. 매출이 없던 해는 0을 입력하세요.
-      </p>
-      <div id="ht-years"></div>
-      <div style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--surface2);">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:14px;font-weight:600;margin-bottom:8px;">
-          <input type="number" id="ht-ytd-year" style="width:90px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-weight:600;font-family:inherit;" />
-          <span>년 현재</span>
-          <select id="ht-ytd-month" style="width:auto;padding:6px 8px;"><option value="">선택</option>
-            <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option>
-            <option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select>
-          <span>월까지 매출<span class="ht-req">필수</span></span>
-        </div>
-        <div class="ht-grid">
-          <div class="field"><label>누적 매출 (원)</label><input type="text" inputmode="numeric" id="ht-ytd-sales" placeholder="예: 150,000,000" oninput="formatMoneyInput(this)" /></div>
+      <!-- 매출 -->
+      <div class="ht-row">
+        <div class="ht-head">매출</div>
+        <div class="ht-body">
+          <div class="ht-line" id="ht-years"></div>
+          <div class="ht-line">
+            <label class="ht-f"><span>올해 기준 월<b class="ht-req">*</b></span>
+              <select id="ht-ytd-month"><option value="">월 선택</option>
+                <option value="1">1월까지</option><option value="2">2월까지</option><option value="3">3월까지</option><option value="4">4월까지</option>
+                <option value="5">5월까지</option><option value="6">6월까지</option><option value="7">7월까지</option><option value="8">8월까지</option>
+                <option value="9">9월까지</option><option value="10">10월까지</option><option value="11">11월까지</option><option value="12">12월까지</option></select></label>
+            <label class="ht-f" style="grid-column:span 2;"><span><b id="ht-ytd-label"></b>년 누적 매출 (원)<b class="ht-req">*</b></span><input type="text" inputmode="numeric" id="ht-ytd-sales" placeholder="150,000,000" oninput="formatMoneyInput(this)" /></label>
+            <input type="hidden" id="ht-ytd-year" />
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 3. 신용 -->
-    <div class="card">
-      <div class="card-title">신용</div>
-      <div class="ht-sub" style="margin-top:0;">대표자 신용점수<span class="ht-req">필수</span></div>
-      <div class="ht-grid">
-        <div class="field"><label>KCB</label><input type="number" inputmode="numeric" id="ht-kcb" placeholder="예: 850" min="0" max="1000" /></div>
-        <div class="field"><label>NICE</label><input type="number" inputmode="numeric" id="ht-nice" placeholder="예: 870" min="0" max="1000" /></div>
-      </div>
-      <div class="ht-sub" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <span>신용점수 (공동대표·배우자)<span class="ht-req">필수</span></span>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;"><input type="checkbox" id="ht-co-none" style="width:auto;" onchange="htToggleCo()" /> 해당 없음</label>
-      </div>
-      <div class="ht-grid" id="ht-co-wrap">
-        <div class="field"><label>KCB</label><input type="number" inputmode="numeric" id="ht-co-kcb" placeholder="예: 800" min="0" max="1000" /></div>
-        <div class="field"><label>NICE</label><input type="number" inputmode="numeric" id="ht-co-nice" placeholder="예: 820" min="0" max="1000" /></div>
-      </div>
-      <div class="ht-sub">신용회복<span class="ht-opt">선택</span></div>
-      <div class="ht-grid">
-        <div class="field"><label>종류</label><input type="text" id="ht-rec-type" placeholder="예: 개인회생, 신용회복위원회" /></div>
-        <div class="field"><label>몇 회차</label><input type="text" id="ht-rec-round" placeholder="예: 24/60회" /></div>
-        <div class="field"><label>성실 납부 여부</label>
-          <select id="ht-rec-faithful"><option value="">선택</option><option value="yes">성실 납부 중</option><option value="no">연체 있음</option></select></div>
-      </div>
-    </div>
-
-    <!-- 4. 국세 체납 -->
-    <div class="card" id="ht-arrears-card">
-      <div class="card-title">국세 체납<span class="ht-req">필수</span> <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">금액, 기간</span></div>
-      <div class="ht-inline" style="margin-bottom:10px;">
-        <label><input type="radio" name="ht-arrears" value="unknown" checked onchange="htToggleArrears()" /> 아직 확인 못 함</label>
-        <label><input type="radio" name="ht-arrears" value="none" onchange="htToggleArrears()" /> 체납 없음</label>
-        <label><input type="radio" name="ht-arrears" value="has" onchange="htToggleArrears()" /> 체납 있음</label>
-      </div>
-      <div id="ht-arrears-detail" style="display:none;">
-        <div class="ht-grid">
-          <div class="field"><label>종합소득세 금액 (원)</label><input type="text" inputmode="numeric" id="ht-ar-income" oninput="formatMoneyInput(this)" placeholder="0" /></div>
-          <div class="field"><label>종합소득세 기간</label><input type="text" id="ht-arp-income" placeholder="예: 2024.05~" /></div>
-          <div class="field"><label>법인세 금액 (원)</label><input type="text" inputmode="numeric" id="ht-ar-corp" oninput="formatMoneyInput(this)" placeholder="0" /></div>
-          <div class="field"><label>법인세 기간</label><input type="text" id="ht-arp-corp" placeholder="예: 2025.03~" /></div>
-          <div class="field"><label>부가세 금액 (원)</label><input type="text" inputmode="numeric" id="ht-ar-vat" oninput="formatMoneyInput(this)" placeholder="0" /></div>
-          <div class="field"><label>부가세 기간</label><input type="text" id="ht-arp-vat" placeholder="예: 2025년 1기" /></div>
-          <div class="field"><label>4대보험 금액 (원)</label><input type="text" inputmode="numeric" id="ht-ar-ins" oninput="formatMoneyInput(this)" placeholder="0" /></div>
-          <div class="field"><label>4대보험 기간</label><input type="text" id="ht-arp-ins" placeholder="예: 3개월" /></div>
+      <!-- 신용 -->
+      <div class="ht-row">
+        <div class="ht-head">신용점수</div>
+        <div class="ht-body">
+          <div class="ht-line">
+            <label class="ht-f"><span>대표 KCB</span><input type="number" inputmode="numeric" id="ht-kcb" placeholder="850" /></label>
+            <label class="ht-f"><span>대표 NICE</span><input type="number" inputmode="numeric" id="ht-nice" placeholder="870" /></label>
+            <label class="ht-f"><span>공동대표·배우자 KCB</span><input type="number" inputmode="numeric" id="ht-co-kcb" placeholder="-" /></label>
+            <label class="ht-f"><span>공동대표·배우자 NICE</span><input type="number" inputmode="numeric" id="ht-co-nice" placeholder="-" /></label>
+          </div>
+          <div class="ht-line">
+            <label class="ht-f"><span>신용회복</span>
+              <select id="ht-rec-faithful"><option value="">없음</option><option value="yes">진행 중 · 성실 납부</option><option value="no">진행 중 · 연체 있음</option></select></label>
+            <label class="ht-f" style="grid-column:span 2;"><span>신용회복 종류 · 회차</span><input type="text" id="ht-rec-type" placeholder="개인회생 24/60회" /></label>
+          </div>
         </div>
       </div>
-      <div class="field" style="margin:10px 0 0;"><label>기타 연체·체납·가압류<span class="ht-opt">선택</span></label><input type="text" id="ht-ar-other" placeholder="예: 카드 연체 30일, 지방세 체납" /></div>
-    </div>
 
-    <!-- 5. 기대출 -->
-    <div class="card" id="ht-loans-card">
-      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span>기대출<span class="ht-req">필수</span> <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">기관 / 시기 / 금액</span></span>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer;"><input type="checkbox" id="ht-loans-none" style="width:auto;" onchange="htToggleLoans()" /> 기대출 없음</label>
-      </div>
-      <div id="ht-loans"></div>
-      <button type="button" class="btn" id="ht-loan-add" style="padding:6px 12px;font-size:13px;margin-top:4px;" onclick="htAddLoan()">+ 대출 추가</button>
-    </div>
-
-    <!-- 6. 필요자금 -->
-    <div class="card">
-      <div class="card-title">필요자금<span class="ht-req">필수</span></div>
-      <div class="ht-grid">
-        <div class="field"><label>최대 (원)</label><input type="text" inputmode="numeric" id="ht-need-max" placeholder="예: 100,000,000" oninput="formatMoneyInput(this)" /></div>
-        <div class="field"><label>최소 (원)</label><input type="text" inputmode="numeric" id="ht-need-min" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
-        <div class="field" style="grid-column:1/-1;"><label>용도<span class="ht-opt">선택</span></label><input type="text" id="ht-need-purpose" placeholder="예: 원자재 구입, 설비 투자" /></div>
-      </div>
-    </div>
-
-    <!-- 7. 대표자 -->
-    <div class="card">
-      <div class="card-title">대표자</div>
-      <div class="ht-grid">
-        <div class="field"><label>나이 (만)<span class="ht-req">필수</span></label><input type="number" inputmode="numeric" id="ht-age" placeholder="예: 38" min="15" max="100" /></div>
-        <div class="field"><label>동종업계 경력 (년)<span class="ht-req">필수</span></label><input type="number" inputmode="decimal" id="ht-career" placeholder="예: 10" min="0" step="0.5" /></div>
-        <div class="field"><label>보유 자산<span class="ht-opt">선택 · 집, 차량</span></label><input type="text" id="ht-rep-assets" placeholder="예: 아파트 자가, 차량 1대" /></div>
-        <div class="field"><label>혼인 여부<span class="ht-opt">선택</span></label>
-          <select id="ht-marital"><option value="">선택</option><option value="married">기혼</option><option value="single">미혼</option></select></div>
-        <div class="field" style="grid-column:1/-1;">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;"><input type="checkbox" id="ht-woman" style="width:auto;" /> 여성 대표</label>
+      <!-- 국세 체납 -->
+      <div class="ht-row" id="ht-arrears-card">
+        <div class="ht-head">국세 체납<b class="ht-req">*</b></div>
+        <div class="ht-body">
+          <div class="ht-radios">
+            <label><input type="radio" name="ht-arrears" value="unknown" checked onchange="htToggleArrears()" /> 미확인</label>
+            <label><input type="radio" name="ht-arrears" value="none" onchange="htToggleArrears()" /> 없음</label>
+            <label><input type="radio" name="ht-arrears" value="has" onchange="htToggleArrears()" /> 있음</label>
+          </div>
+          <div class="ht-line" id="ht-arrears-detail" style="display:none;">
+            <label class="ht-f"><span>체납액 (원)</span><input type="text" inputmode="numeric" id="ht-arrears-amount" placeholder="3,500,000" oninput="formatMoneyInput(this)" /></label>
+            <label class="ht-f" style="grid-column:span 2;"><span>세목 · 기간</span><input type="text" id="ht-arrears-note" placeholder="부가세 2025년 1기, 분납 중" /></label>
+          </div>
+          <label class="ht-f"><span>기타 연체 · 체납 · 가압류</span><input type="text" id="ht-ar-other" placeholder="카드 연체, 지방세·4대보험 체납 등" /></label>
         </div>
       </div>
-    </div>
 
-    <!-- 8. 고용 -->
-    <div class="card">
-      <div class="card-title">고용</div>
-      <div class="ht-grid">
-        <div class="field"><label>직원 수<span class="ht-req">필수</span> <span class="ht-opt">4대보험 가입 기준</span></label><input type="number" inputmode="numeric" id="ht-employees" placeholder="예: 5" min="0" /></div>
-        <div class="field"><label>추가 채용 예정 인원<span class="ht-opt">선택</span></label><input type="number" inputmode="numeric" id="ht-hire" placeholder="예: 2" min="0" /></div>
-        <div class="field"><label>내일채움공제<span class="ht-opt">선택 · 가입 여부, 인원</span></label><input type="text" id="ht-naeil" placeholder="예: 가입 2명" /></div>
-        <div class="field"><label>노란우산공제<span class="ht-opt">선택</span></label>
-          <select id="ht-umbrella"><option value="">선택</option><option value="yes">가입</option><option value="no">미가입</option></select></div>
-      </div>
-    </div>
-
-    <!-- 9. 기업 현황 -->
-    <div class="card">
-      <div class="card-title">기업 현황 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">선택</span></div>
-      <div class="ht-grid">
-        <div class="field"><label>기업 인증<span class="ht-opt">특허, ISO 인증 등</span></label><input type="text" id="ht-certs" placeholder="예: 벤처기업, 특허 2건, ISO9001" /></div>
-        <div class="field"><label>연구소 · 연구개발전담부서</label>
-          <select id="ht-lab"><option value="">선택</option><option value="lab">기업부설연구소</option><option value="dept">연구개발전담부서</option><option value="none">없음</option></select></div>
-        <div class="field"><label>수출 여부<span class="ht-opt">수출실적증명원</span></label><input type="text" id="ht-export" placeholder="예: 2025년 수출 3억 원" /></div>
-        <div class="field"><label>공장 보유</label>
-          <select id="ht-factory"><option value="">선택</option><option value="own">자가</option><option value="rent">임차</option><option value="none">없음</option></select></div>
-      </div>
-    </div>
-
-    <!-- 10. 재무 수치 (선택) -->
-    <div class="card">
-      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-        <span>재무 수치 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">선택 · 표준재무제표증명 등</span></span>
-        <button type="button" class="btn" style="padding:4px 12px;font-size:12px;" id="ht-fin-toggle" onclick="htToggleFin()">입력하기</button>
-      </div>
-      <p style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:0;" id="ht-fin-hint">
-        총자산과 총부채를 입력하면 부채비율·이자보상배수·자본잠식·사업 안정성 점수를 계산합니다. 비율만 알고 있으면 아래 "직접 입력" 칸에 넣어도 됩니다.
-      </p>
-      <div id="ht-fin-wrap" class="hidden" style="margin-top:12px;">
-        <div class="ht-grid">
-          <div class="field"><label>총자산 (원)</label><input type="text" inputmode="numeric" id="ht-assets" placeholder="예: 200,000,000" oninput="formatMoneyInput(this)" /></div>
-          <div class="field"><label>총부채 (원)</label><input type="text" inputmode="numeric" id="ht-debt" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
-          <div class="field"><label>자본금 (원)</label><input type="text" inputmode="numeric" id="ht-capital" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
-          <div class="field"><label>영업이익 (연, 원)</label><input type="text" inputmode="text" id="ht-opincome" placeholder="예: 30,000,000" oninput="htSignedMoney(this)" /></div>
-          <div class="field"><label>이자비용 (연, 원) <span class="ht-opt">0이면 무차입</span></label><input type="text" inputmode="numeric" id="ht-interest" placeholder="예: 3,600,000" oninput="formatMoneyInput(this)" /></div>
-          <div class="field"><label>당기순이익 (연, 원)</label><input type="text" inputmode="text" id="ht-netincome" placeholder="예: 25,000,000" oninput="htSignedMoney(this)" /></div>
+      <!-- 기대출 -->
+      <div class="ht-row" id="ht-loans-card">
+        <div class="ht-head">기대출<b class="ht-req">*</b></div>
+        <div class="ht-body">
+          <label class="ht-chk"><input type="checkbox" id="ht-loans-none" onchange="htToggleLoans()" /> 기대출 없음</label>
+          <div id="ht-loans" style="display:flex;flex-direction:column;gap:6px;"></div>
+          <button type="button" class="ht-link" id="ht-loan-add" onclick="htAddLoan()">+ 대출 추가</button>
         </div>
-        <div class="ht-sub">비율 직접 입력 <span class="ht-opt">총자산·총부채가 없을 때만 사용</span></div>
-        <div class="ht-grid">
-          <div class="field"><label>부채비율 (%) <span class="ht-opt">부채총계÷자본총계×100</span></label><input type="text" inputmode="decimal" id="ht-dr-direct" placeholder="예: 180" /></div>
-          <div class="field"><label>이자보상배수 (배) <span class="ht-opt">영업이익÷이자비용</span></label><input type="text" inputmode="decimal" id="ht-icr-direct" placeholder="예: 2.5" /></div>
+      </div>
+
+      <!-- 필요자금 -->
+      <div class="ht-row">
+        <div class="ht-head">필요자금<b class="ht-req">*</b></div>
+        <div class="ht-body">
+          <div class="ht-line">
+            <label class="ht-f"><span>최대 (원)<b class="ht-req">*</b></span><input type="text" inputmode="numeric" id="ht-need-max" placeholder="100,000,000" oninput="formatMoneyInput(this)" /></label>
+            <label class="ht-f"><span>최소 (원)<b class="ht-req">*</b></span><input type="text" inputmode="numeric" id="ht-need-min" placeholder="50,000,000" oninput="formatMoneyInput(this)" /></label>
+            <label class="ht-f" style="grid-column:span 2;"><span>용도</span><input type="text" id="ht-need-purpose" placeholder="원자재 구입, 설비 투자" /></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 대표자 -->
+      <div class="ht-row">
+        <div class="ht-head">대표자</div>
+        <div class="ht-body">
+          <div class="ht-line">
+            <label class="ht-f"><span>나이 (만)<b class="ht-req">*</b></span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" /></label>
+            <label class="ht-f"><span>동종업계 경력 (년)<b class="ht-req">*</b></span><input type="number" inputmode="decimal" id="ht-career" placeholder="10" step="0.5" /></label>
+            <label class="ht-f"><span>보유 자산 (집, 차량)</span><input type="text" id="ht-rep-assets" placeholder="아파트 자가" /></label>
+            <label class="ht-f"><span>혼인 여부</span><select id="ht-marital"><option value="">-</option><option value="married">기혼</option><option value="single">미혼</option></select></label>
+          </div>
+          <label class="ht-chk"><input type="checkbox" id="ht-woman" /> 여성 대표</label>
+        </div>
+      </div>
+
+      <!-- 고용 -->
+      <div class="ht-row">
+        <div class="ht-head">고용</div>
+        <div class="ht-body">
+          <div class="ht-line">
+            <label class="ht-f"><span>직원 수 (4대보험)<b class="ht-req">*</b></span><input type="number" inputmode="numeric" id="ht-employees" placeholder="5" /></label>
+            <label class="ht-f"><span>추가 채용 예정</span><input type="number" inputmode="numeric" id="ht-hire" placeholder="0" /></label>
+            <label class="ht-f"><span>내일채움공제</span><input type="text" id="ht-naeil" placeholder="가입 2명" /></label>
+            <label class="ht-f"><span>노란우산공제</span><select id="ht-umbrella"><option value="">-</option><option value="yes">가입</option><option value="no">미가입</option></select></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 기업 현황 -->
+      <div class="ht-row">
+        <div class="ht-head">기업 현황</div>
+        <div class="ht-body">
+          <div class="ht-line">
+            <label class="ht-f"><span>기업 인증 (특허, ISO 등)</span><input type="text" id="ht-certs" placeholder="벤처, 특허 2건" /></label>
+            <label class="ht-f"><span>연구소 · 전담부서</span><select id="ht-lab"><option value="">-</option><option value="lab">기업부설연구소</option><option value="dept">연구개발전담부서</option><option value="none">없음</option></select></label>
+            <label class="ht-f"><span>수출 여부</span><input type="text" id="ht-export" placeholder="2025년 3억 원" /></label>
+            <label class="ht-f"><span>공장 보유</span><select id="ht-factory"><option value="">-</option><option value="own">자가</option><option value="rent">임차</option><option value="none">없음</option></select></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 재무 (선택, 접힘) -->
+      <div class="ht-row">
+        <div class="ht-head">재무</div>
+        <div class="ht-body">
+          <button type="button" class="ht-link" id="ht-fin-toggle" onclick="htToggleFin()">+ 재무 수치 입력 (선택)</button>
+          <div id="ht-fin-wrap" class="hidden">
+            <div class="ht-line">
+              <label class="ht-f"><span>총자산</span><input type="text" inputmode="numeric" id="ht-assets" oninput="formatMoneyInput(this)" /></label>
+              <label class="ht-f"><span>총부채</span><input type="text" inputmode="numeric" id="ht-debt" oninput="formatMoneyInput(this)" /></label>
+              <label class="ht-f"><span>자본금</span><input type="text" inputmode="numeric" id="ht-capital" oninput="formatMoneyInput(this)" /></label>
+              <label class="ht-f"><span>영업이익 (연)</span><input type="text" inputmode="text" id="ht-opincome" oninput="htSignedMoney(this)" /></label>
+              <label class="ht-f"><span>이자비용 (연)</span><input type="text" inputmode="numeric" id="ht-interest" oninput="formatMoneyInput(this)" /></label>
+              <label class="ht-f"><span>당기순이익 (연)</span><input type="text" inputmode="text" id="ht-netincome" oninput="htSignedMoney(this)" /></label>
+              <label class="ht-f"><span>부채비율 (%) 직접</span><input type="text" inputmode="decimal" id="ht-dr-direct" placeholder="180" /></label>
+              <label class="ht-f"><span>이자보상배수 직접</span><input type="text" inputmode="decimal" id="ht-icr-direct" placeholder="2.5" /></label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 추가사항 -->
+      <div class="ht-row">
+        <div class="ht-head">추가사항</div>
+        <div class="ht-body">
+          <textarea id="ht-memo" rows="2" placeholder="상담 중 확인한 특이사항"></textarea>
         </div>
       </div>
     </div>
-
-    <!-- 11. 추가사항 -->
-    <div class="card">
-      <div class="card-title">추가사항 <span style="font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text3);">선택</span></div>
-      <textarea id="ht-memo" rows="4" placeholder="상담 중 확인한 특이사항을 적어 두세요."></textarea>
-    </div>
+    <p style="font-size:11px;color:var(--text3);margin:-.5rem 0 .75rem;"><b class="ht-req">*</b> 표시는 꼭 확인할 항목입니다.</p>
 
     <button class="btn btn-primary btn-full" id="ht-analyze-btn" onclick="doHometaxAnalyze()">입력 정보로 분석하기</button>
 
@@ -3189,17 +3187,11 @@ const HT_LEVEL_ICON  = { safe: "✅", warn: "⚠️", danger: "🚨", info: "ℹ
 // type: text / money(콤마 금액) / signed(마이너스 가능 금액) / int / num / dec(마이너스·소수 가능) / check
 const HT_FIELDS = [
   ["company_name", "ht-company", "text"], ["rep_name", "ht-rep", "text"], ["business_number", "ht-biz", "text"],
-  ["industry", "ht-industry", "text"], ["founded", "ht-founded", "text"], ["main_product", "ht-product", "text"],
-  ["actual_work", "ht-work", "text"], ["location", "ht-location", "text"],
+  ["industry", "ht-industry", "text"], ["founded", "ht-founded", "text"], ["location", "ht-location", "text"],
   ["ytd.year", "ht-ytd-year", "int"], ["ytd.month", "ht-ytd-month", "int"], ["ytd.sales", "ht-ytd-sales", "money"],
-  ["credit.kcb", "ht-kcb", "int"], ["credit.nice", "ht-nice", "int"],
-  ["credit.co_none", "ht-co-none", "check"], ["credit.co_kcb", "ht-co-kcb", "int"], ["credit.co_nice", "ht-co-nice", "int"],
-  ["credit.recovery.type", "ht-rec-type", "text"], ["credit.recovery.round", "ht-rec-round", "text"], ["credit.recovery.faithful", "ht-rec-faithful", "text"],
-  ["arrears.items.income_tax", "ht-ar-income", "money"], ["arrears.periods.income_tax", "ht-arp-income", "text"],
-  ["arrears.items.corp_tax", "ht-ar-corp", "money"], ["arrears.periods.corp_tax", "ht-arp-corp", "text"],
-  ["arrears.items.vat", "ht-ar-vat", "money"], ["arrears.periods.vat", "ht-arp-vat", "text"],
-  ["arrears.items.insurance", "ht-ar-ins", "money"], ["arrears.periods.insurance", "ht-arp-ins", "text"],
-  ["arrears.other", "ht-ar-other", "text"],
+  ["credit.kcb", "ht-kcb", "int"], ["credit.nice", "ht-nice", "int"], ["credit.co_kcb", "ht-co-kcb", "int"], ["credit.co_nice", "ht-co-nice", "int"],
+  ["credit.recovery.faithful", "ht-rec-faithful", "text"], ["credit.recovery.type", "ht-rec-type", "text"],
+  ["arrears.amount", "ht-arrears-amount", "money"], ["arrears.note", "ht-arrears-note", "text"], ["arrears.other", "ht-ar-other", "text"],
   ["loans_none", "ht-loans-none", "check"],
   ["need.max", "ht-need-max", "money"], ["need.min", "ht-need-min", "money"], ["need.purpose", "ht-need-purpose", "text"],
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
@@ -3266,24 +3258,11 @@ function htBuildYears(preset) {
   const box = document.getElementById("ht-years");
   if (!box) return;
   const thisYear = new Date().getFullYear();
-  const years = (preset && preset.length) ? preset.map(y => y.year) : [thisYear - 1, thisYear - 2, thisYear - 3];
+  const years = (preset && preset.length) ? preset.map(y => y.year) : [thisYear - 3, thisYear - 2, thisYear - 1];
   box.innerHTML = years.map((y, i) => `
-    <div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <input type="number" id="ht-y${i}-year" value="${y}" style="width:90px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-weight:600;font-family:inherit;" />
-        <span style="font-size:13px;color:var(--text2);">년</span>
-      </div>
-      <div class="ht-grid">
-        <div class="field"><label>매출 · 부가세 과세표준 (원)<span class="ht-req">필수</span></label><input type="text" inputmode="numeric" id="ht-y${i}-vat" placeholder="예: 300,000,000" oninput="formatMoneyInput(this)" /></div>
-        <div class="field"><label>매입금액 (원)<span class="ht-opt">선택</span></label><input type="text" inputmode="numeric" id="ht-y${i}-purchase" placeholder="예: 210,000,000" oninput="formatMoneyInput(this)" /></div>
-        <div class="field"><label>대표자 종합소득금액 (원)<span class="ht-opt">선택</span></label><input type="text" inputmode="text" id="ht-y${i}-income" placeholder="예: 45,000,000" oninput="htSignedMoney(this)" /></div>
-      </div>
-    </div>`).join("");
-  if (preset && preset.length) {
-    preset.forEach((y, i) => {
-      htSetMoney(`ht-y${i}-vat`, y.vat); htSetMoney(`ht-y${i}-purchase`, y.purchase); htSetMoney(`ht-y${i}-income`, y.income);
-    });
-  }
+    <label class="ht-f"><span>${y}년 매출 (원)</span><input type="hidden" id="ht-y${i}-year" value="${y}" />
+      <input type="text" inputmode="numeric" id="ht-y${i}-vat" placeholder="부가세 과세표준" oninput="formatMoneyInput(this)" /></label>`).join("");
+  if (preset && preset.length) preset.forEach((y, i) => htSetMoney(`ht-y${i}-vat`, y.vat));
 }
 
 // 기대출 목록 (기관 / 시기 / 금액)
@@ -3292,11 +3271,11 @@ function htRenderLoans(list) {
   if (!box) return;
   const rows = (list && list.length) ? list : [{ org: "", date: "", amount: null }];
   box.innerHTML = rows.map((l, i) => `
-    <div class="ht-grid ht-loan-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end;margin-bottom:8px;">
-      <div class="field"><label>기관</label><input type="text" id="ht-loan-${i}-org" placeholder="예: 신용보증기금" /></div>
-      <div class="field"><label>시기</label><input type="text" id="ht-loan-${i}-date" placeholder="예: 2024.03" /></div>
-      <div class="field"><label>금액 (원)</label><input type="text" inputmode="numeric" id="ht-loan-${i}-amount" placeholder="예: 50,000,000" oninput="formatMoneyInput(this)" /></div>
-      <div style="display:flex;align-items:end;"><button type="button" class="btn" style="padding:8px 12px;font-size:12px;" onclick="htRemoveLoan(${i})">삭제</button></div>
+    <div class="ht-loan-row">
+      <input type="text" id="ht-loan-${i}-org" placeholder="기관 (예: 신용보증기금)" />
+      <input type="text" id="ht-loan-${i}-date" placeholder="시기 (예: 2024.03)" />
+      <input type="text" inputmode="numeric" class="ht-loan-amt" id="ht-loan-${i}-amount" placeholder="금액 (원)" oninput="formatMoneyInput(this)" />
+      <button type="button" class="ht-x" title="삭제" onclick="htRemoveLoan(${i})">×</button>
     </div>`).join("");
   rows.forEach((l, i) => {
     document.getElementById(`ht-loan-${i}-org`).value = l.org || "";
@@ -3328,24 +3307,19 @@ function htToggleLoans() {
   const none = document.getElementById("ht-loans-none");
   const off = !!(none && none.checked);
   document.querySelectorAll("#ht-loans input, #ht-loans button, #ht-loan-add").forEach(el => { el.disabled = off; });
-  const box = document.getElementById("ht-loans"); if (box) box.style.opacity = off ? .45 : 1;
+  const box = document.getElementById("ht-loans"); if (box) box.style.display = off ? "none" : "flex";
+  const add = document.getElementById("ht-loan-add"); if (add) add.style.display = off ? "none" : "block";
 }
-function htToggleCo() {
-  const off = document.getElementById("ht-co-none").checked;
-  ["ht-co-kcb", "ht-co-nice"].forEach(id => { const el = document.getElementById(id); el.disabled = off; if (off) el.value = ""; });
-  document.getElementById("ht-co-wrap").style.opacity = off ? .45 : 1;
-}
-
 function htToggleArrears() {
   const v = (document.querySelector('input[name="ht-arrears"]:checked') || {}).value;
-  document.getElementById("ht-arrears-detail").style.display = v === "has" ? "block" : "none";
+  document.getElementById("ht-arrears-detail").style.display = v === "has" ? "grid" : "none";
 }
 
 function htToggleFin(forceOpen) {
   const wrap = document.getElementById("ht-fin-wrap");
   const open = forceOpen === true ? true : forceOpen === false ? false : wrap.classList.contains("hidden");
   wrap.classList.toggle("hidden", !open);
-  document.getElementById("ht-fin-toggle").textContent = open ? "접기" : "입력하기";
+  document.getElementById("ht-fin-toggle").textContent = open ? "− 재무 수치 접기" : "+ 재무 수치 입력 (선택)";
 }
 
 // 입력창 → input 객체
@@ -3354,9 +3328,6 @@ function htReadForm() {
   HT_FIELDS.forEach(([path, id, type]) => htSet(input, path, htReadField(id, type)));
   input.biz_type = (document.querySelector('input[name="ht-biztype"]:checked') || {}).value || "personal";
   input.arrears.status = (document.querySelector('input[name="ht-arrears"]:checked') || {}).value || "unknown";
-  const items = input.arrears.items || {};
-  const sum = Object.values(items).reduce((a, v) => a + (v || 0), 0);
-  input.arrears.amount = sum > 0 ? sum : null;
   input.years = [];
   for (let i = 0; document.getElementById(`ht-y${i}-year`); i++) {
     input.years.push({
@@ -3379,11 +3350,11 @@ function htFillForm(input) {
   const ar = document.querySelector(`input[name="ht-arrears"][value="${st}"]`);
   if (ar) ar.checked = true;
   htToggleArrears();
-  const ys = (input.years || []).slice().sort((a, b) => b.year - a.year);
+  const ys = (input.years || []).slice().sort((a, b) => a.year - b.year);
   htBuildYears(ys.length ? ys : null);
   htRenderLoans(input.loans || []);
-  htToggleCo();
   htToggleFin(!!input.fin);
+  htSyncYtdLabel();
   if (!document.getElementById("ht-ytd-year").value) document.getElementById("ht-ytd-year").value = new Date().getFullYear();
 }
 
@@ -3398,6 +3369,12 @@ function initHometaxPage() {
   if (!document.getElementById("ht-loan-0-org")) htRenderLoans(null);
   const yy = document.getElementById("ht-ytd-year");
   if (yy && !yy.value) yy.value = new Date().getFullYear();
+  htSyncYtdLabel();
+}
+function htSyncYtdLabel() {
+  const yy = document.getElementById("ht-ytd-year"), lb = document.getElementById("ht-ytd-label");
+  if (yy && !yy.value) yy.value = new Date().getFullYear();
+  if (yy && lb) lb.textContent = yy.value;
 }
 
 // 필수 항목(인콜일지 노란색) 확인 → [{ label, id }]
@@ -3407,16 +3384,8 @@ function htMissing(input) {
   need(!input.company_name, "회사이름", "ht-company");
   need(!input.industry, "업태/업종", "ht-industry");
   need(!input.founded, "창업년월", "ht-founded");
-  need(!input.main_product, "주 생산 품목", "ht-product");
-  input.years.forEach((y, i) => need(y.vat === null, `${y.year || ""}년 매출`, `ht-y${i}-vat`));
-  need(!input.ytd || input.ytd.month === null, "올해 매출 기준 월", "ht-ytd-month");
+  need(!input.ytd || input.ytd.month === null, "올해 기준 월", "ht-ytd-month");
   need(!input.ytd || input.ytd.sales === null, "올해 누적 매출", "ht-ytd-sales");
-  need(input.credit.kcb === null, "대표자 KCB 신용점수", "ht-kcb");
-  need(input.credit.nice === null, "대표자 NICE 신용점수", "ht-nice");
-  if (!input.credit.co_none) {
-    need(input.credit.co_kcb === null, "공동대표·배우자 KCB (없으면 '해당 없음')", "ht-co-kcb");
-    need(input.credit.co_nice === null, "공동대표·배우자 NICE (없으면 '해당 없음')", "ht-co-nice");
-  }
   need(input.arrears.status === "unknown", "국세 체납 여부", "ht-arrears-card");
   need(!input.loans_none && !input.loans.some(l => l.amount !== null), "기대출 (없으면 '기대출 없음')", "ht-loans-card");
   need(input.need.max === null, "필요자금 최대", "ht-need-max");
@@ -3433,7 +3402,7 @@ function htMarkMissing(miss) {
   miss.forEach(m => {
     const el = document.getElementById(m.id);
     if (!el) return;
-    if (el.classList.contains("card")) el.classList.add("ht-missing-box"); else el.classList.add("ht-missing");
+    if (el.classList.contains("ht-row")) el.classList.add("ht-missing-box"); else el.classList.add("ht-missing");
     const clear = () => { el.classList.remove("ht-missing", "ht-missing-box"); };
     el.addEventListener("input", clear, { once: true });
     el.addEventListener("change", clear, { once: true });
@@ -3645,14 +3614,15 @@ function renderHometaxResults(r, input) {
   // 신용 · 기대출
   if (r.credit) {
     const c = r.credit, sc = (v, lvl) => v === null ? "-" : `<b style="color:${HT_LEVEL_COLOR[lvl]}">${v}점</b>`;
+    const pair = (k, n, lvl) => (k === null && n === null) ? `<span style="color:var(--text3);">미입력</span>` : `KCB ${sc(k, lvl)} · NICE ${sc(n, lvl)}`;
     const lvRank = Math.max(htLevelRank(c.repLevel), htLevelRank(c.coLevel), c.recovery ? (c.recovery.faithful === "no" ? 3 : 2) : 0);
     const loanRows = (r.loans.list || []).map(l => `<tr><td>${escapeHtml(l.org || "-")}</td><td>${escapeHtml(l.date || "-")}</td><td style="text-align:right;">${htWon(htNum(l.amount))}</td></tr>`).join("");
     html += htCard("신용 · 기대출", lvRank >= 3 ? "danger" : lvRank === 2 ? "warn" : "safe", `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
-        <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:var(--text3);">대표자</div><div style="font-size:14px;margin-top:4px;">KCB ${sc(c.kcb, c.repLevel)} · NICE ${sc(c.nice, c.repLevel)}</div></div>
-        <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:var(--text3);">공동대표 · 배우자</div><div style="font-size:14px;margin-top:4px;">${c.coNone ? "해당 없음" : `KCB ${sc(c.coKcb, c.coLevel)} · NICE ${sc(c.coNice, c.coLevel)}`}</div></div>
+        <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:var(--text3);">대표자</div><div style="font-size:14px;margin-top:4px;">${pair(c.kcb, c.nice, c.repLevel)}</div></div>
+        <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:var(--text3);">공동대표 · 배우자</div><div style="font-size:14px;margin-top:4px;">${c.coNone ? "해당 없음" : pair(c.coKcb, c.coNice, c.coLevel)}</div></div>
       </div>
-      ${c.recovery ? `<div style="font-size:13px;margin-top:10px;">신용회복: ${escapeHtml(c.recovery.type || "-")}${c.recovery.round ? " · " + escapeHtml(c.recovery.round) : ""} · <b style="color:${c.recovery.faithful === "no" ? "#A32D2D" : "#0F6E56"}">${c.recovery.faithful === "no" ? "연체 있음" : c.recovery.faithful === "yes" ? "성실 납부 중" : "납부 상태 미입력"}</b></div>` : ""}
+      ${c.recovery ? `<div style="font-size:13px;margin-top:10px;">신용회복: ${escapeHtml(c.recovery.type || "종류 미입력")}${c.recovery.round ? " · " + escapeHtml(c.recovery.round) : ""} · <b style="color:${c.recovery.faithful === "no" ? "#A32D2D" : "#0F6E56"}">${c.recovery.faithful === "no" ? "연체 있음" : c.recovery.faithful === "yes" ? "성실 납부 중" : "납부 상태 미입력"}</b></div>` : ""}
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin:14px 0 6px;">기대출 ${r.loans.none ? "· 없음" : `합계 <b style="color:#1a1a18;">${htWon(r.loans.total)}</b>${r.loans.salesRatio !== null ? ` (최근 매출의 ${r.loans.salesRatio.toFixed(1)}%)` : ""}`}</div>
       ${loanRows ? `<div class="table-wrap"><table style="width:100%;font-size:12px;border-collapse:collapse;"><thead><tr style="color:var(--text3);text-align:left;"><th>기관</th><th>시기</th><th style="text-align:right;">금액</th></tr></thead><tbody>${loanRows}</tbody></table></div>` : ""}
       <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 신용점수 기준(임시): 700점 미만 주의, 600점 미만 위험</p>`);
@@ -3674,15 +3644,15 @@ function renderHometaxResults(r, input) {
     (r.vat.ytd ? `<div style="font-size:13px;margin-top:10px;background:#f9f9f8;border-radius:10px;padding:10px 12px;">${r.vat.ytd.year}년 ${r.vat.ytd.month}월까지 <b>${htWon(r.vat.ytd.sales)}</b> → 연 환산 약 <b>${htKwon(r.vat.ytd.annual)}</b>${r.vat.ytd.yoy !== null ? ` (전년 대비 <b style="color:${r.vat.ytd.yoy < 0 ? "#A32D2D" : "#0F6E56"}">${htPctText(r.vat.ytd.yoy)}</b>)` : ""}</div>` : "") +
     htTextBox(r.vat.text, r.vat.level));
 
-  // 대표자 소득
-  html += htCard(r.biz === "corp" ? "대표자 소득금액 (급여·배당 등)" : "대표자 종합소득금액", r.income.level,
+  // 대표자 소득 (자료가 있을 때만)
+  if (r.income.rows.length) html += htCard(r.biz === "corp" ? "대표자 소득금액 (급여·배당 등)" : "대표자 종합소득금액", r.income.level,
     (r.income.rows.length ? htBars(r.income.rows, "income", "#0F6E56") +
       `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${r.income.rows.filter(x => x.incomeRate !== null).map(x => `<span>${x.year}년 소득률 <b>${x.incomeRate.toFixed(1)}%</b></span>`).join("")}</div>` : "") +
     htTextBox(r.income.text, r.income.level));
 
   // 매입
   const pairRows = r.purchase.rows;
-  html += htCard("매입금액", r.purchase.level,
+  if (pairRows.length) html += htCard("매입금액", r.purchase.level,
     (pairRows.length ? htBars(pairRows, "purchase", "#B8860B") +
       `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${pairRows.filter(x => x.purchaseRatio !== null).map(x => `<span>${x.year}년 매입률 <b>${x.purchaseRatio.toFixed(1)}%</b> · 매출-매입 <b>${htWon(x.margin)}</b></span>`).join("")}</div>` : "") +
     htTextBox(r.purchase.text, r.purchase.level));
