@@ -2894,72 +2894,53 @@ function calcStability(fin) {
 }
 
 // ── 예상 한도 ──
-// ※ 임시 기준(운전자금 기준): 최근 매출 × 25% − 총부채, 매출 20% 이상 감소 시 20% 감액, 최대 5억.
-//    기관별 기준·예외를 받으면 이 표와 estimateLimit()만 바꾸면 된다.
+// 기관별 한도 = 기준 매출 × 25% ~ 30%. 순서에 따라 중복 지원이 가능한 조합:
+//   ① 소진공 → 재단(지역신용보증재단) → 미소   ② 소진공 → 기금(신용보증기금·기술보증기금) → 미소
+//   소진공·재단(또는 기금)이 모두 가능하면 매출의 50% ~ 60%, 미소는 1천만 ~ 2천만 원을 더한다.
+//   소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다.
 const HT_LIMIT_RULE = {
-  salesRatio: 0.25,       // 기준 매출 대비 운전자금 소요 비율
-  lowRatio: 0.7,          // 하한 = 상한 × 0.7
-  declineCut: 0.2,        // 매출 20% 이상 감소 시 감액 비율
-  cap: 500000000,         // 최대 한도
-  minUseful: 10000000,    // 이보다 작으면 "신청 실익 낮음"
-  unit: 1000000,          // 백만 원 단위로 내림
+  minRatio: 0.25,                       // 기관별 하한 비율
+  maxRatio: 0.30,                       // 기관별 상한 비율
+  miso: { min: 10000000, max: 20000000 },
+  unit: 1000000,                        // 백만 원 단위로 내림
 };
+
+function htIsSmallBiz(input) {
+  const emp = htNum(input.employees);
+  if (emp === null) return true;
+  const mfg = /제조|건설|운수|광업/.test(input.industry || "");
+  return emp < (mfg ? 10 : 5);
+}
 
 function estimateLimit(input, ctx) {
   const R = HT_LIMIT_RULE;
   const lv = ctx.vatLatest;
-  if (!lv || !(lv.vat > 0)) {
-    return { available: false, status: "none", low: 0, high: 0, steps: [], notes: [],
-             text: "매출(부가세 과세표준)을 입력하면 예상 한도를 계산합니다." };
+  const sales = (lv && lv.vat > 0) ? lv.vat : (ctx.ytdAnnual > 0 ? ctx.ytdAnnual : null);
+  if (!sales) {
+    return { available: false, status: "none", low: 0, high: 0, combos: [], steps: [], notes: [],
+             text: "매출을 입력하면 예상 한도를 계산합니다." };
   }
-  const steps = [];
-  const notes = [];
-  let amt = lv.vat * R.salesRatio;
-  steps.push({ label: `${lv.year}년 매출 × ${Math.round(R.salesRatio * 100)}% (운전자금 기준)`, amount: amt });
-
-  const fin = ctx.financial;
-  if (ctx.loansTotal > 0) {
-    amt -= ctx.loansTotal;
-    steps.push({ label: "기대출 합계 차감", amount: -ctx.loansTotal });
-  } else if (ctx.loansNone) {
-    // 기대출 없음 — 차감 없음
-  } else if (fin && fin.liabilities > 0) {
-    amt -= fin.liabilities;
-    steps.push({ label: "총부채 차감", amount: -fin.liabilities });
-  } else {
-    notes.push("기대출 금액이 없어 기존 차입금을 빼지 않았습니다. 기존 대출이 있으면 한도가 줄어듭니다.");
-  }
-  if (lv.vatYoy !== null && lv.vatYoy <= -20) {
-    const cut = Math.max(amt, 0) * R.declineCut;
-    amt -= cut;
-    steps.push({ label: `매출 ${Math.abs(lv.vatYoy).toFixed(0)}% 감소로 ${Math.round(R.declineCut * 100)}% 감액`, amount: -cut });
-  }
-  if (amt > R.cap) {
-    steps.push({ label: `최대 한도 ${Math.round(R.cap / 100000000)}억 원 적용`, amount: R.cap - amt });
-    amt = R.cap;
-  }
-  amt = Math.max(0, amt);
-  const high = Math.floor(amt / R.unit) * R.unit;
-  const low = Math.floor(high * R.lowRatio / R.unit) * R.unit;
-
+  const floorU = v => Math.floor(v / R.unit) * R.unit;
+  const per = { low: floorU(sales * R.minRatio), high: floorU(sales * R.maxRatio) };
+  const small = htIsSmallBiz(input);
+  const sojin = { short: "소진공", org: "소상공인시장진흥공단", low: per.low, high: per.high };
+  const miso = { short: "미소", org: "미소금융", low: R.miso.min, high: R.miso.max };
+  const mk = (mid) => {
+    const orgs = (small ? [sojin] : []).concat([mid, miso]);
+    return { name: orgs.map(o => o.short).join(" + "), orgs,
+             low: orgs.reduce((a, o) => a + o.low, 0), high: orgs.reduce((a, o) => a + o.high, 0) };
+  };
+  const combos = [
+    mk({ short: "재단", org: "지역신용보증재단", low: per.low, high: per.high }),
+    mk({ short: "기금", org: "신용보증기금 · 기술보증기금", low: per.low, high: per.high }),
+  ];
+  const base = { available: true, sales, small, per, combos, steps: [], notes: [] };
   const ar = (input.arrears && input.arrears.status) || "unknown";
-  if (ar === "has") {
-    return { available: true, status: "blocked", low: 0, high: 0, calcLow: low, calcHigh: high, steps, notes,
-             text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소하면 아래 계산 금액 수준을 기대할 수 있습니다." };
-  }
-  if (fin && fin.capitalEroded) {
-    return { available: true, status: "blocked", low: 0, high: 0, calcLow: low, calcHigh: high, steps, notes,
-             text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다. 자본 확충 후 다시 확인하세요." };
-  }
-  if (ar === "unknown") notes.push("체납 여부를 확인하지 않았습니다. 체납이 있으면 신청이 어렵습니다.");
-  if (ctx.creditLow) notes.push("대표자 신용점수가 낮아 실제 한도가 줄거나 보증이 어려울 수 있습니다.");
-  if (ctx.recoveryBad) notes.push("신용회복 납부에 연체가 있어 대부분의 기관에서 지원이 제한될 수 있습니다.");
-  if (high < R.minUseful) {
-    return { available: true, status: "low", low, high, steps, notes,
-             text: "산출된 한도가 작아 신청 실익이 낮을 수 있습니다." };
-  }
-  return { available: true, status: "ok", low, high, steps, notes,
-           text: "입력 자료 기준으로 계산한 예상 한도입니다." };
+  if (ar === "has") return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: combos[0].low, calcHigh: combos[0].high,
+    text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요." });
+  if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: combos[0].low, calcHigh: combos[0].high,
+    text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다." });
+  return Object.assign(base, { status: "ok", low: combos[0].low, high: combos[0].high, text: "" });
 }
 
 // 필요자금과 예상 한도 비교
@@ -3162,7 +3143,7 @@ function analyzeHometax(input, opts) {
         : worst === "warn" ? "진행은 가능하나 사전에 확인해 두면 좋은 항목이 있습니다."
         : "입력된 자료 기준으로 눈에 띄는 위험 요인이 없습니다.",
   };
-  const limit = estimateLimit(input, { vatLatest: lv, financial, loansTotal, loansNone: !!input.loans_none,
+  const limit = estimateLimit(input, { vatLatest: lv, ytdAnnual: vat.ytd ? vat.ytd.annual : null, financial, loansTotal, loansNone: !!input.loans_none,
                                        creditLow: credit.repLevel === "danger" || credit.repLevel === "warn",
                                        recoveryBad: !!(recActive && rec.faithful === "no") });
   limit.need = htNeedFit(input.need, limit);
@@ -3541,28 +3522,34 @@ function htLimitCard(L) {
       <div class="card-title">💰 예상 한도</div>
       <p style="font-size:13px;color:var(--text2);line-height:1.6;">${escapeHtml(L ? L.text : "")}</p></div>`;
   }
-  const blocked = L.status === "blocked";
-  const color = blocked ? "#A32D2D" : L.status === "low" ? "#B8860B" : "#185FA5";
-  const bg = blocked ? "#FCEBEB" : L.status === "low" ? "#FEF6D8" : "#EBF2FA";
-  const main = blocked
-    ? `<div style="font-size:22px;font-weight:800;color:${color};">현재 신청 어려움</div>
-       <div style="font-size:12px;color:var(--text3);margin-top:4px;">해소 후 기대 금액: 약 ${htKwon(L.calcLow)} ~ ${htKwon(L.calcHigh)}</div>`
-    : `<div style="font-size:12px;color:var(--text3);margin-bottom:2px;">예상 한도</div>
-       <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:${color};letter-spacing:-0.02em;line-height:1.35;">약 <span style="white-space:nowrap;">${htKwon(L.low)}</span> ~ <span style="white-space:nowrap;">${htKwon(L.high)}</span></div>`;
-  const steps = L.steps.map(st => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#4a4a45;padding:4px 0;border-bottom:1px dashed #e5e4e0;">
-      <span>${escapeHtml(st.label)}</span><b style="white-space:nowrap;">${st.amount < 0 ? "−" + htKwon(-st.amount) : htKwon(st.amount)}</b></div>`).join("");
-  const notes = L.notes.map(n => `<div style="font-size:12px;color:#8a6d00;margin-top:4px;">• ${escapeHtml(n)}</div>`).join("");
-  return `<div class="card" style="border-top:4px solid ${color};">
+  const range = (a, b) => `<span style="white-space:nowrap;">${htKwon(a)}</span> ~ <span style="white-space:nowrap;">${htKwon(b)}</span>`;
+  if (L.status === "blocked") {
+    return `<div class="card" style="border-top:4px solid #A32D2D;">
+      <div class="card-title">💰 예상 한도</div>
+      <div style="background:#FCEBEB;border-radius:12px;padding:14px 16px;">
+        <div style="font-size:22px;font-weight:800;color:#A32D2D;">현재 신청 어려움</div>
+        <div style="font-size:13px;color:#4a4a45;margin-top:6px;">${escapeHtml(L.text)}</div>
+      </div></div>`;
+  }
+  const combo = c => `<div style="border:1px solid #e5e4e0;border-radius:12px;padding:12px 14px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
+        <div style="font-size:14px;font-weight:700;color:#1a1a18;">${escapeHtml(c.name)}</div>
+        <div style="font-size:15px;font-weight:800;color:#185FA5;">${range(c.low, c.high)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;">
+        ${c.orgs.map(o => `<span style="font-size:12px;background:#f5f4f1;border-radius:8px;padding:4px 8px;"><b>${escapeHtml(o.short)}</b> <span style="color:#6b6a65;">${htKwon(o.low)}~${htKwon(o.high)}</span></span>`).join('<span style="color:#b0aea8;">→</span>')}
+      </div></div>`;
+  return `<div class="card" style="border-top:4px solid #185FA5;">
     <div class="card-title">💰 예상 한도</div>
-    <div style="background:${bg};border-radius:12px;padding:14px 16px;">${main}
-      <div style="font-size:12px;color:#4a4a45;margin-top:6px;">${escapeHtml(L.text)}</div></div>
-    <div style="margin-top:12px;"><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px;">계산 근거</div>${steps}</div>
+    <div style="background:#EBF2FA;border-radius:12px;padding:14px 16px;">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:2px;">예상 한도 (중복 지원 시 합계)</div>
+      <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:#185FA5;letter-spacing:-0.02em;line-height:1.35;">약 ${range(L.low, L.high)}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">${L.combos.map(combo).join("")}</div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
       <div style="font-size:12px;color:var(--text3);">필요자금</div>
       <div style="font-size:15px;font-weight:700;color:${HT_LEVEL_COLOR[L.need.level]};">${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</div>
       <div style="font-size:12px;color:#4a4a45;margin-top:2px;">${HT_LEVEL_ICON[L.need.level]} ${escapeHtml(L.need.text)}</div></div>` : ""}
-    ${notes}
-    <p style="font-size:11px;color:var(--text3);line-height:1.6;margin-top:10px;">※ 최근 매출의 25%에서 기대출(없으면 총부채)을 뺀 운전자금 기준의 참고용 추정치입니다. 기관별 기준·예외와 신용도는 반영되지 않았으며, 실제 한도는 심사 결과에 따라 달라집니다.</p>
   </div>`;
 }
 
