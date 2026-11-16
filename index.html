@@ -2898,6 +2898,7 @@ function calcStability(fin) {
 //   ① 소진공 → 재단(지역신용보증재단) → 미소   ② 소진공 → 기금(신용보증기금·기술보증기금) → 미소
 //   소진공·재단(또는 기금)이 모두 가능하면 매출의 50% ~ 60%, 미소는 1천만 ~ 2천만 원을 더한다.
 //   소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다.
+//   기대출 합계는 최종 합계에서 뺀다. ※ 이 기준들은 내부 계산용 — 화면에는 금액만 보여준다.
 const HT_LIMIT_RULE = {
   minRatio: 0.25,                       // 기관별 하한 비율
   maxRatio: 0.30,                       // 기관별 상한 비율
@@ -2940,7 +2941,10 @@ function estimateLimit(input, ctx) {
     text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요." });
   if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: combos[0].low, calcHigh: combos[0].high,
     text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다." });
-  return Object.assign(base, { status: "ok", low: combos[0].low, high: combos[0].high, text: "" });
+  const loans = ctx.loansTotal > 0 ? ctx.loansTotal : 0;   // 기대출 합계는 한도에서 차감
+  const low = Math.max(0, combos[0].low - loans), high = Math.max(0, combos[0].high - loans);
+  if (high <= 0) return Object.assign(base, { status: "low", low: 0, high: 0, loans, text: "기대출이 많아 추가 한도 여력이 부족합니다." });
+  return Object.assign(base, { status: "ok", low, high, loans, text: "" });
 }
 
 // 필요자금과 예상 한도 비교
@@ -3117,11 +3121,11 @@ function analyzeHometax(input, opts) {
 
   // 9) 우대·참고 요소
   const prefs = [];
-  if (profile.age !== null && profile.age <= 39) prefs.push({ tag: "청년 대표", text: `대표자 만 ${profile.age}세 — 청년(만 39세 이하) 우대 대상` });
-  if (bizAge && bizAge.months < 84) prefs.push({ tag: "창업기업", text: `업력 ${bizAge.years}년 ${bizAge.rest}개월 — 창업 7년 이내 기업 지원 대상` });
+  if (profile.age !== null && profile.age <= 39) prefs.push({ tag: "청년 대표", text: `대표자 만 ${profile.age}세 — 청년 대표 우대 대상` });
+  if (bizAge && bizAge.months < 84) prefs.push({ tag: "창업기업", text: `업력 ${bizAge.years}년 ${bizAge.rest}개월 — 창업기업 지원 대상` });
   if (profile.woman) prefs.push({ tag: "여성 대표", text: "여성기업 우대 대상 (여성기업 확인서 발급 여부 확인)" });
   if (profile.career !== null && profile.career >= 10) prefs.push({ tag: "업계 경력", text: `동종업계 경력 ${profile.career}년` });
-  if (profile.employees !== null && profile.employees < 5) prefs.push({ tag: "소상공인", text: `상시근로자 ${profile.employees}명 — 소상공인 해당 가능 (제조·건설·운수업은 10명 미만)` });
+  if (profile.employees !== null && profile.employees < 5) prefs.push({ tag: "소상공인", text: `상시근로자 ${profile.employees}명 — 소상공인 해당 가능` });
   if (profile.hire !== null && profile.hire > 0) prefs.push({ tag: "고용 창출", text: `추가 채용 예정 ${profile.hire}명 — 고용 연계 우대 가능` });
   if (input.naeil) prefs.push({ tag: "내일채움공제", text: String(input.naeil) });
   if (input.umbrella === "yes") prefs.push({ tag: "노란우산공제", text: "노란우산공제 가입" });
@@ -3531,21 +3535,19 @@ function htLimitCard(L) {
         <div style="font-size:13px;color:#4a4a45;margin-top:6px;">${escapeHtml(L.text)}</div>
       </div></div>`;
   }
-  const combo = c => `<div style="border:1px solid #e5e4e0;border-radius:12px;padding:12px 14px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
-        <div style="font-size:14px;font-weight:700;color:#1a1a18;">${escapeHtml(c.name)}</div>
-        <div style="font-size:15px;font-weight:800;color:#185FA5;">${range(c.low, c.high)}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;">
-        ${c.orgs.map(o => `<span style="font-size:12px;background:#f5f4f1;border-radius:8px;padding:4px 8px;"><b>${escapeHtml(o.short)}</b> <span style="color:#6b6a65;">${htKwon(o.low)}~${htKwon(o.high)}</span></span>`).join('<span style="color:#b0aea8;">→</span>')}
+  if (L.status === "low") {
+    return `<div class="card" style="border-top:4px solid #B8860B;">
+      <div class="card-title">💰 예상 한도</div>
+      <div style="background:#FEF6D8;border-radius:12px;padding:14px 16px;">
+        <div style="font-size:20px;font-weight:800;color:#B8860B;">추가 한도 여력 부족</div>
+        <div style="font-size:13px;color:#4a4a45;margin-top:6px;">${escapeHtml(L.text)}</div>
       </div></div>`;
+  }
   return `<div class="card" style="border-top:4px solid #185FA5;">
     <div class="card-title">💰 예상 한도</div>
     <div style="background:#EBF2FA;border-radius:12px;padding:14px 16px;">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:2px;">예상 한도 (중복 지원 시 합계)</div>
       <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:#185FA5;letter-spacing:-0.02em;line-height:1.35;">약 ${range(L.low, L.high)}</div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">${L.combos.map(combo).join("")}</div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
       <div style="font-size:12px;color:var(--text3);">필요자금</div>
       <div style="font-size:15px;font-weight:700;color:${HT_LEVEL_COLOR[L.need.level]};">${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</div>
