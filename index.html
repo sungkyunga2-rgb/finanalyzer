@@ -2893,18 +2893,19 @@ function calcStability(fin) {
            erosionStatus, erosionClass, net, items, total, max, pct, grade };
 }
 
-// ── 예상 한도 ──
-// 기관별 한도 = 기준 매출 × 25% ~ 30%. 순서에 따라 중복 지원이 가능한 조합:
-//   ① 소진공 → 재단(지역신용보증재단) → 미소   ② 소진공 → 기금(신용보증기금·기술보증기금) → 미소
-//   소진공·재단(또는 기금)이 모두 가능하면 매출의 50% ~ 60%, 미소는 1천만 ~ 2천만 원을 더한다.
-//   소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다.
-//   기대출 합계는 최종 합계에서 뺀다. ※ 이 기준들은 내부 계산용 — 화면에는 금액만 보여준다.
+// ── 예상 한도 ──  (※ 아래 기준은 내부 계산용 — 화면에는 기관명과 금액만 보여준다)
+// · 기관별 한도 = 기준 매출 × 25% ~ 30% (미소금융은 1천만 ~ 2천만 원)
+// · 순서에 따라 중복 지원: 소진공 → (재단 · 신용보증기금 · 기술보증기금 중 1곳) → 미소
+// · 재단 · 신용보증기금 · 기술보증기금은 셋 중 한 곳만 이용 가능 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
+// · 기대출은 같은 기관의 한도에서 차감 (기관명으로 구분). 은행 등 그 밖의 대출은 기관별 한도에 반영하지 않는다
+// · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다
 const HT_LIMIT_RULE = {
-  minRatio: 0.25,                       // 기관별 하한 비율
-  maxRatio: 0.30,                       // 기관별 상한 비율
+  minRatio: 0.25,
+  maxRatio: 0.30,
   miso: { min: 10000000, max: 20000000 },
-  unit: 1000000,                        // 백만 원 단위로 내림
+  unit: 1000000,
 };
+const HT_GUARANTEE = ["jaedan", "kodit", "kibo"];   // 셋 중 한 곳만
 
 function htIsSmallBiz(input) {
   const emp = htNum(input.employees);
@@ -2913,44 +2914,63 @@ function htIsSmallBiz(input) {
   return emp < (mfg ? 10 : 5);
 }
 
+// 기대출 기관명 → 기관 코드
+function htLoanOrg(name) {
+  const n = String(name || "").replace(/\s/g, "");
+  if (!n) return null;
+  if (/소진공|소상공인시장진흥|소상공인진흥|소상공인공단/.test(n)) return "sojin";
+  if (/재단|[가-힣]{2}신보/.test(n)) return "jaedan";            // 지역신용보증재단 (서울신보·경기신보 등)
+  if (/신용보증기금|신보/.test(n)) return "kodit";
+  if (/기술보증|기보/.test(n)) return "kibo";
+  if (/미소/.test(n)) return "miso";
+  return null;
+}
+
 function estimateLimit(input, ctx) {
   const R = HT_LIMIT_RULE;
   const lv = ctx.vatLatest;
   const sales = (lv && lv.vat > 0) ? lv.vat : (ctx.ytdAnnual > 0 ? ctx.ytdAnnual : null);
   if (!sales) {
-    return { available: false, status: "none", low: 0, high: 0, combos: [], steps: [], notes: [],
+    return { available: false, status: "none", low: 0, high: 0, orgs: [], steps: [], notes: [],
              text: "매출을 입력하면 예상 한도를 계산합니다." };
   }
   const floorU = v => Math.floor(v / R.unit) * R.unit;
   const per = { low: floorU(sales * R.minRatio), high: floorU(sales * R.maxRatio) };
   const small = htIsSmallBiz(input);
-  const sojin = { short: "소진공", org: "소상공인시장진흥공단", low: per.low, high: per.high };
-  const miso = { short: "미소", org: "미소금융", low: R.miso.min, high: R.miso.max };
-  const mk = (mid) => {
-    const orgs = (small ? [sojin] : []).concat([mid, miso]);
-    return { name: orgs.map(o => o.short).join(" + "), orgs,
-             low: orgs.reduce((a, o) => a + o.low, 0), high: orgs.reduce((a, o) => a + o.high, 0) };
+
+  // 기관별 기대출
+  const used = { sojin: 0, jaedan: 0, kodit: 0, kibo: 0, miso: 0 };
+  (ctx.loansList || []).forEach(l => { const k = htLoanOrg(l.org); const a = htNum(l.amount) || 0; if (k && a > 0) used[k] += a; });
+
+  const mk = (key, name, lo, hi) => {
+    const low = Math.max(0, lo - used[key]), high = Math.max(0, hi - used[key]);
+    return { key, name, low, high, used: used[key], status: high > 0 ? "ok" : "exhausted" };
   };
-  const combos = [
-    mk({ short: "재단", org: "지역신용보증재단", low: per.low, high: per.high }),
-    mk({ short: "기금", org: "신용보증기금 · 기술보증기금", low: per.low, high: per.high }),
-  ];
-  const orgs = (small ? [{ name: "소상공인시장진흥공단", low: per.low, high: per.high }] : []).concat([
-    { name: "지역신용보증재단", low: per.low, high: per.high },
-    { name: "신용보증기금", low: per.low, high: per.high },
-    { name: "기술보증기금", low: per.low, high: per.high },
-    { name: "미소금융", low: R.miso.min, high: R.miso.max },
-  ]);
-  const base = { available: true, sales, small, per, combos, orgs, steps: [], notes: [] };
+  const orgs = [];
+  if (small) orgs.push(mk("sojin", "소상공인시장진흥공단", per.low, per.high));
+  const g = [mk("jaedan", "지역신용보증재단", per.low, per.high), mk("kodit", "신용보증기금", per.low, per.high), mk("kibo", "기술보증기금", per.low, per.high)];
+  const inUse = g.filter(o => o.used > 0);
+  let chosen = null;
+  if (inUse.length) {
+    chosen = inUse.slice().sort((a, b) => b.high - a.high)[0];      // 이용 중인 기관만 가능
+    g.forEach(o => { if (o !== chosen) { o.status = "blocked"; o.low = 0; o.high = 0; } });
+  }
+  orgs.push(...g);
+  orgs.push(mk("miso", "미소금융", R.miso.min, R.miso.max));
+
+  const sumOf = k => orgs.filter(o => k(o) && o.status === "ok");
+  const mid = chosen ? (chosen.status === "ok" ? chosen : null) : g[0];
+  const parts = sumOf(o => o.key === "sojin" || o.key === "miso").concat(mid && mid.status === "ok" ? [mid] : []);
+  const total = { low: parts.reduce((a, o) => a + o.low, 0), high: parts.reduce((a, o) => a + o.high, 0) };
+
+  const base = { available: true, sales, small, per, orgs, steps: [], notes: [] };
   const ar = (input.arrears && input.arrears.status) || "unknown";
-  if (ar === "has") return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: combos[0].low, calcHigh: combos[0].high,
+  if (ar === "has") return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: total.low, calcHigh: total.high,
     text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요." });
-  if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: combos[0].low, calcHigh: combos[0].high,
+  if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: total.low, calcHigh: total.high,
     text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다." });
-  const loans = ctx.loansTotal > 0 ? ctx.loansTotal : 0;   // 기대출 합계는 한도에서 차감
-  const low = Math.max(0, combos[0].low - loans), high = Math.max(0, combos[0].high - loans);
-  if (high <= 0) return Object.assign(base, { status: "low", low: 0, high: 0, loans, text: "기대출이 많아 추가 한도 여력이 부족합니다." });
-  return Object.assign(base, { status: "ok", low, high, loans, text: "" });
+  if (total.high <= 0) return Object.assign(base, { status: "low", low: 0, high: 0, text: "기대출이 많아 추가 한도 여력이 부족합니다." });
+  return Object.assign(base, { status: "ok", low: total.low, high: total.high, text: "" });
 }
 
 // 필요자금과 예상 한도 비교
@@ -3153,7 +3173,7 @@ function analyzeHometax(input, opts) {
         : worst === "warn" ? "진행은 가능하나 사전에 확인해 두면 좋은 항목이 있습니다."
         : "입력된 자료 기준으로 눈에 띄는 위험 요인이 없습니다.",
   };
-  const limit = estimateLimit(input, { vatLatest: lv, ytdAnnual: vat.ytd ? vat.ytd.annual : null, financial, loansTotal, loansNone: !!input.loans_none,
+  const limit = estimateLimit(input, { vatLatest: lv, ytdAnnual: vat.ytd ? vat.ytd.annual : null, financial, loansTotal, loansList: loans, loansNone: !!input.loans_none,
                                        creditLow: credit.repLevel === "danger" || credit.repLevel === "warn",
                                        recoveryBad: !!(recActive && rec.faithful === "no") });
   limit.need = htNeedFit(input.need, limit);
@@ -3557,8 +3577,9 @@ function htLimitCard(L) {
     <div style="margin-top:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 기관</div>
       <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
-        <span style="font-weight:600;color:#1a1a18;">${escapeHtml(o.name)}</span>
-        <span style="font-weight:600;color:#185FA5;white-space:nowrap;">${htKwon(o.low)} ~ ${htKwon(o.high)}</span></div>`).join("")}</div>
+        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}</span>
+        ${o.status === "ok" ? `<span style="font-weight:600;color:#185FA5;white-space:nowrap;">${htKwon(o.low)} ~ ${htKwon(o.high)}</span>`
+          : `<span style="font-weight:600;color:#9b9a95;white-space:nowrap;">${o.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</span>`}</div>`).join("")}</div>
     </div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
       <div style="font-size:12px;color:var(--text3);">필요자금</div>
