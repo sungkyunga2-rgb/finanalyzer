@@ -868,7 +868,6 @@
         <div class="ht-body">
           <div class="ht-line">
             <label class="ht-f"><span>직원 수 (4대보험)<b class="ht-req">*</b></span><input type="number" inputmode="numeric" id="ht-employees" placeholder="5" /></label>
-            <label class="ht-f"><span>추가 채용 예정</span><input type="number" inputmode="numeric" id="ht-hire" placeholder="0" /></label>
             <label class="ht-f"><span>내일채움공제</span><input type="text" id="ht-naeil" placeholder="가입 2명" /></label>
             <label class="ht-f"><span>노란우산공제</span><select id="ht-umbrella"><option value="">-</option><option value="yes">가입</option><option value="no">미가입</option></select></label>
           </div>
@@ -3196,7 +3195,7 @@ const HT_FIELDS = [
   ["need.max", "ht-need-max", "money"], ["need.min", "ht-need-min", "money"], ["need.purpose", "ht-need-purpose", "text"],
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"],
-  ["employees", "ht-employees", "int"], ["hire_plan", "ht-hire", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
+  ["employees", "ht-employees", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
   ["certs", "ht-certs", "text"], ["lab", "ht-lab", "text"], ["export", "ht-export", "text"], ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
   ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
@@ -3572,6 +3571,63 @@ function htLimitCard(L) {
   </div>`;
 }
 
+// 기업정보 — 입력한 내용을 인콜일지 형태로 한눈에
+function htInfoCard(r, input) {
+  const e = v => escapeHtml(String(v));
+  const has = v => v !== null && v !== undefined && v !== "" && v !== false;
+  const item = (k, v) => has(v) ? `<span style="white-space:nowrap;"><span style="color:var(--text3);">${k}</span> <b style="font-weight:600;color:#1a1a18;">${v}</b></span>` : "";
+  const row = (head, parts) => {
+    const body = parts.filter(Boolean).join(' <span style="color:#d5d3cd;margin:0 4px;">|</span> ');
+    return `<div class="ht-row"><div class="ht-head">${head}</div><div class="ht-body" style="font-size:13px;line-height:1.9;display:block;">${body || '<span style="color:var(--text3);">미입력</span>'}</div></div>`;
+  };
+  const pf = r.profile || {}, c = r.credit || {}, rp = input.rep || {}, need = input.need || {}, ar = input.arrears || {};
+  const score = (v, lvl) => has(v) ? `<span style="color:${HT_LEVEL_COLOR[lvl] || "#1a1a18"};">${v}점</span>` : "";
+  const years = (input.years || []).filter(y => y.year && y.vat !== null && y.vat !== undefined)
+    .sort((a, b) => a.year - b.year).map(y => item(`${y.year}년`, htKwon(y.vat)));
+  const yt = input.ytd || {};
+  const ytd = (has(yt.month) && has(yt.sales)) ? item(`${yt.year || ""}년 ${yt.month}월까지`, htKwon(yt.sales)) : "";
+  const rec = c.recovery;
+  const arLabel = ar.status === "has" ? `<span style="color:#A32D2D;">있음${has(ar.amount) ? " " + htKwon(ar.amount) : ""}</span>` : ar.status === "none" ? "없음" : "미확인";
+  const loans = r.loans || { list: [] };
+  const loanTxt = loans.none ? item("기대출", "없음")
+    : loans.list.length ? item(`기대출 ${loans.list.length}건 합계`, htKwon(loans.total)) + "<br>" +
+        loans.list.map(l => `<span style="white-space:nowrap;color:#4a4a45;">· ${e(l.org || "기관 미입력")}${l.date ? " (" + e(l.date) + ")" : ""} ${htNum(l.amount) !== null ? htKwon(htNum(l.amount)) : ""}</span>`).join("<br>")
+    : "";
+  const labMap = { lab: "기업부설연구소", dept: "연구개발전담부서", none: "없음" };
+  const facMap = { own: "자가", rent: "임차", none: "없음" };
+  const f = input.fin || {};
+  const fin = r.financial
+    ? [item("총자산", htKwon(r.financial.assets)), item("총부채", htKwon(r.financial.liabilities)),
+       item("부채비율", r.financial.dr !== null ? r.financial.dr.toFixed(1) + "%" : "자본잠식"),
+       item("이자보상배수", r.financial.noInt ? "무차입" : (r.financial.ice !== null ? r.financial.ice.toFixed(2) + "배" : ""))]
+    : r.ratios ? [item("부채비율", has(r.ratios.dr) ? r.ratios.dr + "%" : ""), item("이자보상배수", has(r.ratios.icr) ? r.ratios.icr + "배" : "")] : [];
+
+  const rows = [
+    row("업체", [item("회사", e(input.company_name || "")), item("대표", e(input.rep_name || "")), item("사업자번호", e(input.business_number || "")),
+                 item("구분", r.biz === "corp" ? "법인" : "개인")]),
+    row("업종 · 업력", [item("업태/업종", e(input.industry || "")),
+                       item("창업", pf.founded ? e(pf.founded) + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""),
+                       item("소재지", e(input.location || ""))]),
+    row("매출", years.concat([ytd]).concat(r.vat && r.vat.ytd ? [item("연 환산", htKwon(r.vat.ytd.annual))] : [])),
+    row("신용점수", [has(c.kcb) || has(c.nice) ? `<span style="white-space:nowrap;"><span style="color:var(--text3);">대표</span> <b style="font-weight:600;">KCB ${score(c.kcb, c.repLevel) || "-"} · NICE ${score(c.nice, c.repLevel) || "-"}</b></span>` : "",
+                     has(c.coKcb) || has(c.coNice) ? `<span style="white-space:nowrap;"><span style="color:var(--text3);">공동·배우자</span> <b style="font-weight:600;">KCB ${score(c.coKcb, c.coLevel) || "-"} · NICE ${score(c.coNice, c.coLevel) || "-"}</b></span>` : "",
+                     rec ? item("신용회복", (rec.faithful === "no" ? '<span style="color:#A32D2D;">연체 있음</span>' : rec.faithful === "yes" ? "성실 납부" : "진행") + (rec.type ? " · " + e(rec.type) : "")) : ""]),
+    row("국세 체납", [item("체납", arLabel), item("세목·기간", e(ar.note || "")), item("기타 연체·가압류", e(ar.other || ""))]),
+    row("기대출", [loanTxt]),
+    row("필요자금", [item("최대", has(need.max) ? htKwon(need.max) : ""), item("최소", has(need.min) ? htKwon(need.min) : ""), item("용도", e(need.purpose || ""))]),
+    row("대표자", [item("나이", has(rp.age) ? `만 ${rp.age}세` : ""), item("동종업계 경력", has(rp.career) ? `${rp.career}년` : ""),
+                  item("보유 자산", e(rp.assets_note || "")), item("혼인", rp.marital === "married" ? "기혼" : rp.marital === "single" ? "미혼" : ""),
+                  rp.woman ? item("여성 대표", "예") : ""]),
+    row("고용", [item("직원 수", has(input.employees) ? `${input.employees}명` : ""), item("내일채움공제", e(input.naeil || "")),
+                item("노란우산공제", input.umbrella === "yes" ? "가입" : input.umbrella === "no" ? "미가입" : "")]),
+    row("기업 현황", [item("인증", e(input.certs || "")), item("연구소", labMap[input.lab] || ""), item("수출", e(input.export || "")), item("공장", facMap[input.factory] || "")]),
+  ];
+  if (fin.some(Boolean)) rows.push(row("재무", fin));
+  if (input.memo) rows.push(`<div class="ht-row"><div class="ht-head">추가사항</div><div class="ht-body" style="font-size:13px;line-height:1.7;white-space:pre-wrap;display:block;">${e(input.memo)}</div></div>`);
+  return `<div style="font-size:13px;font-weight:600;color:var(--text2);margin:0 0 6px;">📋 기업정보</div>
+    <div class="card ht-sheet" style="margin-bottom:1rem;">${rows.join("")}</div>`;
+}
+
 function renderHometaxResults(r, input) {
   const wrap = document.getElementById("ht-results");
   const o = r.overall;
@@ -3586,6 +3642,7 @@ function renderHometaxResults(r, input) {
     </div>`).join("") : `<div style="font-size:13px;color:var(--text2);margin-top:8px;">확인이 필요한 항목이 없습니다.</div>`;
   let html = `
     <div style="font-size:16px;font-weight:600;margin-bottom:.75rem;">🏢 ${escapeHtml(input.company_name)} <span style="font-size:12px;font-weight:400;color:var(--text3);">${r.biz === "corp" ? "법인사업자" : "개인사업자"}</span></div>
+    ${htInfoCard(r, input)}
     <div class="card" style="border-top:4px solid ${oc};">
       <div class="card-title">종합 요약</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -3597,36 +3654,6 @@ function renderHometaxResults(r, input) {
 
   // 예상 한도
   html += htLimitCard(r.limit);
-
-  // 업체 개요
-  const pf = r.profile || {};
-  const kv = (k, v) => v ? `<div style="display:flex;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid #f0efeb;"><span style="width:110px;flex-shrink:0;color:var(--text3);">${k}</span><span style="color:#1a1a18;">${v}</span></div>` : "";
-  html += htCard("업체 개요", "info", `
-    ${kv("업태 / 업종", escapeHtml(pf.industry))}
-    ${kv("주 생산 품목", escapeHtml(pf.product))}
-    ${kv("실제 하는 일", escapeHtml(pf.work))}
-    ${kv("사업장 소재지", escapeHtml(pf.location))}
-    ${kv("창업년월 · 업력", pf.founded ? escapeHtml(pf.founded) + (pf.bizAge ? ` · <b>${pf.bizAge.years}년 ${pf.bizAge.rest}개월</b>` : "") : "")}
-    ${kv("직원 수", pf.employees !== null && pf.employees !== undefined ? `${pf.employees}명${pf.hire ? ` (추가 채용 예정 ${pf.hire}명)` : ""}` : "")}
-    ${kv("대표자", [pf.age !== null && pf.age !== undefined ? `만 ${pf.age}세` : "", pf.career !== null && pf.career !== undefined ? `동종업계 경력 ${pf.career}년` : "", pf.woman ? "여성 대표" : "", pf.marital === "married" ? "기혼" : pf.marital === "single" ? "미혼" : ""].filter(Boolean).join(" · "))}
-    ${kv("보유 자산", escapeHtml(pf.assets))}`);
-
-  // 신용 · 기대출
-  if (r.credit) {
-    const c = r.credit, sc = (v, lvl) => v === null ? "-" : `<b style="color:${HT_LEVEL_COLOR[lvl]}">${v}점</b>`;
-    const pair = (k, n, lvl) => (k === null && n === null) ? `<span style="color:var(--text3);">미입력</span>` : `KCB ${sc(k, lvl)} · NICE ${sc(n, lvl)}`;
-    const lvRank = Math.max(htLevelRank(c.repLevel), htLevelRank(c.coLevel), c.recovery ? (c.recovery.faithful === "no" ? 3 : 2) : 0);
-    const loanRows = (r.loans.list || []).map(l => `<tr><td>${escapeHtml(l.org || "-")}</td><td>${escapeHtml(l.date || "-")}</td><td style="text-align:right;">${htWon(htNum(l.amount))}</td></tr>`).join("");
-    html += htCard("신용 · 기대출", lvRank >= 3 ? "danger" : lvRank === 2 ? "warn" : "safe", `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
-        <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:var(--text3);">대표자</div><div style="font-size:14px;margin-top:4px;">${pair(c.kcb, c.nice, c.repLevel)}</div></div>
-        <div style="background:#f9f9f8;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:var(--text3);">공동대표 · 배우자</div><div style="font-size:14px;margin-top:4px;">${c.coNone ? "해당 없음" : pair(c.coKcb, c.coNice, c.coLevel)}</div></div>
-      </div>
-      ${c.recovery ? `<div style="font-size:13px;margin-top:10px;">신용회복: ${escapeHtml(c.recovery.type || "종류 미입력")}${c.recovery.round ? " · " + escapeHtml(c.recovery.round) : ""} · <b style="color:${c.recovery.faithful === "no" ? "#A32D2D" : "#0F6E56"}">${c.recovery.faithful === "no" ? "연체 있음" : c.recovery.faithful === "yes" ? "성실 납부 중" : "납부 상태 미입력"}</b></div>` : ""}
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin:14px 0 6px;">기대출 ${r.loans.none ? "· 없음" : `합계 <b style="color:#1a1a18;">${htWon(r.loans.total)}</b>${r.loans.salesRatio !== null ? ` (최근 매출의 ${r.loans.salesRatio.toFixed(1)}%)` : ""}`}</div>
-      ${loanRows ? `<div class="table-wrap"><table style="width:100%;font-size:12px;border-collapse:collapse;"><thead><tr style="color:var(--text3);text-align:left;"><th>기관</th><th>시기</th><th style="text-align:right;">금액</th></tr></thead><tbody>${loanRows}</tbody></table></div>` : ""}
-      <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 신용점수 기준(임시): 700점 미만 주의, 600점 미만 위험</p>`);
-  }
 
   // 국세 체납
   html += htCard("국세 체납", r.arrears.level, `
@@ -3704,9 +3731,6 @@ function renderHometaxResults(r, input) {
       <span style="flex-shrink:0;font-size:11px;font-weight:700;color:#185FA5;background:#EBF2FA;border-radius:8px;padding:3px 8px;">${escapeHtml(p.tag)}</span>
       <span style="font-size:13px;color:#2d3748;line-height:1.6;">${escapeHtml(p.text)}</span></div>`).join(""));
   }
-  // 추가사항
-  if (input.memo) html += htCard("추가사항", "info", `<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:#2d3748;">${escapeHtml(input.memo)}</div>`);
-
   html += `<p class="note" style="margin-bottom:12px;">※ 입력하신 자료를 기준으로 자동 계산한 참고용 분석이며, 실제 심사 결과와 다를 수 있습니다. 중요한 의사결정 전에 홈택스 원본 서류를 반드시 확인하세요.</p>
     <div style="display:flex;gap:8px;margin-bottom:24px;">
       <button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ 입력 수정하기</button>
