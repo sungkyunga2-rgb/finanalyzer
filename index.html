@@ -765,7 +765,7 @@
           <div class="ht-line">
             <label class="ht-f" style="grid-column:span 2;"><span>업태 / 업종<b class="ht-req">*</b></span><input type="text" id="ht-industry" placeholder="제조업 / 플라스틱 제품" /></label>
             <label class="ht-f"><span>창업년월<b class="ht-req">*</b></span><input type="month" id="ht-founded" /></label>
-            <label class="ht-f"><span>사업장 소재지</span><input type="text" id="ht-location" placeholder="경기 고양시" /></label>
+            <label class="ht-f"><span>사업장 소재지<b class="ht-req">*</b></span><input type="text" id="ht-location" placeholder="경기 고양시" /></label>
           </div>
           <div class="ht-radios">
             <label><input type="radio" name="ht-biztype" value="personal" checked /> 개인사업자</label>
@@ -780,12 +780,12 @@
         <div class="ht-body">
           <div class="ht-line" id="ht-years"></div>
           <div class="ht-line">
-            <label class="ht-f"><span>올해 기준 월<b class="ht-req">*</b></span>
+            <label class="ht-f"><span>올해 기준 월</span>
               <select id="ht-ytd-month"><option value="">월 선택</option>
                 <option value="1">1월까지</option><option value="2">2월까지</option><option value="3">3월까지</option><option value="4">4월까지</option>
                 <option value="5">5월까지</option><option value="6">6월까지</option><option value="7">7월까지</option><option value="8">8월까지</option>
                 <option value="9">9월까지</option><option value="10">10월까지</option><option value="11">11월까지</option><option value="12">12월까지</option></select></label>
-            <label class="ht-f" style="grid-column:span 2;"><span><b id="ht-ytd-label"></b>년 누적 매출 (원)<b class="ht-req">*</b></span><input type="text" inputmode="numeric" id="ht-ytd-sales" placeholder="150,000,000" oninput="formatMoneyInput(this)" /></label>
+            <label class="ht-f" style="grid-column:span 2;"><span><b id="ht-ytd-label"></b>년 누적 매출 (원)</span><input type="text" inputmode="numeric" id="ht-ytd-sales" placeholder="150,000,000" oninput="formatMoneyInput(this)" /></label>
             <input type="hidden" id="ht-ytd-year" />
           </div>
         </div>
@@ -838,11 +838,11 @@
 
       <!-- 필요자금 -->
       <div class="ht-row">
-        <div class="ht-head">필요자금<b class="ht-req">*</b></div>
+        <div class="ht-head">필요자금</div>
         <div class="ht-body">
           <div class="ht-line">
-            <label class="ht-f"><span>최대 (원)<b class="ht-req">*</b></span><input type="text" inputmode="numeric" id="ht-need-max" placeholder="100,000,000" oninput="formatMoneyInput(this)" /></label>
-            <label class="ht-f"><span>최소 (원)<b class="ht-req">*</b></span><input type="text" inputmode="numeric" id="ht-need-min" placeholder="50,000,000" oninput="formatMoneyInput(this)" /></label>
+            <label class="ht-f"><span>최대 (원)</span><input type="text" inputmode="numeric" id="ht-need-max" placeholder="100,000,000" oninput="formatMoneyInput(this)" /></label>
+            <label class="ht-f"><span>최소 (원)</span><input type="text" inputmode="numeric" id="ht-need-min" placeholder="50,000,000" oninput="formatMoneyInput(this)" /></label>
             <label class="ht-f" style="grid-column:span 2;"><span>용도</span><input type="text" id="ht-need-purpose" placeholder="원자재 구입, 설비 투자" /></label>
           </div>
         </div>
@@ -853,8 +853,8 @@
         <div class="ht-head">대표자</div>
         <div class="ht-body">
           <div class="ht-line">
-            <label class="ht-f"><span>나이 (만)<b class="ht-req">*</b></span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" /></label>
-            <label class="ht-f"><span>동종업계 경력 (년)<b class="ht-req">*</b></span><input type="number" inputmode="decimal" id="ht-career" placeholder="10" step="0.5" /></label>
+            <label class="ht-f"><span>나이 (만)</span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" /></label>
+            <label class="ht-f"><span>동종업계 경력 (년)</span><input type="number" inputmode="decimal" id="ht-career" placeholder="10" step="0.5" /></label>
             <label class="ht-f"><span>보유 자산 (집, 차량)</span><input type="text" id="ht-rep-assets" placeholder="아파트 자가" /></label>
             <label class="ht-f"><span>혼인 여부</span><select id="ht-marital"><option value="">-</option><option value="married">기혼</option><option value="single">미혼</option></select></label>
           </div>
@@ -3383,14 +3383,9 @@ function htMissing(input) {
   need(!input.company_name, "회사이름", "ht-company");
   need(!input.industry, "업태/업종", "ht-industry");
   need(!input.founded, "창업년월", "ht-founded");
-  need(!input.ytd || input.ytd.month === null, "올해 기준 월", "ht-ytd-month");
-  need(!input.ytd || input.ytd.sales === null, "올해 누적 매출", "ht-ytd-sales");
+  need(!input.location, "사업장 소재지", "ht-location");
   need(input.arrears.status === "unknown", "국세 체납 여부", "ht-arrears-card");
   need(!input.loans_none && !input.loans.some(l => l.amount !== null), "기대출 (없으면 '기대출 없음')", "ht-loans-card");
-  need(input.need.max === null, "필요자금 최대", "ht-need-max");
-  need(input.need.min === null, "필요자금 최소", "ht-need-min");
-  need(input.rep.age === null, "대표자 나이", "ht-age");
-  need(input.rep.career === null, "동종업계 경력", "ht-career");
   need(input.employees === null, "직원 수", "ht-employees");
   return miss;
 }
