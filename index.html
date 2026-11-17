@@ -2902,7 +2902,10 @@ function calcStability(fin) {
 //   (기존 신용취약소상공인자금 대출 잔액은 3천만 원에서 차감. 신용관리교육 이수·영리기업 여부는 확인하지 않음)
 // · 법인사업자는 미소금융 불가
 // · 대표자가 청년(만 39세 이하)이면 상한 비율 50% (25% ~ 50%)
-// · 신용보증기금·기술보증기금은 1천만 원 단위로 내림하고, 9천만 원대는 8천만 원으로 본다 (7천·8천 아니면 1억)
+// · 기관별 신용점수(NICE 기준, 없으면 KCB): 소진공 805 근접, 재단 755 이상(805 근접), 신보·기보 700 이상
+//   → 절대 조건은 아니고 기준보다 낮으면 한도를 줄인다 (기준 충족 1.0 / 재단 755~805 0.9 / 50점 이내 부족 0.8 / 100점 이내 0.6 / 그 이하 0.4)
+// · 미소금융은 KCB 700 이하 또는 NICE 749 이하 중 하나를 충족해야만 가능 (점수 없으면 불가)
+// · 신보·기보는 1천만 원 단위로 내림하고, 9천만 원대는 8천만 원으로 본다 (7천·8천 아니면 1억)
 const HT_LIMIT_RULE = {
   minRatio: 0.25,
   maxRatio: 0.30,
@@ -2910,6 +2913,8 @@ const HT_LIMIT_RULE = {
   youthAge: 39,
   miso: { min: 10000000, max: 20000000 },
   sojinMax: 200000000,                  // 소진공 최대 2억
+  credit: { sojin: { full: 805, min: 805 }, jaedan: { full: 805, min: 755 }, kodit: { full: 700, min: 700 }, kibo: { full: 700, min: 700 } },
+  misoKcb: 700, misoNice: 749,
   weakMax: 30000000,                    // 신용취약소상공인자금 최대 3천만
   weakScore: 839,                       // 개인신용평점 기준
   unit: 1000000,
@@ -2935,6 +2940,16 @@ function htLoanOrg(name) {
   return null;
 }
 
+// 신용점수에 따른 한도 조정 비율
+function htCreditFactor(key, score) {
+  const c = HT_LIMIT_RULE.credit[key];
+  if (!c || score === null || score === undefined) return 1;
+  if (score >= c.full) return 1;
+  if (score >= c.min) return 0.9;
+  const gap = c.min - score;
+  return gap <= 50 ? 0.8 : gap <= 100 ? 0.6 : 0.4;
+}
+
 function estimateLimit(input, ctx) {
   const R = HT_LIMIT_RULE;
   const lv = ctx.vatLatest;
@@ -2956,14 +2971,19 @@ function estimateLimit(input, ctx) {
 
   // 신보·기보 금액 단위: 1천만 원 내림, 9천만 원대 → 8천만 원
   const fundRound = v => { let r = Math.floor(v / 10000000) * 10000000; if (r === 90000000) r = 80000000; return r; };
+  const cScore = (ctx.nice !== null && ctx.nice !== undefined) ? ctx.nice : ctx.kcb;
+  const factors = {};
   const mk = (key, name, lo, hi) => {
+    const f = htCreditFactor(key, cScore); factors[key] = f;
+    lo = floorU(lo * f); hi = floorU(hi * f);
+    if (key === "sojin") { lo = Math.min(lo, R.sojinMax); hi = Math.min(hi, R.sojinMax); }
     const ded = used[key] + (key === "miso" ? 0 : other);
     let low = Math.max(0, lo - ded), high = Math.max(0, hi - ded);
     if (key === "kodit" || key === "kibo") { low = fundRound(low); high = fundRound(high); }
     return { key, name, low, high, used: used[key], status: high > 0 ? "ok" : "exhausted" };
   };
   const orgs = [];
-  if (small) orgs.push(mk("sojin", "소상공인시장진흥공단", Math.min(per.low, R.sojinMax), Math.min(per.high, R.sojinMax)));
+  if (small) orgs.push(mk("sojin", "소상공인시장진흥공단", per.low, per.high));
   const g = [mk("jaedan", "지역신용보증재단", per.low, per.high), mk("kodit", "신용보증기금", per.low, per.high), mk("kibo", "기술보증기금", per.low, per.high)];
   const inUse = g.filter(o => o.used > 0);
   let chosen = null;
@@ -2972,7 +2992,8 @@ function estimateLimit(input, ctx) {
     g.forEach(o => { if (o !== chosen) { o.status = "blocked"; o.low = 0; o.high = 0; } });
   }
   orgs.push(...g);
-  if (input.biz_type !== "corp") orgs.push(mk("miso", "미소금융", R.miso.min, R.miso.max));
+  const misoOk = (ctx.kcb !== null && ctx.kcb !== undefined && ctx.kcb <= R.misoKcb) || (ctx.nice !== null && ctx.nice !== undefined && ctx.nice <= R.misoNice);
+  if (input.biz_type !== "corp" && misoOk) orgs.push(mk("miso", "미소금융", R.miso.min, R.miso.max));
 
   // 소진공 신용취약소상공인자금
   const score = ctx.creditScore;
@@ -2998,7 +3019,10 @@ function estimateLimit(input, ctx) {
   if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: total.low, calcHigh: total.high,
     text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다." });
   const loanSum = (ctx.loansList || []).reduce((a, l) => a + (htNum(l.amount) || 0), 0);
-  const tLow = Math.max(0, per.low - loanSum), tHigh = Math.max(0, per.high - loanSum);
+  // 총 예상한도도 신용점수 영향을 받는다 — 가능한 기관 중 가장 유리한 조정 비율 적용
+  const okKeys = orgs.filter(o => o.status === "ok" && o.key !== "miso").map(o => o.key);
+  const tf = okKeys.length ? Math.max(...okKeys.map(k => factors[k] || 1)) : 1;
+  const tLow = Math.max(0, floorU(per.low * tf) - loanSum), tHigh = Math.max(0, floorU(per.high * tf) - loanSum);
   if (tHigh <= 0) return Object.assign(base, { status: "low", low: 0, high: 0, text: "기대출이 많아 추가 한도 여력이 부족합니다." });
   return Object.assign(base, { status: "ok", low: tLow, high: tHigh, text: "" });
 }
@@ -3204,7 +3228,7 @@ function analyzeHometax(input, opts) {
         : "입력된 자료 기준으로 눈에 띄는 위험 요인이 없습니다.",
   };
   const limit = estimateLimit(input, { vatLatest: lv, ytdAnnual: vat.ytd ? vat.ytd.annual : null, financial, loansTotal, loansList: loans, loansNone: !!input.loans_none,
-                                       creditScore: credit.nice !== null ? credit.nice : credit.kcb, bizAgeMonths: bizAge ? bizAge.months : null,
+                                       creditScore: credit.nice !== null ? credit.nice : credit.kcb, nice: credit.nice, kcb: credit.kcb, bizAgeMonths: bizAge ? bizAge.months : null,
                                        creditLow: credit.repLevel === "danger" || credit.repLevel === "warn",
                                        recoveryBad: !!(recActive && rec.faithful === "no") });
   limit.need = htNeedFit(input.need, limit);
