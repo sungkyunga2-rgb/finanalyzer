@@ -2898,6 +2898,7 @@ function calcStability(fin) {
 // · 소진공은 최대 2억 원
 // · 총 예상한도 = 기준 매출 × 25% ~ 30% 에서 기대출 합계를 뺀 범위 (기관별 금액과 별개)
 // · 소진공 신용취약소상공인자금: 소상공인 + 업력 90일 이상 + 대표자 개인신용평점(NCB) 839점 이하 → 한도 내 최대 3천만 원
+//   대상이면 소진공 줄을 이 금액 하나로만 표시 (따로 줄을 만들지 않음)
 //   (기존 신용취약소상공인자금 대출 잔액은 3천만 원에서 차감. 신용관리교육 이수·영리기업 여부는 확인하지 않음)
 // · 법인사업자는 미소금융 불가
 // · 대표자가 청년(만 39세 이하)이면 상한 비율 50% (25% ~ 50%)
@@ -2981,7 +2982,7 @@ function estimateLimit(input, ctx) {
     const cap = Math.max(0, R.weakMax - weakUsed);
     const amt = Math.min(cap, sj ? sj.high : cap);   // 소진공 남은 한도 안에서
     const fixed = Math.floor(amt / R.unit) * R.unit;
-    orgs.splice(orgs.indexOf(sj) + 1, 0, { key: "weak", name: "소진공 신용취약소상공인자금", low: fixed, high: fixed, used: weakUsed, status: fixed > 0 ? "ok" : "exhausted" });
+    if (sj) { sj.low = fixed; sj.high = fixed; sj.weak = true; sj.status = fixed > 0 ? "ok" : "exhausted"; }   // 신용취약 대상이면 소진공은 이 금액으로만 표시
   }
 
   const sumOf = k => orgs.filter(o => k(o) && o.status === "ok");
