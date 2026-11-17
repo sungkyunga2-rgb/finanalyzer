@@ -2893,16 +2893,24 @@ function calcStability(fin) {
 // · 기관별 한도 = 기준 매출 × 25% ~ 30% (미소금융은 1천만 ~ 2천만 원)
 // · 순서에 따라 중복 지원: 소진공 → (재단 · 신용보증기금 · 기술보증기금 중 1곳) → 미소
 // · 재단 · 신용보증기금 · 기술보증기금은 셋 중 한 곳만 이용 가능 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
-// · 기대출은 같은 기관의 한도에서 차감 (기관명으로 구분). 은행 등 그 밖의 대출은 기관별 한도에 반영하지 않는다
+// · 기대출은 같은 기관의 한도에서 차감 (기관명으로 구분). 은행 등 그 밖의 대출(기관명 없음 포함)은 미소금융을 뺀 모든 기관 한도에서 차감
 // · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다
 // · 소진공은 최대 2억 원
 // · 총 예상한도 = 기준 매출 × 25% ~ 30% 에서 기대출 합계를 뺀 범위 (기관별 금액과 별개)
+// · 소진공 신용취약소상공인자금: 소상공인 + 업력 90일 이상 + 대표자 개인신용평점(NCB) 839점 이하 → 한도 내 최대 3천만 원
+//   (기존 신용취약소상공인자금 대출 잔액은 3천만 원에서 차감. 신용관리교육 이수·영리기업 여부는 확인하지 않음)
+// · 법인사업자는 미소금융 불가
+// · 대표자가 청년(만 39세 이하)이면 상한 비율 50% (25% ~ 50%)
 // · 신용보증기금·기술보증기금은 1천만 원 단위로 내림하고, 9천만 원대는 8천만 원으로 본다 (7천·8천 아니면 1억)
 const HT_LIMIT_RULE = {
   minRatio: 0.25,
   maxRatio: 0.30,
+  youthMaxRatio: 0.50,                  // 청년 대표 상한
+  youthAge: 39,
   miso: { min: 10000000, max: 20000000 },
   sojinMax: 200000000,                  // 소진공 최대 2억
+  weakMax: 30000000,                    // 신용취약소상공인자금 최대 3천만
+  weakScore: 839,                       // 개인신용평점 기준
   unit: 1000000,
 };
 const HT_GUARANTEE = ["jaedan", "kodit", "kibo"];   // 셋 중 한 곳만
@@ -2918,7 +2926,7 @@ function htIsSmallBiz(input) {
 function htLoanOrg(name) {
   const n = String(name || "").replace(/\s/g, "");
   if (!n) return null;
-  if (/소진공|소상공인시장진흥|소상공인진흥|소상공인공단/.test(n)) return "sojin";
+  if (/소진공|소상공인시장진흥|소상공인진흥|소상공인공단|신용취약|저신용/.test(n)) return "sojin";
   if (/재단|[가-힣]{2}신보/.test(n)) return "jaedan";            // 지역신용보증재단 (서울신보·경기신보 등)
   if (/신용보증기금|신보/.test(n)) return "kodit";
   if (/기술보증|기보/.test(n)) return "kibo";
@@ -2935,17 +2943,21 @@ function estimateLimit(input, ctx) {
              text: "매출을 입력하면 예상 한도를 계산합니다." };
   }
   const floorU = v => Math.floor(v / R.unit) * R.unit;
-  const per = { low: floorU(sales * R.minRatio), high: floorU(sales * R.maxRatio) };
+  const age = htNum((input.rep || {}).age);
+  const youth = age !== null && age <= R.youthAge;
+  const per = { low: floorU(sales * R.minRatio), high: floorU(sales * (youth ? R.youthMaxRatio : R.maxRatio)) };
   const small = htIsSmallBiz(input);
 
   // 기관별 기대출
   const used = { sojin: 0, jaedan: 0, kodit: 0, kibo: 0, miso: 0 };
-  (ctx.loansList || []).forEach(l => { const k = htLoanOrg(l.org); const a = htNum(l.amount) || 0; if (k && a > 0) used[k] += a; });
+  let other = 0;   // 은행 등 기관을 특정할 수 없는 대출
+  (ctx.loansList || []).forEach(l => { const k = htLoanOrg(l.org); const a = htNum(l.amount) || 0; if (a <= 0) return; if (k) used[k] += a; else other += a; });
 
   // 신보·기보 금액 단위: 1천만 원 내림, 9천만 원대 → 8천만 원
   const fundRound = v => { let r = Math.floor(v / 10000000) * 10000000; if (r === 90000000) r = 80000000; return r; };
   const mk = (key, name, lo, hi) => {
-    let low = Math.max(0, lo - used[key]), high = Math.max(0, hi - used[key]);
+    const ded = used[key] + (key === "miso" ? 0 : other);
+    let low = Math.max(0, lo - ded), high = Math.max(0, hi - ded);
     if (key === "kodit" || key === "kibo") { low = fundRound(low); high = fundRound(high); }
     return { key, name, low, high, used: used[key], status: high > 0 ? "ok" : "exhausted" };
   };
@@ -2959,7 +2971,18 @@ function estimateLimit(input, ctx) {
     g.forEach(o => { if (o !== chosen) { o.status = "blocked"; o.low = 0; o.high = 0; } });
   }
   orgs.push(...g);
-  orgs.push(mk("miso", "미소금융", R.miso.min, R.miso.max));
+  if (input.biz_type !== "corp") orgs.push(mk("miso", "미소금융", R.miso.min, R.miso.max));
+
+  // 소진공 신용취약소상공인자금
+  const score = ctx.creditScore;
+  if (small && score !== null && score !== undefined && score <= R.weakScore && (ctx.bizAgeMonths === null || ctx.bizAgeMonths === undefined || ctx.bizAgeMonths >= 3)) {
+    const weakUsed = (ctx.loansList || []).filter(l => /신용취약|저신용/.test(String(l.org || ""))).reduce((a, l) => a + (htNum(l.amount) || 0), 0);
+    const sj = orgs.find(o => o.key === "sojin");
+    const cap = Math.max(0, R.weakMax - weakUsed);
+    const amt = Math.min(cap, sj ? sj.high : cap);   // 소진공 남은 한도 안에서
+    const fixed = Math.floor(amt / R.unit) * R.unit;
+    orgs.splice(orgs.indexOf(sj) + 1, 0, { key: "weak", name: "소진공 신용취약소상공인자금", low: fixed, high: fixed, used: weakUsed, status: fixed > 0 ? "ok" : "exhausted" });
+  }
 
   const sumOf = k => orgs.filter(o => k(o) && o.status === "ok");
   const mid = chosen ? (chosen.status === "ok" ? chosen : null) : g.slice().sort((a, b) => b.high - a.high || b.low - a.low)[0];
@@ -3179,6 +3202,7 @@ function analyzeHometax(input, opts) {
         : "입력된 자료 기준으로 눈에 띄는 위험 요인이 없습니다.",
   };
   const limit = estimateLimit(input, { vatLatest: lv, ytdAnnual: vat.ytd ? vat.ytd.annual : null, financial, loansTotal, loansList: loans, loansNone: !!input.loans_none,
+                                       creditScore: credit.nice !== null ? credit.nice : credit.kcb, bizAgeMonths: bizAge ? bizAge.months : null,
                                        creditLow: credit.repLevel === "danger" || credit.repLevel === "warn",
                                        recoveryBad: !!(recActive && rec.faithful === "no") });
   limit.need = htNeedFit(input.need, limit);
