@@ -2897,7 +2897,8 @@ function calcStability(fin) {
 // · 재단 · 신용보증기금 · 기술보증기금은 셋 중 한 곳만 이용 가능 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
 // · 기대출은 같은 기관의 한도에서 차감 (기관명으로 구분). 은행 등 그 밖의 대출(기관명 없음 포함)은 미소금융을 뺀 모든 기관 한도에서 차감
 // · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다
-// · 소진공은 최대 2억 원
+// · 중진공·신보·기보는 최대 10억 원
+// · 소진공·재단은 최대 2억 원. 2억 이상이 한 금액으로 나오면 1억 아래까지 범위로 표시 (1억 ~ 2억)
 // · 총 예상한도 = 기준 매출 × 25% ~ 30% 에서 기대출 합계를 뺀 범위 (기관별 금액과 별개)
 // · 소진공 신용취약소상공인자금: 소상공인 + 업력 90일 이상 + 대표자 개인신용평점(NCB) 839점 이하 → 한도 내 최대 3천만 원
 //   대상이면 소진공 줄을 이 금액 하나로만 표시 (따로 줄을 만들지 않음)
@@ -2921,6 +2922,8 @@ const HT_LIMIT_RULE = {
   youthAge: 39,
   miso: { min: 10000000, max: 20000000 },
   sojinMax: 200000000,                  // 소진공 최대 2억
+  jaedanMax: 200000000,                 // 재단 최대 2억
+  fundMax: 1000000000,                  // 중진공·신보·기보 최대 10억
   credit: { sojin: { full: 805, min: 805 }, jungjin: { full: 805, min: 805 }, jaedan: { full: 805, min: 755 }, kodit: { full: 700, min: 700 }, kibo: { full: 700, min: 700 } },
   fundMinSales: 300000000,              // 중진공·신보·기보 최소 매출
   fundMinAmount: 100000000,             // 가능하면 최소 1억
@@ -3012,11 +3015,15 @@ function estimateLimit(input, ctx) {
     factors[key] = f;
     lo = floorU(lo * f); hi = floorU(hi * f);
     if (key === "sojin") { lo = Math.min(lo, R.sojinMax); hi = Math.min(hi, R.sojinMax); }
+    if (key === "jaedan") { lo = Math.min(lo, R.jaedanMax); hi = Math.min(hi, R.jaedanMax); }
+    if (key === "jungjin" || key === "kodit" || key === "kibo") { lo = Math.min(lo, R.fundMax); hi = Math.min(hi, R.fundMax); }
     if (bigEnough && (key === "jungjin" || key === "kodit" || key === "kibo")) { lo = Math.max(lo, R.fundMinAmount); hi = Math.max(hi, R.fundMinAmount); }
     const ded = used[key] + (key === "miso" ? 0 : other);
     let low = Math.max(0, lo - ded), high = Math.max(0, hi - ded);
     if (key === "kodit" || key === "kibo") { low = fundRound(low); high = fundRound(high); }
     if (key === "jungjin") { low = floorU(low); high = floorU(high); }
+    // 큰 금액이 한 금액으로만 나오면(최대 한도에 걸린 경우 등) 1억 단위 범위로 (예: 2억 → 1억 ~ 2억)
+    if (low === high && high >= 200000000) low = high - 100000000;
     return { key, name, low, high, used: used[key], status: high > 0 ? "ok" : "exhausted" };
   };
   const orgs = [];
