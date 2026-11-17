@@ -3868,7 +3868,7 @@ function htInfoCard(r, input) {
   const facMap = { own: "자가", rent: "임차", none: "없음" };
   const f = input.fin || {};
   const fin = r.financial
-    ? [item("총자산", htKwon(r.financial.assets)), item("총부채", htKwon(r.financial.liabilities)),
+    ? [
        item("부채비율", r.financial.dr !== null ? r.financial.dr.toFixed(1) + "%" : "자본잠식"),
        item("이자보상배수", r.financial.noInt ? "무차입" : (r.financial.ice !== null ? r.financial.ice.toFixed(2) + "배" : ""))]
     : r.ratios ? [item("부채비율", has(r.ratios.dr) ? r.ratios.dr + "%" : ""), item("이자보상배수", has(r.ratios.icr) ? r.ratios.icr + "배" : "")] : [];
@@ -3967,10 +3967,7 @@ function renderHometaxResults(r, input) {
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
         ${metric("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "N/A", f.drClass, "400% 초과 위험 · 200% 이하 양호")}
         ${metric("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass, f.noInt ? "이자 상환 부담 없음" : "1배 미만 위험 · 2배 이상 양호")}
-        ${metric("🏢 자본잠식", f.erosionStatus, f.erosionClass, "자본총계 " + htWon(f.equity))}
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--text2);">
-        <span>총자산 <b>${htWon(f.assets)}</b></span><span>총부채 <b>${htWon(f.liabilities)}</b></span>
+        ${metric("🏢 자본잠식", f.erosionStatus, f.erosionClass, f.erosionClass === "safe" ? "자본 건전" : "자본 확충 필요")}
       </div>
       <div style="margin-top:14px;background:#f9f9f8;border-radius:12px;padding:12px;">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
