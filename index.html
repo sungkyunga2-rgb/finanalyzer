@@ -884,9 +884,10 @@
       <div class="ht-row">
         <div class="ht-head">기업 현황</div>
         <div class="ht-body">
+          <div class="ht-f"><span>기업 인증</span></div>
+          <div id="ht-certs-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+          <button type="button" class="ht-link" id="ht-cert-add" onclick="htAddCert()">+ 인증 추가</button>
           <div class="ht-line">
-            <label class="ht-f"><span>기업 인증 (특허, ISO 등)</span><input type="text" id="ht-certs" placeholder="벤처, 특허 2건" /></label>
-            <label class="ht-f"><span>연구소 · 전담부서</span><select id="ht-lab"><option value="">-</option><option value="lab">기업부설연구소</option><option value="dept">연구개발전담부서</option><option value="none">없음</option></select></label>
             <label class="ht-f"><span>공장 보유</span><select id="ht-factory"><option value="">-</option><option value="own">자가</option><option value="rent">임차</option><option value="none">없음</option></select></label>
           </div>
         </div>
@@ -2897,6 +2898,7 @@ function calcStability(fin) {
 // · 재단 · 신용보증기금 · 기술보증기금은 셋 중 한 곳만 이용 가능 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
 // · 기대출은 같은 기관의 한도에서 차감 (기관명으로 구분). 은행 등 그 밖의 대출(기관명 없음 포함)은 미소금융을 뺀 모든 기관 한도에서 차감
 // · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다
+// · 업력 1년 미만이라도 제조업·콘텐츠 제작·특허 보유면 매출이 없어도 기보 5천만 ~ 1억 (매출 기준 금액이 더 크면 그 금액)
 // · 중진공·신보·기보는 최대 10억 원
 // · 한도가 1천만 원 미만이면 한도 없음 (미소금융만 500만 원 기준). 하한도 이 금액 아래로는 표시하지 않는다
 // · 소진공·재단은 최대 2억 원. 2억 이상이 한 금액으로 나오면 1억 아래까지 범위로 표시 (1억 ~ 2억)
@@ -2988,13 +2990,41 @@ function htIndustryClass(text) {
   };
 }
 
+// 콘텐츠 제작 업종 (기보 창업 특례 판단용)
+const HT_CONTENT = /콘텐츠|컨텐츠|영상|영화|방송|애니메이션|게임\s*(개발|제작)|음반|음원|음악\s*제작|공연|연극|뮤지컬|웹툰|출판/;
+
+// 기보 창업 특례: 5천만 ~ 1억 (신용점수 조정, 기보·기타 대출 차감, 최소 1천만 원)
+function htStartupKibo(input, ctx) {
+  const R = HT_LIMIT_RULE;
+  let kUsed = 0, other = 0;
+  (ctx.loansList || []).forEach(l => { const k = htLoanOrg(l.org); const a = htNum(l.amount) || 0; if (a <= 0) return; if (k === "kibo") kUsed += a; else if (!k) other += a; });
+  const score = (ctx.nice !== null && ctx.nice !== undefined) ? ctx.nice : ctx.kcb;
+  const f = htCreditFactor("kibo", score);
+  const fr = v => { let r = Math.floor(v / 10000000) * 10000000; if (r === 90000000) r = 80000000; return r; };
+  let low = fr(Math.max(0, 50000000 * f - kUsed - other)), high = fr(Math.max(0, 100000000 * f - kUsed - other));
+  if (high < R.minAmount) { low = 0; high = 0; } else low = Math.max(low, R.minAmount);
+  return { key: "kibo", name: "기술보증기금", low, high, used: kUsed, startup: true, status: high > 0 ? "ok" : "exhausted" };
+}
+
 function estimateLimit(input, ctx) {
   const R = HT_LIMIT_RULE;
   const lv = ctx.vatLatest;
   const sales = (lv && lv.vat > 0) ? lv.vat : (ctx.ytdAnnual > 0 ? ctx.ytdAnnual : null);
+  // 업력 1년 미만 + (제조업 · 콘텐츠 제작 · 특허 보유) → 매출이 없어도 기보 5천만 ~ 1억 가능
+  const startupKibo = ctx.bizAgeMonths !== null && ctx.bizAgeMonths !== undefined && ctx.bizAgeMonths < 12 &&
+    (/제조/.test(input.industry || "") || HT_CONTENT.test(input.industry || "") || /특허/.test(input.certs || ""));
   if (!sales) {
-    return { available: false, status: "none", low: 0, high: 0, orgs: [], steps: [], notes: [],
-             text: "매출을 입력하면 예상 한도를 계산합니다." };
+    if (!startupKibo) {
+      return { available: false, status: "none", low: 0, high: 0, orgs: [], steps: [], notes: [],
+               text: "매출을 입력하면 예상 한도를 계산합니다." };
+    }
+    const ar0 = (input.arrears && input.arrears.status) || "unknown";
+    const base0 = { available: true, sales: 0, steps: [], notes: [] };
+    if (ar0 === "has") return Object.assign(base0, { status: "blocked", low: 0, high: 0, orgs: [], text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요." });
+    if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base0, { status: "blocked", low: 0, high: 0, orgs: [], text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다." });
+    const k = htStartupKibo(input, ctx);
+    if (k.status !== "ok") return Object.assign(base0, { status: "low", low: 0, high: 0, orgs: [k], text: "기대출이 많아 추가 한도 여력이 부족합니다." });
+    return Object.assign(base0, { status: "ok", low: k.low, high: k.high, orgs: [k], text: "" });
   }
   const floorU = v => Math.floor(v / R.unit) * R.unit;
   const age = htNum((input.rep || {}).age);
@@ -3040,7 +3070,11 @@ function estimateLimit(input, ctx) {
   if (bigEnough || exporter || used.jungjin > 0) orgs.push(mk("jungjin", "중소벤처기업진흥공단", per.low, per.high));
   const g = [mk("jaedan", "지역신용보증재단", per.low, per.high)];
   if (koditOk || used.kodit > 0) g.push(mk("kodit", "신용보증기금", per.low, per.high));
-  if (kiboOk || used.kibo > 0) g.push(mk("kibo", "기술보증기금", per.low, per.high));
+  if (kiboOk || used.kibo > 0 || startupKibo) {
+    let kb = (kiboOk || used.kibo > 0) ? mk("kibo", "기술보증기금", per.low, per.high) : null;
+    if (startupKibo) { const sk = htStartupKibo(input, ctx); if (!kb || sk.high > kb.high) kb = sk; }
+    g.push(kb);
+  }
   const inUse = g.filter(o => o.used > 0);
   let chosen = null;
   if (inUse.length) {
@@ -3323,7 +3357,7 @@ const HT_FIELDS = [
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"],
   ["employees", "ht-employees", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
-  ["certs", "ht-certs", "text"], ["lab", "ht-lab", "text"], ["factory", "ht-factory", "text"],
+  ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
   ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
   ["fin.debt_ratio", "ht-dr-direct", "dec"], ["fin.icr", "ht-icr-direct", "dec"],
@@ -3438,6 +3472,67 @@ function htToggleLoans() {
   const box = document.getElementById("ht-loans"); if (box) box.style.display = off ? "none" : "flex";
   const add = document.getElementById("ht-loan-add"); if (add) add.style.display = off ? "none" : "block";
 }
+// 기업 인증 목록 (종류 선택 + 건수)
+const HT_CERT_TYPES = ["특허", "ISO", "HACCP", "벤처", "이노비즈", "메인비즈", "기업부설연구소", "연구개발전담부서"];
+function htRenderCerts(list) {
+  const box = document.getElementById("ht-certs-list");
+  if (!box) return;
+  const rows = (list && list.length) ? list : [{ type: "", count: null }];
+  box.innerHTML = rows.map((c, i) => `
+    <div class="ht-loan-row" style="grid-template-columns:2fr 1fr auto;">
+      <select id="ht-cert-${i}-type" style="width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;">
+        <option value="">인증 선택</option>${HT_CERT_TYPES.map(t => `<option value="${t}">${t}</option>`).join("")}
+      </select>
+      <input type="number" inputmode="numeric" min="1" id="ht-cert-${i}-count" placeholder="건수" />
+      <button type="button" class="ht-x" title="삭제" onclick="htRemoveCert(${i})">×</button>
+    </div>`).join("");
+  rows.forEach((c, i) => {
+    const sel = document.getElementById(`ht-cert-${i}-type`);
+    if (c.type && ![...sel.options].some(o => o.value === c.type)) sel.add(new Option(c.type, c.type));
+    sel.value = c.type || "";
+    document.getElementById(`ht-cert-${i}-count`).value = (c.count === null || c.count === undefined) ? "" : c.count;
+  });
+}
+function htReadCerts() {
+  const list = [];
+  for (let i = 0; document.getElementById(`ht-cert-${i}-type`); i++) {
+    const type = document.getElementById(`ht-cert-${i}-type`).value;
+    const n = parseInt(document.getElementById(`ht-cert-${i}-count`).value, 10);
+    if (type) list.push({ type, count: isNaN(n) ? null : n });
+  }
+  return list;
+}
+function htAddCert() {
+  const all = [];
+  for (let i = 0; document.getElementById(`ht-cert-${i}-type`); i++) {
+    const n = parseInt(document.getElementById(`ht-cert-${i}-count`).value, 10);
+    all.push({ type: document.getElementById(`ht-cert-${i}-type`).value, count: isNaN(n) ? null : n });
+  }
+  all.push({ type: "", count: null });
+  htRenderCerts(all);
+}
+function htRemoveCert(idx) {
+  const all = [];
+  for (let i = 0; document.getElementById(`ht-cert-${i}-type`); i++) {
+    if (i === idx) continue;
+    const n = parseInt(document.getElementById(`ht-cert-${i}-count`).value, 10);
+    all.push({ type: document.getElementById(`ht-cert-${i}-type`).value, count: isNaN(n) ? null : n });
+  }
+  htRenderCerts(all);
+}
+// 인증 목록 → 글자 요약 (예: "특허 2건, 벤처") — 분석·우대 요소·기업정보에 사용
+function htCertText(list) {
+  return (list || []).map(c => c.type + (c.count && c.count > 1 ? ` ${c.count}건` : "")).join(", ");
+}
+// 예전 글자 입력을 목록으로 바꿔 보여주기
+function htCertsFromText(text) {
+  const t = String(text || "");
+  return HT_CERT_TYPES.filter(k => t.includes(k)).map(k => {
+    const m = new RegExp(k + "\\s*(\\d+)\\s*건").exec(t);
+    return { type: k, count: m ? parseInt(m[1], 10) : null };
+  });
+}
+
 function htToggleArrears() {
   const v = (document.querySelector('input[name="ht-arrears"]:checked') || {}).value;
   document.getElementById("ht-arrears-detail").style.display = v === "has" ? "grid" : "none";
@@ -3464,6 +3559,9 @@ function htReadForm() {
     });
   }
   input.loans = input.loans_none ? [] : htReadLoans();
+  input.cert_list = htReadCerts();
+  input.certs = htCertText(input.cert_list);
+  input.lab = input.cert_list.some(c => c.type === "기업부설연구소") ? "lab" : input.cert_list.some(c => c.type === "연구개발전담부서") ? "dept" : "";
   if (!Object.values(input.fin || {}).some(v => v !== null)) input.fin = null;
   return input;
 }
@@ -3480,6 +3578,13 @@ function htFillForm(input) {
   const ys = (input.years || []).slice().sort((a, b) => a.year - b.year);
   htBuildYears(ys.length ? ys : null);
   htRenderLoans(input.loans || []);
+  let certs = input.cert_list;
+  if (!certs) {   // 예전 이력: 글자 입력 + 연구소 선택
+    certs = htCertsFromText(input.certs);
+    if (input.lab === "lab" && !certs.some(c => c.type === "기업부설연구소")) certs.push({ type: "기업부설연구소", count: null });
+    if (input.lab === "dept" && !certs.some(c => c.type === "연구개발전담부서")) certs.push({ type: "연구개발전담부서", count: null });
+  }
+  htRenderCerts(certs);
   htToggleFin(!!input.fin);
   htSyncYtdLabel();
   htFoundedToSelects();
@@ -3520,6 +3625,7 @@ function initHometaxPage() {
   if (biz && !biz.value && userBizNumber) biz.value = userBizNumber;
   if (!document.getElementById("ht-y0-year")) htBuildYears();
   if (!document.getElementById("ht-loan-0-org")) htRenderLoans(null);
+  if (!document.getElementById("ht-cert-0-type")) htRenderCerts(null);
   const yy = document.getElementById("ht-ytd-year");
   if (yy && !yy.value) yy.value = new Date().getFullYear();
   htSyncYtdLabel();
@@ -3779,7 +3885,7 @@ function htInfoCard(r, input) {
                   rp.woman ? item("여성 대표", "예") : ""]),
     row("고용", [item("직원 수", has(input.employees) ? `${input.employees}명` : ""), item("내일채움공제", e(input.naeil || "")),
                 item("노란우산공제", input.umbrella === "yes" ? "가입" : input.umbrella === "no" ? "미가입" : "")]),
-    row("기업 현황", [item("인증", e(input.certs || "")), item("연구소", labMap[input.lab] || ""), item("공장", facMap[input.factory] || "")]),
+    row("기업 현황", [item("인증", e(input.cert_list ? htCertText(input.cert_list) : (input.certs || ""))), input.cert_list ? "" : item("연구소", labMap[input.lab] || ""), item("공장", facMap[input.factory] || "")]),
   ];
   if (fin.some(Boolean)) rows.push(row("재무", fin));
   return `<div style="font-size:13px;font-weight:600;color:var(--text2);margin:0 0 6px;">📋 기업정보</div>
