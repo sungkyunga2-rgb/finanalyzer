@@ -3473,7 +3473,7 @@ function htToggleLoans() {
   const add = document.getElementById("ht-loan-add"); if (add) add.style.display = off ? "none" : "block";
 }
 // 기업 인증 목록 (종류 선택 + 건수)
-const HT_CERT_TYPES = ["특허", "ISO", "HACCP", "벤처", "이노비즈", "메인비즈", "기업부설연구소", "연구개발전담부서"];
+const HT_CERT_TYPES = ["특허출원", "특허등록", "ISO", "HACCP", "벤처", "이노비즈", "메인비즈", "기업부설연구소", "연구개발전담부서"];
 function htRenderCerts(list) {
   const box = document.getElementById("ht-certs-list");
   if (!box) return;
@@ -3488,6 +3488,7 @@ function htRenderCerts(list) {
     </div>`).join("");
   rows.forEach((c, i) => {
     const sel = document.getElementById(`ht-cert-${i}-type`);
+    if (c.type === "특허") c.type = "특허등록";
     if (c.type && ![...sel.options].some(o => o.value === c.type)) sel.add(new Option(c.type, c.type));
     sel.value = c.type || "";
     document.getElementById(`ht-cert-${i}-count`).value = (c.count === null || c.count === undefined) ? "" : c.count;
@@ -3527,10 +3528,16 @@ function htCertText(list) {
 // 예전 글자 입력을 목록으로 바꿔 보여주기
 function htCertsFromText(text) {
   const t = String(text || "");
-  return HT_CERT_TYPES.filter(k => t.includes(k)).map(k => {
+  const out = HT_CERT_TYPES.filter(k => t.includes(k)).map(k => {
     const m = new RegExp(k + "\\s*(\\d+)\\s*건").exec(t);
     return { type: k, count: m ? parseInt(m[1], 10) : null };
   });
+  // 예전 "특허"는 특허등록으로 본다
+  if (/특허/.test(t) && !out.some(c => c.type.startsWith("특허"))) {
+    const m = /특허\s*(\d+)\s*건/.exec(t);
+    out.unshift({ type: "특허등록", count: m ? parseInt(m[1], 10) : null });
+  }
+  return out;
 }
 
 function htToggleArrears() {
