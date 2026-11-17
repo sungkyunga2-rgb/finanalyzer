@@ -769,7 +769,7 @@
                 <select id="ht-founded-y" onchange="htSyncFounded()" style="flex:1.3;"></select>
                 <select id="ht-founded-m" onchange="htSyncFounded()" style="flex:1;"></select>
               </div><input type="hidden" id="ht-founded" /></div>
-            <label class="ht-f"><span>사업장 소재지<b class="ht-req">*</b></span><input type="text" id="ht-location" placeholder="경기 고양시" /></label>
+            <label class="ht-f"><span>사업장 소재지<b class="ht-req">*</b></span><select id="ht-location"><option value="">지역 선택</option><option value="서울">서울</option><option value="부산">부산</option><option value="대구">대구</option><option value="인천">인천</option><option value="광주">광주</option><option value="대전">대전</option><option value="울산">울산</option><option value="세종">세종</option><option value="경기">경기</option><option value="강원">강원</option><option value="충북">충북</option><option value="충남">충남</option><option value="전북">전북</option><option value="전남">전남</option><option value="경북">경북</option><option value="경남">경남</option><option value="제주">제주</option></select></label>
           </div>
           <div class="ht-radios">
             <label><input type="radio" name="ht-biztype" value="personal" checked /> 개인사업자</label>
@@ -818,7 +818,6 @@
         <div class="ht-head">국세 체납<b class="ht-req">*</b></div>
         <div class="ht-body">
           <div class="ht-radios">
-            <label><input type="radio" name="ht-arrears" value="unknown" checked onchange="htToggleArrears()" /> 미확인</label>
             <label><input type="radio" name="ht-arrears" value="none" onchange="htToggleArrears()" /> 없음</label>
             <label><input type="radio" name="ht-arrears" value="has" onchange="htToggleArrears()" /> 있음</label>
           </div>
@@ -2896,11 +2895,14 @@ function calcStability(fin) {
 // · 재단 · 신용보증기금 · 기술보증기금은 셋 중 한 곳만 이용 가능 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
 // · 기대출은 같은 기관의 한도에서 차감 (기관명으로 구분). 은행 등 그 밖의 대출은 기관별 한도에 반영하지 않는다
 // · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다
+// · 소진공은 최대 2억 원
+// · 총 예상한도 = 기준 매출 × 25% ~ 30% 에서 기대출 합계를 뺀 범위 (기관별 금액과 별개)
 // · 신용보증기금·기술보증기금은 1천만 원 단위로 내림하고, 9천만 원대는 8천만 원으로 본다 (7천·8천 아니면 1억)
 const HT_LIMIT_RULE = {
   minRatio: 0.25,
   maxRatio: 0.30,
   miso: { min: 10000000, max: 20000000 },
+  sojinMax: 200000000,                  // 소진공 최대 2억
   unit: 1000000,
 };
 const HT_GUARANTEE = ["jaedan", "kodit", "kibo"];   // 셋 중 한 곳만
@@ -2948,7 +2950,7 @@ function estimateLimit(input, ctx) {
     return { key, name, low, high, used: used[key], status: high > 0 ? "ok" : "exhausted" };
   };
   const orgs = [];
-  if (small) orgs.push(mk("sojin", "소상공인시장진흥공단", per.low, per.high));
+  if (small) orgs.push(mk("sojin", "소상공인시장진흥공단", Math.min(per.low, R.sojinMax), Math.min(per.high, R.sojinMax)));
   const g = [mk("jaedan", "지역신용보증재단", per.low, per.high), mk("kodit", "신용보증기금", per.low, per.high), mk("kibo", "기술보증기금", per.low, per.high)];
   const inUse = g.filter(o => o.used > 0);
   let chosen = null;
@@ -2970,8 +2972,10 @@ function estimateLimit(input, ctx) {
     text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요." });
   if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: total.low, calcHigh: total.high,
     text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다." });
-  if (total.high <= 0) return Object.assign(base, { status: "low", low: 0, high: 0, text: "기대출이 많아 추가 한도 여력이 부족합니다." });
-  return Object.assign(base, { status: "ok", low: total.low, high: total.high, text: "" });
+  const loanSum = (ctx.loansList || []).reduce((a, l) => a + (htNum(l.amount) || 0), 0);
+  const tLow = Math.max(0, per.low - loanSum), tHigh = Math.max(0, per.high - loanSum);
+  if (tHigh <= 0) return Object.assign(base, { status: "low", low: 0, high: 0, text: "기대출이 많아 추가 한도 여력이 부족합니다." });
+  return Object.assign(base, { status: "ok", low: tLow, high: tHigh, text: "" });
 }
 
 // 필요자금과 예상 한도 비교
@@ -3259,6 +3263,9 @@ function htReadField(id, type) {
 function htWriteField(id, type, v) {
   const el = document.getElementById(id);
   if (!el) return;
+  if (el.tagName === "SELECT" && v !== null && v !== undefined && v !== "" && ![...el.options].some(o => o.value === String(v))) {
+    el.add(new Option(String(v), String(v)));   // 목록에 없는 예전 값
+  }
   if (type === "check") { el.checked = !!v; return; }
   if (type === "money" || type === "signed") { htSetMoney(id, v); return; }
   el.value = (v === null || v === undefined) ? "" : String(v);
@@ -3357,8 +3364,7 @@ function htFillForm(input) {
   const bt = document.querySelector(`input[name="ht-biztype"][value="${input.biz_type === "corp" ? "corp" : "personal"}"]`);
   if (bt) bt.checked = true;
   const st = (input.arrears && input.arrears.status) || "unknown";
-  const ar = document.querySelector(`input[name="ht-arrears"][value="${st}"]`);
-  if (ar) ar.checked = true;
+  document.querySelectorAll('input[name="ht-arrears"]').forEach(x => { x.checked = x.value === st; });
   htToggleArrears();
   const ys = (input.years || []).slice().sort((a, b) => a.year - b.year);
   htBuildYears(ys.length ? ys : null);
@@ -3598,13 +3604,13 @@ function htLimitCard(L) {
   return `<div class="card" style="border-top:4px solid #185FA5;">
     <div class="card-title">💰 예상 한도</div>
     <div style="background:#EBF2FA;border-radius:12px;padding:14px 16px;">
-      <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:#185FA5;letter-spacing:-0.02em;line-height:1.35;">약 ${L.low === L.high ? htKwon(L.high) : range(L.low, L.high)}</div>
+      <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:#185FA5;letter-spacing:-0.02em;line-height:1.35;">${L.low === L.high ? "약 " + htKwon(L.high) : L.low <= 0 ? "최대 약 " + htKwon(L.high) : "약 " + range(L.low, L.high)}</div>
     </div>
     <div style="margin-top:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 기관</div>
       <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
         <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}</span>
-        ${o.status === "ok" ? `<span style="font-weight:600;color:#185FA5;white-space:nowrap;">${o.low === o.high ? htKwon(o.high) : htKwon(o.low) + " ~ " + htKwon(o.high)}</span>`
+        ${o.status === "ok" ? `<span style="font-weight:600;color:#185FA5;white-space:nowrap;">${o.low === o.high ? htKwon(o.high) : o.low <= 0 ? "최대 " + htKwon(o.high) : htKwon(o.low) + " ~ " + htKwon(o.high)}</span>`
           : `<span style="font-weight:600;color:#9b9a95;white-space:nowrap;">${o.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</span>`}</div>`).join("")}</div>
     </div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
