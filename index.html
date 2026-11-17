@@ -792,6 +792,9 @@
             <label class="ht-f" style="grid-column:span 2;"><span><b id="ht-ytd-label"></b>년 누적 매출 (원)</span><input type="text" inputmode="numeric" id="ht-ytd-sales" placeholder="150,000,000" oninput="formatMoneyInput(this)" /></label>
             <input type="hidden" id="ht-ytd-year" />
           </div>
+          <div class="ht-line">
+            <label class="ht-f" style="grid-column:span 2;"><span>수출실적 (최근 1년, 원)</span><input type="text" inputmode="numeric" id="ht-export-amount" placeholder="수출 없으면 비워 두세요" oninput="formatMoneyInput(this)" /></label>
+          </div>
         </div>
       </div>
 
@@ -884,7 +887,6 @@
           <div class="ht-line">
             <label class="ht-f"><span>기업 인증 (특허, ISO 등)</span><input type="text" id="ht-certs" placeholder="벤처, 특허 2건" /></label>
             <label class="ht-f"><span>연구소 · 전담부서</span><select id="ht-lab"><option value="">-</option><option value="lab">기업부설연구소</option><option value="dept">연구개발전담부서</option><option value="none">없음</option></select></label>
-            <label class="ht-f"><span>수출 여부</span><input type="text" id="ht-export" placeholder="2025년 3억 원" /></label>
             <label class="ht-f"><span>공장 보유</span><select id="ht-factory"><option value="">-</option><option value="own">자가</option><option value="rent">임차</option><option value="none">없음</option></select></label>
           </div>
         </div>
@@ -2906,6 +2908,12 @@ function calcStability(fin) {
 //   → 절대 조건은 아니고 기준보다 낮으면 한도를 줄인다 (기준 충족 1.0 / 재단 755~805 0.9 / 50점 이내 부족 0.8 / 100점 이내 0.6 / 그 이하 0.4)
 // · 미소금융은 KCB 700 이하 또는 NICE 749 이하 중 하나를 충족해야만 가능 (점수 없으면 불가)
 // · 신보·기보는 1천만 원 단위로 내림하고, 9천만 원대는 8천만 원으로 본다 (7천·8천 아니면 1억)
+// · 중진공·신보·기보는 매출 3억 이상이어야 가능하고, 가능하면 최소 1억
+// · 기보는 제조업과 기술·지식서비스·문화콘텐츠·공연예술 업종만 가능 (업태 키워드로 판단)
+// · 수출업체(수출실적 있음)는 소진공·중진공·기보·신보 모두 가능 (소상공인·매출·업종 조건 무시, 신보 제한업종은 제외 유지)
+// · 신보 보증제한업종이면 신보 제외 / 보증취급 유의업종이면 신보 한도 70%
+// · 재단 우선취급업종이면 신보 제외(재단만) — 단, 매출 5억 이상이면 신보도 가능
+// · 이미 대출이 있는 기관은 조건과 관계없이 남은 한도를 보여준다
 const HT_LIMIT_RULE = {
   minRatio: 0.25,
   maxRatio: 0.30,
@@ -2913,7 +2921,11 @@ const HT_LIMIT_RULE = {
   youthAge: 39,
   miso: { min: 10000000, max: 20000000 },
   sojinMax: 200000000,                  // 소진공 최대 2억
-  credit: { sojin: { full: 805, min: 805 }, jaedan: { full: 805, min: 755 }, kodit: { full: 700, min: 700 }, kibo: { full: 700, min: 700 } },
+  credit: { sojin: { full: 805, min: 805 }, jungjin: { full: 805, min: 805 }, jaedan: { full: 805, min: 755 }, kodit: { full: 700, min: 700 }, kibo: { full: 700, min: 700 } },
+  fundMinSales: 300000000,              // 중진공·신보·기보 최소 매출
+  fundMinAmount: 100000000,             // 가능하면 최소 1억
+  koditPriorityException: 500000000,    // 재단 우선업종이라도 매출 5억 이상이면 신보 가능
+  koditCautionFactor: 0.7,              // 신보 유의업종 한도 비율
   misoKcb: 700, misoNice: 749,
   weakMax: 30000000,                    // 신용취약소상공인자금 최대 3천만
   weakScore: 839,                       // 개인신용평점 기준
@@ -2933,6 +2945,7 @@ function htLoanOrg(name) {
   const n = String(name || "").replace(/\s/g, "");
   if (!n) return null;
   if (/소진공|소상공인시장진흥|소상공인진흥|소상공인공단|신용취약|저신용/.test(n)) return "sojin";
+  if (/중진공|중소벤처기업진흥|중소기업진흥/.test(n)) return "jungjin";
   if (/재단|[가-힣]{2}신보/.test(n)) return "jaedan";            // 지역신용보증재단 (서울신보·경기신보 등)
   if (/신용보증기금|신보/.test(n)) return "kodit";
   if (/기술보증|기보/.test(n)) return "kibo";
@@ -2950,6 +2963,25 @@ function htCreditFactor(key, score) {
   return gap <= 50 ? 0.8 : gap <= 100 ? 0.6 : 0.4;
 }
 
+// 업태 분류 (신보 제한·유의업종, 재단 우선취급업종, 제조업)
+const HT_IND = {
+  restricted: /도박|사행|슬롯|룰렛|경품|상품권|경마|경륜|경정|경주장|경주권|성인용\s*게임|성인오락|카지노|유흥주점|무도장|무도유흥|안마|룸살롱|룸싸롱|접객|나이트클럽|댄스홀|콜라텍|주거용\s*건물\s*(임대|개발|공급)|아파트\s*(임대|분양)|주택\s*(임대|분양)|비디오물\s*감상|비디오방|복권|점술|점집|역술|휴게텔|전화방/,
+  caution: /담배|생맥주|주점|귀금속|금은방|금괴|예술품|골동품|화랑|부동산|공인중개|중개업|분양\s*대행|상가\s*분양|토지\s*임대|농지|여관|개인택시|금융|보험|가상자산|가상화폐|암호화폐|탐정|흥신소/,
+  priority: /음식점|식당|한식|중식|일식|분식|치킨|떡집|빵집|베이커리|제과점|카페|커피|음료점|주점|호프|민박|여관|모텔|야영|캠핑|숙박|고시원|택시|전세버스|화물|배달|퀵|슈퍼|편의점|반찬|철물|문구|서점|화초|꽃집|화원|음반|자동판매기|당구|게임장|게임방|PC방|피시방|오락|체력단련|헬스|노래연습|노래방|무도장|기원|욕탕|목욕|사우나|세탁|미용|헤어|네일|피부관리|점술|부동산\s*중개|공인중개|비디오/,
+  // 기보: 제조업 + 기술·지식서비스업 + 문화콘텐츠(문화산업특화보증)·예술(예술산업보증)
+  kibo: /제조|소프트웨어|정보통신|정보서비스|IT|아이티|프로그램\s*개발|앱\s*개발|시스템\s*(개발|통합)|플랫폼|연구개발|엔지니어링|디자인|콘텐츠|컨텐츠|영상|영화|방송|애니메이션|게임\s*(개발|제작|소프트웨어)|음반|음원|음악\s*제작|공연|연극|뮤지컬|무용|국악|오케스트라|출판|웹툰|전시\s*기획/,
+};
+function htIndustryClass(text) {
+  const t = String(text || "");
+  const retail = /소매/.test(t) && !/도매|도소매/.test(t);       // 도소매는 소매 우선업종으로 보지 않음
+  return {
+    restricted: HT_IND.restricted.test(t),
+    caution: HT_IND.caution.test(t),
+    priority: retail || HT_IND.priority.test(t),
+    kibo: HT_IND.kibo.test(t),
+  };
+}
+
 function estimateLimit(input, ctx) {
   const R = HT_LIMIT_RULE;
   const lv = ctx.vatLatest;
@@ -2965,26 +2997,38 @@ function estimateLimit(input, ctx) {
   const small = htIsSmallBiz(input);
 
   // 기관별 기대출
-  const used = { sojin: 0, jaedan: 0, kodit: 0, kibo: 0, miso: 0 };
+  const used = { sojin: 0, jungjin: 0, jaedan: 0, kodit: 0, kibo: 0, miso: 0 };
   let other = 0;   // 은행 등 기관을 특정할 수 없는 대출
   (ctx.loansList || []).forEach(l => { const k = htLoanOrg(l.org); const a = htNum(l.amount) || 0; if (a <= 0) return; if (k) used[k] += a; else other += a; });
 
   // 신보·기보 금액 단위: 1천만 원 내림, 9천만 원대 → 8천만 원
   const fundRound = v => { let r = Math.floor(v / 10000000) * 10000000; if (r === 90000000) r = 80000000; return r; };
   const cScore = (ctx.nice !== null && ctx.nice !== undefined) ? ctx.nice : ctx.kcb;
+  const ind = htIndustryClass(input.industry);
   const factors = {};
   const mk = (key, name, lo, hi) => {
-    const f = htCreditFactor(key, cScore); factors[key] = f;
+    let f = htCreditFactor(key, cScore);
+    if (key === "kodit" && ind.caution) f *= R.koditCautionFactor;
+    factors[key] = f;
     lo = floorU(lo * f); hi = floorU(hi * f);
     if (key === "sojin") { lo = Math.min(lo, R.sojinMax); hi = Math.min(hi, R.sojinMax); }
+    if (bigEnough && (key === "jungjin" || key === "kodit" || key === "kibo")) { lo = Math.max(lo, R.fundMinAmount); hi = Math.max(hi, R.fundMinAmount); }
     const ded = used[key] + (key === "miso" ? 0 : other);
     let low = Math.max(0, lo - ded), high = Math.max(0, hi - ded);
     if (key === "kodit" || key === "kibo") { low = fundRound(low); high = fundRound(high); }
+    if (key === "jungjin") { low = floorU(low); high = floorU(high); }
     return { key, name, low, high, used: used[key], status: high > 0 ? "ok" : "exhausted" };
   };
   const orgs = [];
-  if (small) orgs.push(mk("sojin", "소상공인시장진흥공단", per.low, per.high));
-  const g = [mk("jaedan", "지역신용보증재단", per.low, per.high), mk("kodit", "신용보증기금", per.low, per.high), mk("kibo", "기술보증기금", per.low, per.high)];
+  const exporter = htNum(input.export_amount) > 0 || !!String(input.export || "").trim();
+  const bigEnough = sales >= R.fundMinSales;
+  const koditOk = !ind.restricted && (exporter || (bigEnough && (!ind.priority || sales >= R.koditPriorityException)));
+  const kiboOk = exporter || (bigEnough && ind.kibo);
+  if (small || exporter) orgs.push(mk("sojin", "소상공인시장진흥공단", per.low, per.high));
+  if (bigEnough || exporter || used.jungjin > 0) orgs.push(mk("jungjin", "중소벤처기업진흥공단", per.low, per.high));
+  const g = [mk("jaedan", "지역신용보증재단", per.low, per.high)];
+  if (koditOk || used.kodit > 0) g.push(mk("kodit", "신용보증기금", per.low, per.high));
+  if (kiboOk || used.kibo > 0) g.push(mk("kibo", "기술보증기금", per.low, per.high));
   const inUse = g.filter(o => o.used > 0);
   let chosen = null;
   if (inUse.length) {
@@ -3212,7 +3256,8 @@ function analyzeHometax(input, opts) {
   if (input.certs) prefs.push({ tag: "기업 인증", text: String(input.certs) });
   if (input.lab === "lab") prefs.push({ tag: "기업부설연구소", text: "기업부설연구소 보유 — 기술·R&D 지원 우대" });
   if (input.lab === "dept") prefs.push({ tag: "연구개발전담부서", text: "연구개발전담부서 보유 — 기술·R&D 지원 우대" });
-  if (input.export) prefs.push({ tag: "수출", text: String(input.export) });
+  if (htNum(input.export_amount) > 0) prefs.push({ tag: "수출", text: `수출실적 ${Math.round(htNum(input.export_amount)).toLocaleString("ko-KR")}원` });
+  else if (input.export) prefs.push({ tag: "수출", text: String(input.export) });
   if (input.factory === "own") prefs.push({ tag: "공장 자가", text: "공장 자가 보유 — 담보 활용 가능" });
   if (input.factory === "rent") prefs.push({ tag: "공장 임차", text: "공장 임차 사용" });
 
@@ -3253,7 +3298,7 @@ const HT_LEVEL_ICON  = { safe: "✅", warn: "⚠️", danger: "🚨", info: "ℹ
 const HT_FIELDS = [
   ["company_name", "ht-company", "text"], ["rep_name", "ht-rep", "text"], ["business_number", "ht-biz", "text"],
   ["industry", "ht-industry", "text"], ["founded", "ht-founded", "text"], ["location", "ht-location", "text"],
-  ["ytd.year", "ht-ytd-year", "int"], ["ytd.month", "ht-ytd-month", "int"], ["ytd.sales", "ht-ytd-sales", "money"],
+  ["ytd.year", "ht-ytd-year", "int"], ["ytd.month", "ht-ytd-month", "int"], ["ytd.sales", "ht-ytd-sales", "money"], ["export_amount", "ht-export-amount", "money"],
   ["credit.kcb", "ht-kcb", "int"], ["credit.nice", "ht-nice", "int"], ["credit.co_kcb", "ht-co-kcb", "int"], ["credit.co_nice", "ht-co-nice", "int"],
   ["credit.recovery.faithful", "ht-rec-faithful", "text"], ["credit.recovery.type", "ht-rec-type", "text"],
   ["arrears.amount", "ht-arrears-amount", "money"], ["arrears.note", "ht-arrears-note", "text"], ["arrears.other", "ht-ar-other", "text"],
@@ -3262,7 +3307,7 @@ const HT_FIELDS = [
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"],
   ["employees", "ht-employees", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
-  ["certs", "ht-certs", "text"], ["lab", "ht-lab", "text"], ["export", "ht-export", "text"], ["factory", "ht-factory", "text"],
+  ["certs", "ht-certs", "text"], ["lab", "ht-lab", "text"], ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
   ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
   ["fin.debt_ratio", "ht-dr-direct", "dec"], ["fin.icr", "ht-icr-direct", "dec"],
@@ -3705,7 +3750,8 @@ function htInfoCard(r, input) {
     row("업태 · 업력", [item("업태", e(input.industry || "")),
                        item("창업", pf.founded ? e(pf.founded) + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""),
                        item("소재지", e(input.location || ""))]),
-    row("매출", years.concat([ytd]).concat(r.vat && r.vat.ytd ? [item("연 환산", htKwon(r.vat.ytd.annual))] : [])),
+    row("매출", years.concat([ytd]).concat(r.vat && r.vat.ytd ? [item("연 환산", htKwon(r.vat.ytd.annual))] : [])
+      .concat([htNum(input.export_amount) > 0 ? item("수출실적", htKwon(htNum(input.export_amount))) : item("수출", e(input.export || ""))])),
     row("신용점수", [has(c.kcb) || has(c.nice) ? `<span style="white-space:nowrap;"><span style="color:var(--text3);">대표</span> <b style="font-weight:600;">KCB ${score(c.kcb, c.repLevel) || "-"} · NICE ${score(c.nice, c.repLevel) || "-"}</b></span>` : "",
                      has(c.coKcb) || has(c.coNice) ? `<span style="white-space:nowrap;"><span style="color:var(--text3);">공동·배우자</span> <b style="font-weight:600;">KCB ${score(c.coKcb, c.coLevel) || "-"} · NICE ${score(c.coNice, c.coLevel) || "-"}</b></span>` : "",
                      rec ? item("신용회복", (rec.faithful === "no" ? '<span style="color:#A32D2D;">연체 있음</span>' : rec.faithful === "yes" ? "성실 납부" : "진행") + (rec.type ? " · " + e(rec.type) : "")) : ""]),
@@ -3717,7 +3763,7 @@ function htInfoCard(r, input) {
                   rp.woman ? item("여성 대표", "예") : ""]),
     row("고용", [item("직원 수", has(input.employees) ? `${input.employees}명` : ""), item("내일채움공제", e(input.naeil || "")),
                 item("노란우산공제", input.umbrella === "yes" ? "가입" : input.umbrella === "no" ? "미가입" : "")]),
-    row("기업 현황", [item("인증", e(input.certs || "")), item("연구소", labMap[input.lab] || ""), item("수출", e(input.export || "")), item("공장", facMap[input.factory] || "")]),
+    row("기업 현황", [item("인증", e(input.certs || "")), item("연구소", labMap[input.lab] || ""), item("공장", facMap[input.factory] || "")]),
   ];
   if (fin.some(Boolean)) rows.push(row("재무", fin));
   return `<div style="font-size:13px;font-weight:600;color:var(--text2);margin:0 0 6px;">📋 기업정보</div>
