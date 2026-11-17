@@ -2982,7 +2982,8 @@ function estimateLimit(input, ctx) {
     const cap = Math.max(0, R.weakMax - weakUsed);
     const amt = Math.min(cap, sj ? sj.high : cap);   // 소진공 남은 한도 안에서
     const fixed = Math.floor(amt / R.unit) * R.unit;
-    if (sj) { sj.low = fixed; sj.high = fixed; sj.weak = true; sj.status = fixed > 0 ? "ok" : "exhausted"; }   // 신용취약 대상이면 소진공은 이 금액으로만 표시
+    // 신용취약 대상이면 소진공은 이 금액 범위로만 표시 (상한에서 1천만 원 아래까지, 예: 2천만 ~ 3천만)
+    if (sj) { sj.high = fixed; sj.low = Math.max(0, fixed - 10000000); sj.weak = true; sj.status = fixed > 0 ? "ok" : "exhausted"; }
   }
 
   const sumOf = k => orgs.filter(o => k(o) && o.status === "ok");
