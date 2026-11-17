@@ -709,9 +709,9 @@
 
     <!-- 홈택스 자동 불러오기 (인증하면 아래 빈칸이 자동으로 채워짐 — 연동 준비 중) -->
     <div class="card" id="ht-auto-card" style="background:var(--surface2);">
-      <div class="card-title" style="margin-bottom:.4rem;">홈택스 인증으로 자동 채우기</div>
+      <div class="card-title" style="margin-bottom:.4rem;">본인 인증으로 자동 채우기</div>
       <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:10px;">
-        공동인증서·휴대폰·간편인증으로 인증하면 아래 빈칸이 자동으로 채워집니다. 이미 입력한 칸은 그대로 두고, 비어 있는 칸만 채웁니다.
+        공동인증서·휴대폰·간편인증으로 인증하면 아래 정보가 자동으로 채워집니다. 이미 입력한 칸은 그대로 두고, 비어 있는 칸만 채웁니다.
       </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 본인 인증하기</button>
@@ -3703,7 +3703,7 @@ async function htStartAuto(mode) {
   try {
     const input = await fetchHometaxFromProvider(mode);
     htFillForm(htMergeForm(input));
-    toast("홈택스 자료로 빈칸을 채웠어요. 나머지 필수 항목을 확인한 뒤 분석해 주세요.");
+    toast("본인 인증으로 정보를 채웠어요. 나머지 필수 항목을 확인한 뒤 분석해 주세요.");
   } catch (e) {
     toast(e.message);
   }
