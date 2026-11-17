@@ -2899,6 +2899,7 @@ function calcStability(fin) {
 // · 재단 · 신용보증기금 · 기술보증기금은 셋 중 한 곳만 이용 가능 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
 // · 기대출은 같은 기관의 한도에서 차감 (기관명으로 구분). 은행 등 그 밖의 대출은 기관별 한도에 반영하지 않는다
 // · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다
+// · 신용보증기금·기술보증기금은 1천만 원 단위로 내림하고, 9천만 원대는 8천만 원으로 본다 (7천·8천 아니면 1억)
 const HT_LIMIT_RULE = {
   minRatio: 0.25,
   maxRatio: 0.30,
@@ -2942,8 +2943,11 @@ function estimateLimit(input, ctx) {
   const used = { sojin: 0, jaedan: 0, kodit: 0, kibo: 0, miso: 0 };
   (ctx.loansList || []).forEach(l => { const k = htLoanOrg(l.org); const a = htNum(l.amount) || 0; if (k && a > 0) used[k] += a; });
 
+  // 신보·기보 금액 단위: 1천만 원 내림, 9천만 원대 → 8천만 원
+  const fundRound = v => { let r = Math.floor(v / 10000000) * 10000000; if (r === 90000000) r = 80000000; return r; };
   const mk = (key, name, lo, hi) => {
-    const low = Math.max(0, lo - used[key]), high = Math.max(0, hi - used[key]);
+    let low = Math.max(0, lo - used[key]), high = Math.max(0, hi - used[key]);
+    if (key === "kodit" || key === "kibo") { low = fundRound(low); high = fundRound(high); }
     return { key, name, low, high, used: used[key], status: high > 0 ? "ok" : "exhausted" };
   };
   const orgs = [];
@@ -2959,7 +2963,7 @@ function estimateLimit(input, ctx) {
   orgs.push(mk("miso", "미소금융", R.miso.min, R.miso.max));
 
   const sumOf = k => orgs.filter(o => k(o) && o.status === "ok");
-  const mid = chosen ? (chosen.status === "ok" ? chosen : null) : g[0];
+  const mid = chosen ? (chosen.status === "ok" ? chosen : null) : g.slice().sort((a, b) => b.high - a.high || b.low - a.low)[0];
   const parts = sumOf(o => o.key === "sojin" || o.key === "miso").concat(mid && mid.status === "ok" ? [mid] : []);
   const total = { low: parts.reduce((a, o) => a + o.low, 0), high: parts.reduce((a, o) => a + o.high, 0) };
 
@@ -3572,13 +3576,13 @@ function htLimitCard(L) {
   return `<div class="card" style="border-top:4px solid #185FA5;">
     <div class="card-title">💰 예상 한도</div>
     <div style="background:#EBF2FA;border-radius:12px;padding:14px 16px;">
-      <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:#185FA5;letter-spacing:-0.02em;line-height:1.35;">약 ${range(L.low, L.high)}</div>
+      <div style="font-size:clamp(20px,5.6vw,26px);font-weight:800;color:#185FA5;letter-spacing:-0.02em;line-height:1.35;">약 ${L.low === L.high ? htKwon(L.high) : range(L.low, L.high)}</div>
     </div>
     <div style="margin-top:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 기관</div>
       <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
         <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}</span>
-        ${o.status === "ok" ? `<span style="font-weight:600;color:#185FA5;white-space:nowrap;">${htKwon(o.low)} ~ ${htKwon(o.high)}</span>`
+        ${o.status === "ok" ? `<span style="font-weight:600;color:#185FA5;white-space:nowrap;">${o.low === o.high ? htKwon(o.high) : htKwon(o.low) + " ~ " + htKwon(o.high)}</span>`
           : `<span style="font-weight:600;color:#9b9a95;white-space:nowrap;">${o.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</span>`}</div>`).join("")}</div>
     </div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
