@@ -763,7 +763,7 @@
             <label class="ht-f"><span>사업자등록번호</span><input type="text" id="ht-biz" placeholder="123-45-67890" /></label>
           </div>
           <div class="ht-line">
-            <label class="ht-f" style="grid-column:span 2;"><span>업태 / 업종<b class="ht-req">*</b></span><input type="text" id="ht-industry" placeholder="제조업 / 플라스틱 제품" /></label>
+            <label class="ht-f" style="grid-column:span 2;"><span>업태<b class="ht-req">*</b></span><input type="text" id="ht-industry" placeholder="제조업, 건설업" /></label>
             <div class="ht-f"><span>창업년월<b class="ht-req">*</b></span>
               <div style="display:flex;gap:4px;">
                 <select id="ht-founded-y" onchange="htSyncFounded()" style="flex:1.3;"></select>
@@ -808,7 +808,7 @@
           <div class="ht-line">
             <label class="ht-f"><span>신용회복</span>
               <select id="ht-rec-faithful"><option value="">없음</option><option value="yes">진행 중 · 성실 납부</option><option value="no">진행 중 · 연체 있음</option></select></label>
-            <label class="ht-f" style="grid-column:span 2;"><span>신용회복 종류 · 회차</span><input type="text" id="ht-rec-type" placeholder="개인회생 24/60회" /></label>
+            <label class="ht-f" style="grid-column:span 2;"><span>신용회복 종류 · 회차</span><input type="text" id="ht-rec-type" placeholder="개인회생 6회차" /></label>
           </div>
         </div>
       </div>
@@ -870,7 +870,7 @@
         <div class="ht-head">고용</div>
         <div class="ht-body">
           <div class="ht-line">
-            <label class="ht-f"><span>직원 수 (4대보험)<b class="ht-req">*</b></span><input type="number" inputmode="numeric" id="ht-employees" placeholder="5" /></label>
+            <label class="ht-f"><span>직원 수 (4대보험)</span><input type="number" inputmode="numeric" id="ht-employees" placeholder="5" /></label>
             <label class="ht-f"><span>내일채움공제</span><input type="text" id="ht-naeil" placeholder="가입 2명" /></label>
             <label class="ht-f"><span>노란우산공제</span><select id="ht-umbrella"><option value="">-</option><option value="yes">가입</option><option value="no">미가입</option></select></label>
           </div>
@@ -3424,12 +3424,11 @@ function htMissing(input) {
   const miss = [];
   const need = (cond, label, id) => { if (cond) miss.push({ label, id }); };
   need(!input.company_name, "회사이름", "ht-company");
-  need(!input.industry, "업태/업종", "ht-industry");
+  need(!input.industry, "업태", "ht-industry");
   need(!input.founded, "창업년월", document.getElementById("ht-founded-y").value ? "ht-founded-m" : "ht-founded-y");
   need(!input.location, "사업장 소재지", "ht-location");
   need(input.arrears.status === "unknown", "국세 체납 여부", "ht-arrears-card");
   need(!input.loans_none && !input.loans.some(l => l.amount !== null), "기대출 (없으면 '기대출 없음')", "ht-loans-card");
-  need(input.employees === null, "직원 수", "ht-employees");
   return miss;
 }
 
@@ -3654,7 +3653,7 @@ function htInfoCard(r, input) {
   const rows = [
     row("업체", [item("회사", e(input.company_name || "")), item("대표", e(input.rep_name || "")), item("사업자번호", e(input.business_number || "")),
                  item("구분", r.biz === "corp" ? "법인" : "개인")]),
-    row("업종 · 업력", [item("업태/업종", e(input.industry || "")),
+    row("업태 · 업력", [item("업태", e(input.industry || "")),
                        item("창업", pf.founded ? e(pf.founded) + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""),
                        item("소재지", e(input.location || ""))]),
     row("매출", years.concat([ytd]).concat(r.vat && r.vat.ytd ? [item("연 환산", htKwon(r.vat.ytd.annual))] : [])),
