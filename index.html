@@ -3025,234 +3025,7 @@ function calcStability(fin) {
            erosionStatus, erosionClass, net, items, total, max, pct, grade };
 }
 
-// ── 예상 한도 ──  (※ 아래 기준은 내부 계산용 — 화면에는 기관명과 금액만 보여준다)
-// · 기관별 한도 = 기준 매출 × 25% ~ 30% (미소금융은 1천만 ~ 2천만 원)
-// · 순서에 따라 중복 지원: 소진공 → (재단 · 신용보증기금 · 기술보증기금 중 1곳) → 미소
-// · 재단 · 신용보증기금 · 기술보증기금은 셋 중 한 곳만 이용 가능 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
-// · 기대출은 같은 기관의 한도에서 차감 (기관명으로 구분). 은행 등 그 밖의 대출(기관명 없음 포함)은 미소금융을 뺀 모든 기관 한도에서 차감
-// · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업은 10인 이상) 소진공은 빠진다
-// · 업력 1년 미만이라도 제조업·콘텐츠 제작·특허 보유면 매출이 없어도 기보 5천만 ~ 1억 (매출 기준 금액이 더 크면 그 금액)
-// · 중진공·신보·기보는 최대 10억 원
-// · 한도가 1천만 원 미만이면 한도 없음 (미소금융만 500만 원 기준). 하한도 이 금액 아래로는 표시하지 않는다
-// · 소진공·재단은 최대 2억 원. 2억 이상이 한 금액으로 나오면 1억 아래까지 범위로 표시 (1억 ~ 2억)
-// · 총 예상한도 = 기준 매출 × 25% ~ 30% 에서 기대출 합계를 뺀 범위 (기관별 금액과 별개)
-// · 소진공 신용취약소상공인자금: 소상공인 + 업력 90일 이상 + 대표자 개인신용평점(NCB) 839점 이하 → 한도 내 최대 3천만 원
-//   대상이면 소진공 줄을 이 금액 하나로만 표시 (따로 줄을 만들지 않음)
-//   (기존 신용취약소상공인자금 대출 잔액은 3천만 원에서 차감. 신용관리교육 이수·영리기업 여부는 확인하지 않음)
-// · 법인사업자는 미소금융 불가
-// · 대표자가 청년(만 39세 이하)이면 상한 비율 50% (25% ~ 50%)
-// · 기관별 신용점수(NICE 기준, 없으면 KCB): 소진공 805 근접, 재단 755 이상(805 근접), 신보·기보 700 이상
-//   → 절대 조건은 아니고 기준보다 낮으면 한도를 줄인다 (기준 충족 1.0 / 재단 755~805 0.9 / 50점 이내 부족 0.8 / 100점 이내 0.6 / 그 이하 0.4)
-// · 미소금융은 KCB 700 이하 또는 NICE 749 이하 중 하나를 충족해야만 가능 (점수 없으면 불가)
-// · 신보·기보는 1천만 원 단위로 내림하고, 9천만 원대는 8천만 원으로 본다 (7천·8천 아니면 1억)
-// · 중진공·신보·기보는 매출 3억 이상이어야 가능하고, 가능하면 최소 1억
-// · 기보는 제조업과 기술·지식서비스·문화콘텐츠·공연예술 업종만 가능 (업태 키워드로 판단)
-// · 수출업체(수출실적 있음)는 소진공·중진공·기보·신보 모두 가능 (소상공인·매출·업종 조건 무시, 신보 제한업종은 제외 유지)
-// · 신보 보증제한업종이면 신보 제외 / 보증취급 유의업종이면 신보 한도 70%
-// · 재단 우선취급업종이면 신보 제외(재단만) — 단, 매출 5억 이상이면 신보도 가능
-// · 이미 대출이 있는 기관은 조건과 관계없이 남은 한도를 보여준다
-const HT_LIMIT_RULE = {
-  minRatio: 0.25,
-  maxRatio: 0.30,
-  youthMaxRatio: 0.50,                  // 청년 대표 상한
-  youthAge: 39,
-  miso: { min: 10000000, max: 20000000 },
-  sojinMax: 200000000,                  // 소진공 최대 2억
-  jaedanMax: 200000000,                 // 재단 최대 2억
-  fundMax: 1000000000,                  // 중진공·신보·기보 최대 10억
-  minAmount: 10000000,                  // 1천만 원 미만이면 한도 없음
-  misoMinAmount: 5000000,               // 미소금융만 최소 500만 원
-  credit: { sojin: { full: 805, min: 805 }, jungjin: { full: 805, min: 805 }, jaedan: { full: 805, min: 755 }, kodit: { full: 700, min: 700 }, kibo: { full: 700, min: 700 } },
-  fundMinSales: 300000000,              // 중진공·신보·기보 최소 매출
-  fundMinAmount: 100000000,             // 가능하면 최소 1억
-  koditPriorityException: 500000000,    // 재단 우선업종이라도 매출 5억 이상이면 신보 가능
-  koditCautionFactor: 0.7,              // 신보 유의업종 한도 비율
-  misoKcb: 700, misoNice: 749,
-  weakMax: 30000000,                    // 신용취약소상공인자금 최대 3천만
-  weakScore: 839,                       // 개인신용평점 기준
-  unit: 1000000,
-};
-const HT_GUARANTEE = ["jaedan", "kodit", "kibo"];   // 셋 중 한 곳만
-
-function htIsSmallBiz(input) {
-  const emp = htNum(input.employees);
-  if (emp === null) return true;
-  const mfg = /제조|건설|운수|광업/.test(input.industry || "");
-  return emp < (mfg ? 10 : 5);
-}
-
-// 기대출 기관명 → 기관 코드
-function htLoanOrg(name) {
-  const n = String(name || "").replace(/\s/g, "");
-  if (!n) return null;
-  if (/소진공|소상공인시장진흥|소상공인진흥|소상공인공단|신용취약|저신용/.test(n)) return "sojin";
-  if (/중진공|중소벤처기업진흥|중소기업진흥/.test(n)) return "jungjin";
-  if (/재단|[가-힣]{2}신보/.test(n)) return "jaedan";            // 지역신용보증재단 (서울신보·경기신보 등)
-  if (/신용보증기금|신보/.test(n)) return "kodit";
-  if (/기술보증|기보/.test(n)) return "kibo";
-  if (/미소/.test(n)) return "miso";
-  return null;
-}
-
-// 신용점수에 따른 한도 조정 비율
-function htCreditFactor(key, score) {
-  const c = HT_LIMIT_RULE.credit[key];
-  if (!c || score === null || score === undefined) return 1;
-  if (score >= c.full) return 1;
-  if (score >= c.min) return 0.9;
-  const gap = c.min - score;
-  return gap <= 50 ? 0.8 : gap <= 100 ? 0.6 : 0.4;
-}
-
-// 업태 분류 (신보 제한·유의업종, 재단 우선취급업종, 제조업)
-const HT_IND = {
-  restricted: /도박|사행|슬롯|룰렛|경품|상품권|경마|경륜|경정|경주장|경주권|성인용\s*게임|성인오락|카지노|유흥주점|무도장|무도유흥|안마|룸살롱|룸싸롱|접객|나이트클럽|댄스홀|콜라텍|주거용\s*건물\s*(임대|개발|공급)|아파트\s*(임대|분양)|주택\s*(임대|분양)|비디오물\s*감상|비디오방|복권|점술|점집|역술|휴게텔|전화방/,
-  caution: /담배|생맥주|주점|귀금속|금은방|금괴|예술품|골동품|화랑|부동산|공인중개|중개업|분양\s*대행|상가\s*분양|토지\s*임대|농지|여관|개인택시|금융|보험|가상자산|가상화폐|암호화폐|탐정|흥신소/,
-  priority: /음식점|식당|한식|중식|일식|분식|치킨|떡집|빵집|베이커리|제과점|카페|커피|음료점|주점|호프|민박|여관|모텔|야영|캠핑|숙박|고시원|택시|전세버스|화물|배달|퀵|슈퍼|편의점|반찬|철물|문구|서점|화초|꽃집|화원|음반|자동판매기|당구|게임장|게임방|PC방|피시방|오락|체력단련|헬스|노래연습|노래방|무도장|기원|욕탕|목욕|사우나|세탁|미용|헤어|네일|피부관리|점술|부동산\s*중개|공인중개|비디오/,
-  // 기보: 제조업 + 기술·지식서비스업 + 문화콘텐츠(문화산업특화보증)·예술(예술산업보증)
-  kibo: /제조|소프트웨어|정보통신|정보서비스|IT|아이티|프로그램\s*개발|앱\s*개발|시스템\s*(개발|통합)|플랫폼|연구개발|엔지니어링|디자인|콘텐츠|컨텐츠|영상|영화|방송|애니메이션|게임\s*(개발|제작|소프트웨어)|음반|음원|음악\s*제작|공연|연극|뮤지컬|무용|국악|오케스트라|출판|웹툰|전시\s*기획/,
-};
-function htIndustryClass(text) {
-  const t = String(text || "");
-  const retail = /소매/.test(t) && !/도매|도소매/.test(t);       // 도소매는 소매 우선업종으로 보지 않음
-  return {
-    restricted: HT_IND.restricted.test(t),
-    caution: HT_IND.caution.test(t),
-    priority: retail || HT_IND.priority.test(t),
-    kibo: HT_IND.kibo.test(t),
-  };
-}
-
-// 콘텐츠 제작 업종 (기보 창업 특례 판단용)
-const HT_CONTENT = /콘텐츠|컨텐츠|영상|영화|방송|애니메이션|게임\s*(개발|제작)|음반|음원|음악\s*제작|공연|연극|뮤지컬|웹툰|출판/;
-
-// 기보 창업 특례: 5천만 ~ 1억 (신용점수 조정, 기보·기타 대출 차감, 최소 1천만 원)
-function htStartupKibo(input, ctx) {
-  const R = HT_LIMIT_RULE;
-  let kUsed = 0, other = 0;
-  (ctx.loansList || []).forEach(l => { const k = htLoanOrg(l.org); const a = htNum(l.amount) || 0; if (a <= 0) return; if (k === "kibo") kUsed += a; else if (!k) other += a; });
-  const score = (ctx.nice !== null && ctx.nice !== undefined) ? ctx.nice : ctx.kcb;
-  const f = htCreditFactor("kibo", score);
-  const fr = v => { let r = Math.floor(v / 10000000) * 10000000; if (r === 90000000) r = 80000000; return r; };
-  let low = fr(Math.max(0, 50000000 * f - kUsed - other)), high = fr(Math.max(0, 100000000 * f - kUsed - other));
-  if (high < R.minAmount) { low = 0; high = 0; } else low = Math.max(low, R.minAmount);
-  return { key: "kibo", name: "기술보증기금", low, high, used: kUsed, startup: true, status: high > 0 ? "ok" : "exhausted" };
-}
-
-function estimateLimit(input, ctx) {
-  const R = HT_LIMIT_RULE;
-  const lv = ctx.vatLatest;
-  const sales = (lv && lv.vat > 0) ? lv.vat : (ctx.ytdAnnual > 0 ? ctx.ytdAnnual : null);
-  // 업력 1년 미만 + (제조업 · 콘텐츠 제작 · 특허 보유) → 매출이 없어도 기보 5천만 ~ 1억 가능
-  const startupKibo = ctx.bizAgeMonths !== null && ctx.bizAgeMonths !== undefined && ctx.bizAgeMonths < 12 &&
-    (/제조/.test(input.industry || "") || HT_CONTENT.test(input.industry || "") || /특허/.test(input.certs || ""));
-  if (!sales) {
-    if (!startupKibo) {
-      return { available: false, status: "none", low: 0, high: 0, orgs: [], steps: [], notes: [],
-               text: "매출을 입력하면 예상 한도를 계산합니다." };
-    }
-    const ar0 = (input.arrears && input.arrears.status) || "unknown";
-    const base0 = { available: true, sales: 0, steps: [], notes: [] };
-    if (ar0 === "has") return Object.assign(base0, { status: "blocked", low: 0, high: 0, orgs: [], text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요." });
-    if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base0, { status: "blocked", low: 0, high: 0, orgs: [], text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다." });
-    const k = htStartupKibo(input, ctx);
-    if (k.status !== "ok") return Object.assign(base0, { status: "low", low: 0, high: 0, orgs: [k], text: "기대출이 많아 추가 한도 여력이 부족합니다." });
-    return Object.assign(base0, { status: "ok", low: k.low, high: k.high, orgs: [k], text: "" });
-  }
-  const floorU = v => Math.floor(v / R.unit) * R.unit;
-  const age = htNum((input.rep || {}).age);
-  const youth = age !== null && age <= R.youthAge;
-  const per = { low: floorU(sales * R.minRatio), high: floorU(sales * (youth ? R.youthMaxRatio : R.maxRatio)) };
-  const small = htIsSmallBiz(input);
-
-  // 기관별 기대출
-  const used = { sojin: 0, jungjin: 0, jaedan: 0, kodit: 0, kibo: 0, miso: 0 };
-  let other = 0;   // 은행 등 기관을 특정할 수 없는 대출
-  (ctx.loansList || []).forEach(l => { const k = htLoanOrg(l.org); const a = htNum(l.amount) || 0; if (a <= 0) return; if (k) used[k] += a; else other += a; });
-
-  // 신보·기보 금액 단위: 1천만 원 내림, 9천만 원대 → 8천만 원
-  const fundRound = v => { let r = Math.floor(v / 10000000) * 10000000; if (r === 90000000) r = 80000000; return r; };
-  const cScore = (ctx.nice !== null && ctx.nice !== undefined) ? ctx.nice : ctx.kcb;
-  const ind = htIndustryClass(input.industry);
-  const factors = {};
-  const mk = (key, name, lo, hi) => {
-    let f = htCreditFactor(key, cScore);
-    if (key === "kodit" && ind.caution) f *= R.koditCautionFactor;
-    factors[key] = f;
-    lo = floorU(lo * f); hi = floorU(hi * f);
-    if (key === "sojin") { lo = Math.min(lo, R.sojinMax); hi = Math.min(hi, R.sojinMax); }
-    if (key === "jaedan") { lo = Math.min(lo, R.jaedanMax); hi = Math.min(hi, R.jaedanMax); }
-    if (key === "jungjin" || key === "kodit" || key === "kibo") { lo = Math.min(lo, R.fundMax); hi = Math.min(hi, R.fundMax); }
-    if (bigEnough && (key === "jungjin" || key === "kodit" || key === "kibo")) { lo = Math.max(lo, R.fundMinAmount); hi = Math.max(hi, R.fundMinAmount); }
-    const ded = used[key] + (key === "miso" ? 0 : other);
-    let low = Math.max(0, lo - ded), high = Math.max(0, hi - ded);
-    if (key === "kodit" || key === "kibo") { low = fundRound(low); high = fundRound(high); }
-    if (key === "jungjin") { low = floorU(low); high = floorU(high); }
-    // 큰 금액이 한 금액으로만 나오면(최대 한도에 걸린 경우 등) 1억 단위 범위로 (예: 2억 → 1억 ~ 2억)
-    if (low === high && high >= 200000000) low = high - 100000000;
-    const minA = key === "miso" ? R.misoMinAmount : R.minAmount;
-    if (high < minA) { low = 0; high = 0; } else low = Math.max(low, minA);
-    return { key, name, low, high, used: used[key], status: high > 0 ? "ok" : "exhausted" };
-  };
-  const orgs = [];
-  const exporter = htNum(input.export_amount) > 0 || !!String(input.export || "").trim();
-  const bigEnough = sales >= R.fundMinSales;
-  const koditOk = !ind.restricted && (exporter || (bigEnough && (!ind.priority || sales >= R.koditPriorityException)));
-  const kiboOk = exporter || (bigEnough && ind.kibo);
-  if (small || exporter) orgs.push(mk("sojin", "소상공인시장진흥공단", per.low, per.high));
-  if (bigEnough || exporter || used.jungjin > 0) orgs.push(mk("jungjin", "중소벤처기업진흥공단", per.low, per.high));
-  const g = [mk("jaedan", "지역신용보증재단", per.low, per.high)];
-  if (koditOk || used.kodit > 0) g.push(mk("kodit", "신용보증기금", per.low, per.high));
-  if (kiboOk || used.kibo > 0 || startupKibo) {
-    let kb = (kiboOk || used.kibo > 0) ? mk("kibo", "기술보증기금", per.low, per.high) : null;
-    if (startupKibo) { const sk = htStartupKibo(input, ctx); if (!kb || sk.high > kb.high) kb = sk; }
-    g.push(kb);
-  }
-  const inUse = g.filter(o => o.used > 0);
-  let chosen = null;
-  if (inUse.length) {
-    chosen = inUse.slice().sort((a, b) => b.high - a.high)[0];      // 이용 중인 기관만 가능
-    g.forEach(o => { if (o !== chosen) { o.status = "blocked"; o.low = 0; o.high = 0; } });
-  }
-  orgs.push(...g);
-  const misoOk = (ctx.kcb !== null && ctx.kcb !== undefined && ctx.kcb <= R.misoKcb) || (ctx.nice !== null && ctx.nice !== undefined && ctx.nice <= R.misoNice);
-  if (input.biz_type !== "corp" && misoOk) orgs.push(mk("miso", "미소금융", R.miso.min, R.miso.max));
-
-  // 소진공 신용취약소상공인자금
-  const score = ctx.creditScore;
-  if (small && score !== null && score !== undefined && score <= R.weakScore && (ctx.bizAgeMonths === null || ctx.bizAgeMonths === undefined || ctx.bizAgeMonths >= 3)) {
-    const weakUsed = (ctx.loansList || []).filter(l => /신용취약|저신용/.test(String(l.org || ""))).reduce((a, l) => a + (htNum(l.amount) || 0), 0);
-    const sj = orgs.find(o => o.key === "sojin");
-    const cap = Math.max(0, R.weakMax - weakUsed);
-    const amt = Math.min(cap, sj ? sj.high : cap);   // 소진공 남은 한도 안에서
-    const fixed = Math.floor(amt / R.unit) * R.unit;
-    // 신용취약 대상이면 소진공은 이 금액 범위로만 표시 (상한에서 1천만 원 아래까지, 예: 2천만 ~ 3천만)
-    if (sj) {
-      sj.weak = true;
-      if (fixed < R.minAmount) { sj.low = 0; sj.high = 0; sj.status = "exhausted"; }
-      else { sj.high = fixed; sj.low = Math.max(R.minAmount, fixed - 10000000); sj.status = "ok"; }
-    }
-  }
-
-  const sumOf = k => orgs.filter(o => k(o) && o.status === "ok");
-  const mid = chosen ? (chosen.status === "ok" ? chosen : null) : g.slice().sort((a, b) => b.high - a.high || b.low - a.low)[0];
-  const parts = sumOf(o => o.key === "sojin" || o.key === "miso").concat(mid && mid.status === "ok" ? [mid] : []);
-  const total = { low: parts.reduce((a, o) => a + o.low, 0), high: parts.reduce((a, o) => a + o.high, 0) };
-
-  const base = { available: true, sales, small, per, orgs, steps: [], notes: [] };
-  const ar = (input.arrears && input.arrears.status) || "unknown";
-  if (ar === "has") return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: total.low, calcHigh: total.high,
-    text: "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요." });
-  if (ctx.financial && ctx.financial.capitalEroded) return Object.assign(base, { status: "blocked", low: 0, high: 0, calcLow: total.low, calcHigh: total.high,
-    text: "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다." });
-  const loanSum = (ctx.loansList || []).reduce((a, l) => a + (htNum(l.amount) || 0), 0);
-  // 총 예상한도도 신용점수 영향을 받는다 — 가능한 기관 중 가장 유리한 조정 비율 적용
-  const okKeys = orgs.filter(o => o.status === "ok" && o.key !== "miso").map(o => o.key);
-  const tf = okKeys.length ? Math.max(...okKeys.map(k => factors[k] || 1)) : 1;
-  const tLow = Math.max(0, floorU(per.low * tf) - loanSum), tHigh = Math.max(0, floorU(per.high * tf) - loanSum);
-  if (tHigh < R.minAmount) return Object.assign(base, { status: "low", low: 0, high: 0, text: "기대출이 많아 추가 한도 여력이 부족합니다." });
-  return Object.assign(base, { status: "ok", low: Math.max(tLow, R.minAmount), high: tHigh, text: "" });
-}
+// ── 예상 한도는 서버에서 계산한다 (POST /hometax/limit) — 기관별 기준은 화면 코드에 두지 않는다 ──
 
 // 필요자금과 예상 한도 비교
 function htNeedFit(need, L) {
@@ -3455,11 +3228,9 @@ function analyzeHometax(input, opts) {
         : worst === "warn" ? "진행은 가능하나 사전에 확인해 두면 좋은 항목이 있습니다."
         : "입력된 자료 기준으로 눈에 띄는 위험 요인이 없습니다.",
   };
-  const limit = estimateLimit(input, { vatLatest: lv, ytdAnnual: vat.ytd ? vat.ytd.annual : null, financial, loansTotal, loansList: loans, loansNone: !!input.loans_none,
-                                       creditScore: credit.nice !== null ? credit.nice : credit.kcb, nice: credit.nice, kcb: credit.kcb, bizAgeMonths: bizAge ? bizAge.months : null,
-                                       creditLow: credit.repLevel === "danger" || credit.repLevel === "warn",
-                                       recoveryBad: !!(recActive && rec.faithful === "no") });
-  limit.need = htNeedFit(input.need, limit);
+  // 예상 한도: 서버가 계산한 값(opts.limit)을 사용. 없으면(무료 분석) 비공개
+  const limit = opts.limit ? Object.assign({}, opts.limit) : { available: false, status: "locked", low: 0, high: 0, orgs: [], text: "" };
+  limit.need = opts.limit ? htNeedFit(input.need, limit) : null;
   if (limit.need && limit.need.level === "danger") {
     flags.push({ level: "warn", title: "필요자금이 예상 한도 초과", text: limit.need.text });
     flags.sort((a, b) => htLevelRank(b.level) - htLevelRank(a.level));
@@ -3862,9 +3633,11 @@ async function doHometaxAnalyze() {
 
   const btn = document.getElementById("ht-analyze-btn");
   btn.disabled = true; btn.textContent = "분석 중...";
+  let dr;
   try {
-    const dr = await api("POST", "/analyze/manual");   // 구독/횟수 확인 (직접 입력 분석과 동일한 이용 기준)
+    dr = await api("POST", "/hometax/limit", { input, consume: true });   // 이용 확인 + 예상 한도(서버 계산)
     input.__full = dr.full !== false;
+    input.__okOrgs = dr.ok_orgs || 0;
     userCredits = dr.remaining_credits;
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
@@ -3876,7 +3649,7 @@ async function doHometaxAnalyze() {
   }
   btn.disabled = false; btn.textContent = "입력 정보로 분석하기";
 
-  const r = analyzeHometax(input);
+  const r = analyzeHometax(input, { limit: dr.limit });
   window.currentHistoryId = null;
   renderHometaxResults(r, input);
   const latestVat = r.vat && r.vat.latest ? r.vat.latest.vat : null;
@@ -3887,6 +3660,28 @@ async function doHometaxAnalyze() {
   }, "hometax");
   document.getElementById("ht-results").scrollIntoView({ behavior: "smooth", block: "start" });
   toast("분석 완료");
+}
+
+// 저장된 원클릭 분석 다시 보기 — 예상 한도는 서버에서 다시 받아온다 (이용 횟수는 쓰지 않음)
+async function htRenderSaved(input, adminPw) {
+  let lim = null;
+  try {
+    let res;
+    if (adminPw) {   // 관리자 도구에서 열람
+      const rr = await fetch(API_BASE + "/admin/hometax/limit", { method: "POST", headers: { "Content-Type": "application/json", "X-Admin-Password": adminPw }, body: JSON.stringify({ input }) });
+      res = await rr.json();
+      if (!rr.ok) throw new Error(res.detail || "조회 실패");
+    } else {
+      res = await api("POST", "/hometax/limit", { input, consume: false });
+    }
+    input.__full = res.full !== false;
+    input.__okOrgs = res.ok_orgs || 0;
+    lim = res.limit;
+  } catch (e) {
+    input.__full = false;
+    toast("예상 한도를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+  }
+  renderHometaxResults(analyzeHometax(input, { limit: lim }), input);
 }
 
 // ── 결과창 ────────────────────────────────────────────────────────
@@ -4057,7 +3852,7 @@ function renderHometaxResults(r, input) {
 
   // ── 무료 분석이면 여기까지만 공개 (예상 한도부터 잠금) ──
   if (!faFullAccess(input)) {
-    const okOrgs = (r.limit && r.limit.orgs || []).filter(x => x.status === "ok").length;
+    const okOrgs = input.__okOrgs || 0;
     const teaser = `<div class="card" style="border-top:4px solid #185FA5;">
       <div class="card-title">💰 예상 한도</div>
       <div style="font-size:15px;font-weight:600;color:var(--text);">${okOrgs > 0 ? `신청 가능 기관 <b style="color:#185FA5;">${okOrgs}곳</b> · ` : ""}예상 한도 <span class="fa-mask">■■■■</span>원</div>
@@ -4411,7 +4206,7 @@ async function openHistoryReport(historyId, btn) {
       window.currentHistoryId = historyId;
       showPage("dashboard");
       htFillForm(d.hometax);
-      renderHometaxResults(analyzeHometax(d.hometax), d.hometax);
+      await htRenderSaved(d.hometax);
       document.getElementById("ht-results").scrollIntoView({ behavior: "smooth", block: "start" });
       if (btn) { btn.disabled = false; btn.textContent = "결과 보기"; }
       return;
@@ -6394,7 +6189,7 @@ async function adminViewHistory(historyId) {
     if (d.history && d.history.source_type === "hometax" && d.data.hometax) {
       showPage("dashboard");
       htFillForm(d.data.hometax);
-      renderHometaxResults(analyzeHometax(d.data.hometax), d.data.hometax);
+      await htRenderSaved(d.data.hometax, pw);
       return;
     }
 

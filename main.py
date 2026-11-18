@@ -880,6 +880,306 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
     return {"data": data, "credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed, "full": full}
 
 # 직접 입력(수동) 분석 — AI 호출 없이 프론트에서 계산하지만, 크레딧 차감은 서버에서 검증
+# ══════════════════════════════════════════════════════════════
+# 원클릭 분석 — 예상 한도 계산 (서버 전용: 기관별 기준은 외부에 노출하지 않는다)
+#  · 기관별 한도 = 기준 매출 × 25% ~ 30% (청년 대표 25% ~ 50%, 미소금융은 1천만 ~ 2천만 원)
+#  · 순서에 따라 중복 지원: 소진공 → (재단 · 신용보증기금 · 기술보증기금 중 1곳) → 미소
+#  · 재단 · 신보 · 기보는 셋 중 한 곳만 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
+#  · 기대출은 같은 기관 한도에서 차감. 기관을 특정할 수 없는 대출은 미소금융을 뺀 모든 기관에서 차감
+#  · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업 10인 이상) 소진공 제외
+#  · 업력 1년 미만 + (제조 · 콘텐츠 제작 · 특허) → 매출이 없어도 기보 5천만 ~ 1억
+#  · 중진공·신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
+#  · 1천만 원 미만은 한도 없음 (미소금융만 500만 원)
+#  · 총 예상한도 = 기준 매출 × 25% ~ 30%(청년 50%) × 신용 조정 − 기대출 합계
+#  · 소진공 신용취약소상공인자금: 소상공인 + 업력 3개월 이상 + 개인신용평점 839 이하 → 최대 3천만 원 (소진공 줄을 이 금액으로)
+#  · 법인은 미소금융 불가. 미소금융은 KCB 700 이하 또는 NICE 749 이하
+#  · 신용점수(NICE, 없으면 KCB): 소진공·중진공 805 / 재단 805(755 이상 0.9) / 신보·기보 700 — 미달 50점 이내 0.8, 100점 이내 0.6, 그 이하 0.4
+#  · 신보·기보 1천만 원 단위 내림, 9천만 원대는 8천만 원
+#  · 중진공·신보·기보는 매출 3억 이상, 가능하면 최소 1억 / 기보는 제조·기술·지식서비스·콘텐츠·공연예술
+#  · 수출업체는 소진공·중진공·기보·신보 모두 가능 (신보 제한업종은 제외)
+#  · 신보 제한업종 제외 / 유의업종 70% / 재단 우선취급업종이면 신보 제외(매출 5억 이상이면 가능)
+#  · 이미 대출이 있는 기관은 조건과 관계없이 남은 한도를 보여준다
+# ══════════════════════════════════════════════════════════════
+import math as _math
+import re as _re
+from datetime import datetime as _dt, timedelta as _td
+
+HT_LIMIT_RULE = {
+    "minRatio": 0.25, "maxRatio": 0.30, "youthMaxRatio": 0.50, "youthAge": 39,
+    "miso": {"min": 10000000, "max": 20000000},
+    "sojinMax": 200000000, "jaedanMax": 200000000, "fundMax": 1000000000,
+    "minAmount": 10000000, "misoMinAmount": 5000000,
+    "credit": {"sojin": {"full": 805, "min": 805}, "jungjin": {"full": 805, "min": 805}, "jaedan": {"full": 805, "min": 755},
+               "kodit": {"full": 700, "min": 700}, "kibo": {"full": 700, "min": 700}},
+    "fundMinSales": 300000000, "fundMinAmount": 100000000, "koditPriorityException": 500000000,
+    "koditCautionFactor": 0.7, "misoKcb": 700, "misoNice": 749,
+    "weakMax": 30000000, "weakScore": 839, "unit": 1000000,
+}
+
+_HT_IND = {
+    "restricted": _re.compile(r"도박|사행|슬롯|룰렛|경품|상품권|경마|경륜|경정|경주장|경주권|성인용\s*게임|성인오락|카지노|유흥주점|무도장|무도유흥|안마|룸살롱|룸싸롱|접객|나이트클럽|댄스홀|콜라텍|주거용\s*건물\s*(임대|개발|공급)|아파트\s*(임대|분양)|주택\s*(임대|분양)|비디오물\s*감상|비디오방|복권|점술|점집|역술|휴게텔|전화방"),
+    "caution": _re.compile(r"담배|생맥주|주점|귀금속|금은방|금괴|예술품|골동품|화랑|부동산|공인중개|중개업|분양\s*대행|상가\s*분양|토지\s*임대|농지|여관|개인택시|금융|보험|가상자산|가상화폐|암호화폐|탐정|흥신소"),
+    "priority": _re.compile(r"음식점|식당|한식|중식|일식|분식|치킨|떡집|빵집|베이커리|제과점|카페|커피|음료점|주점|호프|민박|여관|모텔|야영|캠핑|숙박|고시원|택시|전세버스|화물|배달|퀵|슈퍼|편의점|반찬|철물|문구|서점|화초|꽃집|화원|음반|자동판매기|당구|게임장|게임방|PC방|피시방|오락|체력단련|헬스|노래연습|노래방|무도장|기원|욕탕|목욕|사우나|세탁|미용|헤어|네일|피부관리|점술|부동산\s*중개|공인중개|비디오"),
+    "kibo": _re.compile(r"제조|소프트웨어|정보통신|정보서비스|IT|아이티|프로그램\s*개발|앱\s*개발|시스템\s*(개발|통합)|플랫폼|연구개발|엔지니어링|디자인|콘텐츠|컨텐츠|영상|영화|방송|애니메이션|게임\s*(개발|제작|소프트웨어)|음반|음원|음악\s*제작|공연|연극|뮤지컬|무용|국악|오케스트라|출판|웹툰|전시\s*기획"),
+}
+_HT_CONTENT = _re.compile(r"콘텐츠|컨텐츠|영상|영화|방송|애니메이션|게임\s*(개발|제작)|음반|음원|음악\s*제작|공연|연극|뮤지컬|웹툰|출판")
+
+
+def _ht_num(v):
+    """JS Number()와 같은 규칙: 빈 값·숫자 아님 → None"""
+    if v is None or v == "" or isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return None if (isinstance(v, float) and _math.isnan(v)) else v
+    try:
+        s = str(v).strip()
+        if s == "":
+            return 0
+        n = float(s)
+        return None if _math.isnan(n) else n
+    except Exception:
+        return None
+
+
+def _ht_s(v):
+    return "" if v is None else str(v)
+
+
+def _ht_small_biz(inp):
+    emp = _ht_num(inp.get("employees"))
+    if emp is None:
+        return True
+    mfg = bool(_re.search(r"제조|건설|운수|광업", _ht_s(inp.get("industry"))))
+    return emp < (10 if mfg else 5)
+
+
+def _ht_loan_org(name):
+    n = _re.sub(r"\s", "", _ht_s(name))
+    if not n:
+        return None
+    if _re.search(r"소진공|소상공인시장진흥|소상공인진흥|소상공인공단|신용취약|저신용", n): return "sojin"
+    if _re.search(r"중진공|중소벤처기업진흥|중소기업진흥", n): return "jungjin"
+    if _re.search(r"재단|[가-힣]{2}신보", n): return "jaedan"
+    if _re.search(r"신용보증기금|신보", n): return "kodit"
+    if _re.search(r"기술보증|기보", n): return "kibo"
+    if _re.search(r"미소", n): return "miso"
+    return None
+
+
+def _ht_credit_factor(key, score):
+    c = HT_LIMIT_RULE["credit"].get(key)
+    if not c or score is None:
+        return 1
+    if score >= c["full"]: return 1
+    if score >= c["min"]: return 0.9
+    gap = c["min"] - score
+    return 0.8 if gap <= 50 else 0.6 if gap <= 100 else 0.4
+
+
+def _ht_industry(text):
+    t = _ht_s(text)
+    retail = ("소매" in t) and not _re.search(r"도매|도소매", t)
+    return {
+        "restricted": bool(_HT_IND["restricted"].search(t)),
+        "caution": bool(_HT_IND["caution"].search(t)),
+        "priority": retail or bool(_HT_IND["priority"].search(t)),
+        "kibo": bool(_HT_IND["kibo"].search(t)),
+    }
+
+
+def _fund_round(v):
+    r = _math.floor(v / 10000000) * 10000000
+    return 80000000 if r == 90000000 else r
+
+
+def _ht_startup_kibo(ctx):
+    R = HT_LIMIT_RULE
+    k_used = other = 0
+    for l in ctx["loans"]:
+        k = _ht_loan_org(l.get("org")); a = _ht_num(l.get("amount")) or 0
+        if a <= 0: continue
+        if k == "kibo": k_used += a
+        elif not k: other += a
+    score = ctx["nice"] if ctx["nice"] is not None else ctx["kcb"]
+    f = _ht_credit_factor("kibo", score)
+    low = _fund_round(max(0, 50000000 * f - k_used - other)); high = _fund_round(max(0, 100000000 * f - k_used - other))
+    if high < R["minAmount"]: low = high = 0
+    else: low = max(low, R["minAmount"])
+    return {"key": "kibo", "name": "기술보증기금", "low": low, "high": high, "used": k_used, "startup": True, "status": "ok" if high > 0 else "exhausted"}
+
+
+def ht_limit_context(inp, today=None):
+    """입력값에서 한도 계산에 필요한 값을 뽑는다 (화면 계산과 같은 규칙)"""
+    today = today or (_dt.utcnow() + _td(hours=9))
+    rows = []
+    for y in (inp.get("years") or []):
+        if not isinstance(y, dict): continue
+        try: yr = int(str(y.get("year")).strip()[:4]) if y.get("year") not in (None, "") else None
+        except Exception: yr = None
+        vat = _ht_num(y.get("vat"))
+        if yr and (vat is not None or _ht_num(y.get("purchase")) is not None or _ht_num(y.get("income")) is not None):
+            rows.append({"year": yr, "vat": vat})
+    rows.sort(key=lambda r: r["year"])
+    vat_latest = next((r for r in reversed(rows) if r["vat"] is not None), None)
+    ytd = inp.get("ytd") or {}
+    m, s = _ht_num(ytd.get("month")), _ht_num(ytd.get("sales"))
+    ytd_annual = s / m * 12 if (m and 1 <= m <= 12 and s is not None) else None
+    fin = inp.get("fin") or None
+    eroded = False
+    if fin:
+        a, li = _ht_num(fin.get("assets")), _ht_num(fin.get("liabilities"))
+        if a is not None and li is not None and a > 0:
+            eroded = (a - li) <= 0
+    loans = [l for l in (inp.get("loans") or []) if isinstance(l, dict) and (l.get("org") or l.get("date") or _ht_num(l.get("amount")) is not None)]
+    cr = inp.get("credit") or {}
+    nice, kcb = _ht_num(cr.get("nice")), _ht_num(cr.get("kcb"))
+    months = None
+    mm = _re.match(r"^(\d{4})-(\d{1,2})", _ht_s(inp.get("founded")))
+    if mm:
+        mo = (today.year - int(mm.group(1))) * 12 + (today.month - int(mm.group(2)))
+        if mo >= 0: months = mo
+    return {"vat_latest": vat_latest["vat"] if vat_latest else None, "ytd_annual": ytd_annual, "eroded": eroded,
+            "loans": loans, "nice": nice, "kcb": kcb, "credit_score": nice if nice is not None else kcb, "biz_age_months": months}
+
+
+def ht_estimate_limit(inp, today=None):
+    R = HT_LIMIT_RULE
+    ctx = ht_limit_context(inp, today)
+    lv = ctx["vat_latest"]
+    sales = lv if (lv is not None and lv > 0) else (ctx["ytd_annual"] if (ctx["ytd_annual"] or 0) > 0 else None)
+    ind_text = _ht_s(inp.get("industry"))
+    bam = ctx["biz_age_months"]
+    startup_kibo = bam is not None and bam < 12 and ("제조" in ind_text or bool(_HT_CONTENT.search(ind_text)) or "특허" in _ht_s(inp.get("certs")))
+    ar = (inp.get("arrears") or {}).get("status") or "unknown"
+    if not sales:
+        if not startup_kibo:
+            return {"available": False, "status": "none", "low": 0, "high": 0, "orgs": [], "text": "매출을 입력하면 예상 한도를 계산합니다."}
+        base0 = {"available": True, "sales": 0}
+        if ar == "has": return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [], "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
+        if ctx["eroded"]: return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [], "text": "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다."}
+        k = _ht_startup_kibo(ctx)
+        if k["status"] != "ok": return {**base0, "status": "low", "low": 0, "high": 0, "orgs": [k], "text": "기대출이 많아 추가 한도 여력이 부족합니다."}
+        return {**base0, "status": "ok", "low": k["low"], "high": k["high"], "orgs": [k], "text": ""}
+
+    floor_u = lambda v: _math.floor(v / R["unit"]) * R["unit"]
+    age = _ht_num((inp.get("rep") or {}).get("age"))
+    youth = age is not None and age <= R["youthAge"]
+    per = {"low": floor_u(sales * R["minRatio"]), "high": floor_u(sales * (R["youthMaxRatio"] if youth else R["maxRatio"]))}
+    small = _ht_small_biz(inp)
+    used = {"sojin": 0, "jungjin": 0, "jaedan": 0, "kodit": 0, "kibo": 0, "miso": 0}
+    other = 0
+    for l in ctx["loans"]:
+        k = _ht_loan_org(l.get("org")); a = _ht_num(l.get("amount")) or 0
+        if a <= 0: continue
+        if k: used[k] += a
+        else: other += a
+    c_score = ctx["nice"] if ctx["nice"] is not None else ctx["kcb"]
+    ind = _ht_industry(ind_text)
+    factors = {}
+    big_enough = sales >= R["fundMinSales"]
+
+    def mk(key, name, lo, hi):
+        f = _ht_credit_factor(key, c_score)
+        if key == "kodit" and ind["caution"]: f *= R["koditCautionFactor"]
+        factors[key] = f
+        lo = floor_u(lo * f); hi = floor_u(hi * f)
+        if key == "sojin": lo = min(lo, R["sojinMax"]); hi = min(hi, R["sojinMax"])
+        if key == "jaedan": lo = min(lo, R["jaedanMax"]); hi = min(hi, R["jaedanMax"])
+        if key in ("jungjin", "kodit", "kibo"): lo = min(lo, R["fundMax"]); hi = min(hi, R["fundMax"])
+        if big_enough and key in ("jungjin", "kodit", "kibo"): lo = max(lo, R["fundMinAmount"]); hi = max(hi, R["fundMinAmount"])
+        ded = used[key] + (0 if key == "miso" else other)
+        low = max(0, lo - ded); high = max(0, hi - ded)
+        if key in ("kodit", "kibo"): low = _fund_round(low); high = _fund_round(high)
+        if key == "jungjin": low = floor_u(low); high = floor_u(high)
+        if low == high and high >= 200000000: low = high - 100000000
+        min_a = R["misoMinAmount"] if key == "miso" else R["minAmount"]
+        if high < min_a: low = high = 0
+        else: low = max(low, min_a)
+        return {"key": key, "name": name, "low": low, "high": high, "used": used[key], "status": "ok" if high > 0 else "exhausted"}
+
+    orgs = []
+    exporter = (_ht_num(inp.get("export_amount")) or 0) > 0 or bool(_ht_s(inp.get("export")).strip())
+    kodit_ok = (not ind["restricted"]) and (exporter or (big_enough and ((not ind["priority"]) or sales >= R["koditPriorityException"])))
+    kibo_ok = exporter or (big_enough and ind["kibo"])
+    if small or exporter: orgs.append(mk("sojin", "소상공인시장진흥공단", per["low"], per["high"]))
+    if big_enough or exporter or used["jungjin"] > 0: orgs.append(mk("jungjin", "중소벤처기업진흥공단", per["low"], per["high"]))
+    g = [mk("jaedan", "지역신용보증재단", per["low"], per["high"])]
+    if kodit_ok or used["kodit"] > 0: g.append(mk("kodit", "신용보증기금", per["low"], per["high"]))
+    if kibo_ok or used["kibo"] > 0 or startup_kibo:
+        kb = mk("kibo", "기술보증기금", per["low"], per["high"]) if (kibo_ok or used["kibo"] > 0) else None
+        if startup_kibo:
+            sk = _ht_startup_kibo(ctx)
+            if not kb or sk["high"] > kb["high"]: kb = sk
+        g.append(kb)
+    in_use = [o for o in g if o["used"] > 0]
+    chosen = None
+    if in_use:
+        chosen = sorted(in_use, key=lambda o: -o["high"])[0]
+        for o in g:
+            if o is not chosen: o["status"] = "blocked"; o["low"] = 0; o["high"] = 0
+    orgs.extend(g)
+    kcb, nice = ctx["kcb"], ctx["nice"]
+    miso_ok = (kcb is not None and kcb <= R["misoKcb"]) or (nice is not None and nice <= R["misoNice"])
+    if inp.get("biz_type") != "corp" and miso_ok: orgs.append(mk("miso", "미소금융", R["miso"]["min"], R["miso"]["max"]))
+
+    score = ctx["credit_score"]
+    if small and score is not None and score <= R["weakScore"] and (bam is None or bam >= 3):
+        weak_used = sum((_ht_num(l.get("amount")) or 0) for l in ctx["loans"] if _re.search(r"신용취약|저신용", _ht_s(l.get("org"))))
+        sj = next((o for o in orgs if o["key"] == "sojin"), None)
+        cap = max(0, R["weakMax"] - weak_used)
+        amt = min(cap, sj["high"] if sj else cap)
+        fixed = _math.floor(amt / R["unit"]) * R["unit"]
+        if sj:
+            sj["weak"] = True
+            if fixed < R["minAmount"]: sj["low"] = 0; sj["high"] = 0; sj["status"] = "exhausted"
+            else: sj["high"] = fixed; sj["low"] = max(R["minAmount"], fixed - 10000000); sj["status"] = "ok"
+
+    base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
+    if ar == "has": return {**base, "status": "blocked", "low": 0, "high": 0, "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
+    if ctx["eroded"]: return {**base, "status": "blocked", "low": 0, "high": 0, "text": "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다."}
+    loan_sum = sum((_ht_num(l.get("amount")) or 0) for l in ctx["loans"])
+    ok_keys = [o["key"] for o in orgs if o["status"] == "ok" and o["key"] != "miso"]
+    tf = max(factors.get(k, 1) or 1 for k in ok_keys) if ok_keys else 1
+    t_low = max(0, floor_u(per["low"] * tf) - loan_sum); t_high = max(0, floor_u(per["high"] * tf) - loan_sum)
+    if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "기대출이 많아 추가 한도 여력이 부족합니다."}
+    return {**base, "status": "ok", "low": max(t_low, R["minAmount"]), "high": t_high, "text": ""}
+
+
+def _ht_clean(o):
+    """소수점 없는 실수는 정수로 (응답을 깔끔하게)"""
+    if isinstance(o, float) and o.is_integer():
+        return int(o)
+    if isinstance(o, dict):
+        return {k: _ht_clean(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_ht_clean(v) for v in o]
+    return o
+
+class HometaxLimitBody(BaseModel):
+    input: dict
+    consume: bool = False     # True = 새 분석(이용 횟수 기록), False = 분석이력 다시 보기
+
+@app.post("/hometax/limit")
+def hometax_limit(body: HometaxLimitBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """원클릭 분석의 예상 한도. 구독(전체 공개)일 때만 금액·기관을 내려주고, 아니면 신청 가능 기관 수만 알려준다."""
+    subscribed = user_has_subscription_access(db, user)
+    used = 0
+    if body.consume:
+        if not subscribed and user.credits < COST_PER_ANALYSIS:
+            _check_free_quota(db, user)
+        used, full = _consume_analysis(db, user, subscribed)
+    else:
+        full = subscribed
+    try:
+        L = _ht_clean(ht_estimate_limit(body.input or {}))
+    except Exception as e:
+        print(f"[hometax_limit] 계산 오류: {e}")
+        L = {"available": False, "status": "none", "low": 0, "high": 0, "orgs": [], "text": "예상 한도를 계산하지 못했습니다. 입력값을 확인해 주세요."}
+    ok_orgs = sum(1 for o in (L.get("orgs") or []) if o.get("status") == "ok")
+    return {"full": full, "limit": L if full else None, "ok_orgs": ok_orgs,
+            "credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed}
+
+
 @app.post("/analyze/manual")
 def analyze_manual(
     user: models.User = Depends(get_current_user),
@@ -2213,6 +2513,15 @@ def admin_list_histories(
         ],
     }
 
+
+class AdminHometaxLimitBody(BaseModel):
+    input: dict
+
+@app.post("/admin/hometax/limit")
+def admin_hometax_limit(body: AdminHometaxLimitBody, _: bool = Depends(check_admin)):
+    """관리자 화면에서 회원의 원클릭 분석 이력을 볼 때 예상 한도 계산"""
+    L = _ht_clean(ht_estimate_limit(body.input or {}))
+    return {"full": True, "limit": L, "ok_orgs": sum(1 for o in (L.get("orgs") or []) if o.get("status") == "ok")}
 
 @app.get("/admin/histories/{history_id}")
 def admin_get_history(
