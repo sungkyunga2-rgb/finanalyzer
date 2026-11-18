@@ -144,6 +144,12 @@ TEAM_INVITE_VALID_DAYS = 14   # 초대 유효기간 (지나면 수락 불가)
 TEAM_MAX_PENDING_INVITES = 20 # 수락 대기 초대 상한 (초대 남발 방지용 — 사용자 수 한도와는 별개)
 
 
+def _email_eq(value):
+    """이메일 비교 — 대소문자·앞뒤 공백 차이는 같은 주소로 본다 (예: Hong@Naver.com = hong@naver.com)"""
+    from sqlalchemy import func
+    return func.lower(func.trim(models.User.email)) == str(value or "").strip().lower()
+
+
 # ── 모델 ─────────────────────────────────────────────
 class UserCreate(BaseModel):
     email: str
@@ -325,7 +331,7 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="이용약관 및 개인정보처리방침에 동의해주세요.")
     if not body.nickname.strip():
         raise HTTPException(status_code=400, detail="별명을 입력해주세요.")
-    existing = db.query(models.User).filter(models.User.email == body.email).first()
+    existing = db.query(models.User).filter(_email_eq(body.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="이미 사용 중인 이메일입니다.")
     import hashlib
@@ -351,7 +357,7 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
     import hashlib
     pw_hash = hashlib.sha256(body.password.encode()).hexdigest()
     user = db.query(models.User).filter(
-        models.User.email == body.email,
+        _email_eq(body.email),
         models.User.password_hash == pw_hash
     ).first()
     if not user:
@@ -1257,7 +1263,7 @@ def admin_list_users(_: bool = Depends(check_admin), db: Session = Depends(get_d
 
 @app.get("/admin/user")
 def admin_get_user(email: str, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == email).first()
+    user = db.query(models.User).filter(_email_eq(email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
     payments = db.query(models.Payment).filter(models.Payment.user_id == user.id).order_by(models.Payment.created_at.desc()).limit(20).all()
@@ -1291,7 +1297,7 @@ class AdminAdjustCreditsBody(BaseModel):
 
 @app.post("/admin/adjust-credits")
 def admin_adjust_credits(body: AdminAdjustCreditsBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == body.email).first()
+    user = db.query(models.User).filter(_email_eq(body.email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
     user.credits = max(0, user.credits + body.delta_count * COST_PER_ANALYSIS)
@@ -1304,7 +1310,7 @@ class AdminSetCreditsBody(BaseModel):
 
 @app.post("/admin/set-credits")
 def admin_set_credits(body: AdminSetCreditsBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == body.email).first()
+    user = db.query(models.User).filter(_email_eq(body.email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
     user.credits = max(0, body.remaining_count) * COST_PER_ANALYSIS
@@ -1321,7 +1327,7 @@ class AdminUpdateUserBody(BaseModel):
 @app.post("/admin/update-user")
 def admin_update_user(body: AdminUpdateUserBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
     import re, hashlib
-    user = db.query(models.User).filter(models.User.email == body.email).first()
+    user = db.query(models.User).filter(_email_eq(body.email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
 
@@ -1330,7 +1336,7 @@ def admin_update_user(body: AdminUpdateUserBody, _: bool = Depends(check_admin),
         if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", new_email):
             raise HTTPException(status_code=400, detail="올바른 이메일 형식이 아닙니다.")
         if new_email != user.email:
-            existing = db.query(models.User).filter(models.User.email == new_email).first()
+            existing = db.query(models.User).filter(_email_eq(new_email)).first()
             if existing:
                 raise HTTPException(status_code=400, detail="이미 사용 중인 이메일입니다.")
             user.email = new_email
@@ -1356,7 +1362,7 @@ class AdminDeleteUserBody(BaseModel):
 
 @app.post("/admin/delete-user")
 def admin_delete_user(body: AdminDeleteUserBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == body.email).first()
+    user = db.query(models.User).filter(_email_eq(body.email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
     db.query(models.Payment).filter(models.Payment.user_id == user.id).delete()
@@ -2788,7 +2794,7 @@ class ResetPasswordBody(BaseModel):
 def reset_password(body: ResetPasswordBody, db: Session = Depends(get_db)):
     import hashlib, secrets, string
     email = body.email.strip().lower()
-    user = db.query(models.User).filter(models.User.email == email).first()
+    user = db.query(models.User).filter(_email_eq(email)).first()
     if not user:
         raise HTTPException(status_code=404, detail="해당 이메일로 가입된 계정을 찾을 수 없습니다.")
 
