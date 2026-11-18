@@ -891,7 +891,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #  · 업력 1년 미만 + (제조 · 콘텐츠 제작 · 특허) → 매출이 없어도 기보 5천만 ~ 1억
 #  · 중진공·신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
 #  · 1천만 원 미만은 한도 없음 (미소금융만 500만 원)
-#  · 총 예상한도 = 기준 매출 × 25% ~ 30%(청년 50%) × 신용 조정 − 기대출 합계
+#  · 총 예상한도 = 기준 매출 × 25% ~ 30%(청년 50%) × 신용 조정 − 기대출 합계 (최대 10억)
 #  · 소진공 신용취약소상공인자금: 소상공인 + 업력 3개월 이상 + 개인신용평점 839 이하 → 최대 3천만 원 (소진공 줄을 이 금액으로)
 #  · 법인은 미소금융 불가. 미소금융은 KCB 700 이하 또는 NICE 749 이하
 #  · 신용점수(NICE, 없으면 KCB): 소진공·중진공 805 / 재단 805(755 이상 0.9) / 신보·기보 700 — 미달 50점 이내 0.8, 100점 이내 0.6, 그 이하 0.4
@@ -915,6 +915,7 @@ HT_LIMIT_RULE = {
     "fundMinSales": 300000000, "fundMinAmount": 100000000, "koditPriorityException": 500000000,
     "koditCautionFactor": 0.7, "misoKcb": 700, "misoNice": 749,
     "weakMax": 30000000, "weakScore": 839, "unit": 1000000,
+    "totalMax": 1000000000,
 }
 
 _HT_IND = {
@@ -1141,9 +1142,12 @@ def ht_estimate_limit(inp, today=None):
     loan_sum = sum((_ht_num(l.get("amount")) or 0) for l in ctx["loans"])
     ok_keys = [o["key"] for o in orgs if o["status"] == "ok" and o["key"] != "miso"]
     tf = max(factors.get(k, 1) or 1 for k in ok_keys) if ok_keys else 1
-    t_low = max(0, floor_u(per["low"] * tf) - loan_sum); t_high = max(0, floor_u(per["high"] * tf) - loan_sum)
+    # 총 예상한도 최대 10억 (기대출은 이 안에서 차감)
+    t_low = max(0, min(floor_u(per["low"] * tf), R["totalMax"]) - loan_sum); t_high = max(0, min(floor_u(per["high"] * tf), R["totalMax"]) - loan_sum)
     if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "기대출이 많아 추가 한도 여력이 부족합니다."}
-    return {**base, "status": "ok", "low": max(t_low, R["minAmount"]), "high": t_high, "text": ""}
+    t_low = max(t_low, R["minAmount"])
+    if t_low == t_high and t_high >= 200000000: t_low = t_high - 100000000                       # 한 금액이면 1억 아래까지 범위로
+    return {**base, "status": "ok", "low": t_low, "high": t_high, "text": ""}
 
 
 def _ht_clean(o):
