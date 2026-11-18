@@ -12,13 +12,13 @@
 <meta name="apple-mobile-web-app-title" content="피나" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 
-<title>FinAnalyzer(피나) — AI 재무제표 분석</title>
-<meta name="description" content="재무제표 이미지 한 장으로 부채비율·자본잠식·이자보상배수를 AI가 자동 계산하고, 정책자금 연계 여부까지 확인할 수 있는 AI 재무제표 분석 서비스, 피나(FinAnalyzer)." />
+<title>FinAnalyzer(피나) — AI 기업분석·평가</title>
+<meta name="description" content="인증 한 번으로 재무제표 분석부터 받을 수 있는 정책자금과 예상 한도까지 확인하는 AI 기업분석·평가 서비스, 피나(FinAnalyzer)." />
 
 <!-- 카카오톡/페이스북 등 링크 공유 시 미리보기 (og:image는 실제 이미지 파일을 GitHub 저장소에 올린 뒤 아래 URL을 그 경로로 바꿔주세요) -->
 <meta property="og:type" content="website" />
-<meta property="og:title" content="피나(FinAnalyzer) — AI 재무제표 분석" />
-<meta property="og:description" content="재무제표 이미지 한 장으로 부채비율·자본잠식·이자보상배수를 AI가 자동 계산하고, 정책자금 연계 여부까지 확인할 수 있어요." />
+<meta property="og:title" content="피나(FinAnalyzer) — AI 기업분석·평가" />
+<meta property="og:description" content="인증 한 번으로 재무제표 분석부터 받을 수 있는 정책자금과 예상 한도까지 한 번에 확인하세요." />
 <meta property="og:url" content="https://sungkyunga2-rgb.github.io/finanalyzer/" />
 <meta property="og:image" content="https://sungkyunga2-rgb.github.io/finanalyzer/og-image.png" />
 <meta name="twitter:card" content="summary_large_image" />
@@ -138,7 +138,7 @@
   .hero-brand-kr .c2 { color: #ffffff; }
   .hero-brand-en { font-size: 12px; font-weight: 600; color: rgba(255,255,255,.75); letter-spacing: 0.06em; margin-top: 4px; }
   .hero-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; max-width: 760px; margin: -28px auto 3rem; padding: 0 1.5rem; position: relative; z-index: 1; }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; max-width: 760px; margin: -28px auto 3rem; padding: 0 1.5rem; position: relative; z-index: 1; }
   .feature { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; border-top: 3px solid var(--accent); box-shadow: 0 8px 24px rgba(13,59,124,0.06); }
   .feature-icon { font-size: 22px; margin-bottom: 0.6rem; }
   .feature h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
@@ -472,14 +472,14 @@
       </div>
     </header>
     <div class="hero">
-      <div class="hero-eyebrow">AI FINANCIAL DIAGNOSTIC PLATFORM</div>
+      <div class="hero-eyebrow">AI CORPORATE ANALYSIS &amp; EVALUATION</div>
       <div class="hero-brand">
-        <div class="hero-brand-label">기업분석보고서는</div>
+        <div class="hero-brand-label">기업분석·평가는</div>
         <div class="hero-brand-kr"><span class="c1">피</span><span class="c2">나</span></div>
         <div class="hero-brand-en">FinAnalyzer</div>
       </div>
-      <h1>재무제표 이미지 한 장으로<br/><em>즉시 분석 완료</em></h1>
-      <p>재무제표를 첨부하면 부채비율·이자보상배수부터<br>정책자금 연계여부까지 한번에 확인!</p>
+      <h1>인증 한 번으로<br/><em>기업분석·평가 완료</em></h1>
+      <p>재무제표 분석부터 받을 수 있는 정책자금과<br>예상 한도까지 한 번에 확인!</p>
       <div class="hero-btns">
         <a class="btn btn-primary" href="#" onclick="heroStart()">바로 시작하기</a>
         <a class="btn" href="#" onclick="event.preventDefault();showSampleReport()">샘플 보러가기</a>
@@ -489,19 +489,24 @@
   </div>
   <div class="features">
     <div class="feature">
-      <div class="feature-icon">🔍</div>
-      <h3>AI 자동 인식</h3>
-      <p>재무제표 이미지를 업로드하면 AI가 자동으로 분석하고 결과를 보여줍니다.</p>
+      <div class="feature-icon">🔐</div>
+      <h3>인증 한 번으로 자동 입력</h3>
+      <p>본인 인증 한 번이면 홈택스 자료로 기업 정보·매출·재무 정보가 자동으로 채워집니다.</p>
     </div>
     <div class="feature">
       <div class="feature-icon">📊</div>
-      <h3>핵심 지표 즉시 계산</h3>
-      <p>부채비율, 자본잠식, 결손, 이자보상배수, 정책자금 연계 가능 여부를 바로 확인할 수 있습니다.</p>
+      <h3>AI 기업분석·평가</h3>
+      <p>부채비율·이자보상배수·자본잠식 등 재무 건전성과 국세 체납·신용까지 종합해 기업을 평가합니다.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">💰</div>
+      <h3>정책자금 · 예상 한도</h3>
+      <p>신청 가능한 정책자금 기관과 기관별 예상 한도를 금액으로 바로 확인할 수 있습니다.</p>
     </div>
     <div class="feature">
       <div class="feature-icon">💳</div>
-      <h3>건당 결제 방식</h3>
-      <p>필요한 만큼만 결제해서 사용하세요. 분석 1회당 9,730원부터.</p>
+      <h3>월 59,000원 무제한</h3>
+      <p>정가 월 300,000원에서 80% 할인된 가격으로, 분석 횟수 제한 없이 이용하세요.</p>
     </div>
   </div>
   <div class="community-promo" style="max-width:1080px;margin:0 auto 60px;padding:32px 28px;background:var(--accent-bg);border-radius:16px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
@@ -1445,7 +1450,7 @@
   <div class="main" style="max-width:720px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">구독</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
-      월 구독으로 재무제표 분석을 <strong>횟수 제한 없이</strong> 이용하세요. 정가 대비 <strong>80% 할인</strong>된 가격으로 시작하세요.
+      월 구독으로 기업분석·평가를 <strong>횟수 제한 없이</strong> 이용하세요. 정가 대비 <strong>80% 할인</strong>된 가격으로 시작하세요.
     </p>
 
     <div id="sub-loading" class="card" style="text-align:center;color:var(--text3);font-size:13px;">불러오는 중...</div>
@@ -1532,16 +1537,17 @@
     <h2 style="font-size:20px;font-weight:600;margin-bottom:1.5rem;">이용약관</h2>
     <div class="card" style="line-height:1.9;font-size:14px;color:var(--text2);">
       <h3 style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:1rem;">씨앤지파트너스 서비스 이용약관</h3>
-      <p>본 약관은 씨앤지파트너스(이하 '회사')가 제공하는 AI 재무제표 분석 서비스(이하 '서비스')의 이용에 관한 조건 및 절차, 회사와 이용자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+      <p>본 약관은 씨앤지파트너스(이하 '회사')가 제공하는 AI 기업분석·평가 서비스 피나(FinAnalyzer)(이하 '서비스')의 이용에 관한 조건 및 절차, 회사와 이용자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
       <br/>
-      <p><strong>제1조 (서비스 이용)</strong><br/>서비스는 재무제표 이미지 또는 직접 입력한 재무 수치를 AI로 분석하여 주요 재무지표와 진단 리포트를 제공합니다. 분석 결과는 참고용이며 공인 회계사·세무사 등 전문가의 검토를 대체하지 않습니다.</p>
+      <p><strong>제1조 (서비스 이용)</strong><br/>① 서비스는 이용자가 본인 인증으로 연동한 자료, 재무제표 이미지 또는 직접 입력한 정보를 AI로 분석하여 기업 분석·평가 결과, 주요 재무지표, 신청 가능한 정책자금 기관 및 예상 한도 등을 제공합니다.<br/>② 분석·평가 결과와 예상 한도는 참고용 정보이며, 실제 지원 여부와 금액은 각 기관의 심사에 따라 달라질 수 있습니다. 서비스는 공인회계사·세무사 등 전문가의 검토를 대체하지 않습니다.</p>
       <br/>
       <p><strong>제2조 (구독 요금제)</strong><br/>
       ① 서비스는 월 단위 구독(정기결제) 방식으로 제공되며, 월 분석 횟수는 제한하지 않습니다(제7조의 공정사용 원칙 적용).<br/>
-      &nbsp;&nbsp;· 피나 구독: 사용자 1명, 월 59,000원<br/>
-      ② 표시된 금액은 부가가치세를 포함한 금액입니다.<br/>
-      ③ 사용자 수에는 요금제를 결제한 대표 계정이 포함되며, 팀 초대는 초대받은 회원이 수락하여 팀에 합류한 시점에 사용자 수에 포함됩니다. 요금제의 사용자 수를 초과하여 합류할 수 없습니다.<br/>
-      ④ 요금제 변경이 필요한 경우 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.</p>
+      &nbsp;&nbsp;· 피나 구독: 사용자 1명, 정가 월 300,000원 → 할인가 <strong>월 59,000원</strong><br/>
+      ② 표시된 금액은 부가가치세를 포함한 금액이며, 매월 결제되는 금액은 할인가(월 59,000원)입니다.<br/>
+      ③ 할인가는 회사의 정책에 따라 변경될 수 있으며, 변경하는 경우 제3조 ④에 따라 사전에 안내합니다.<br/>
+      ④ 사용자 수에는 요금제를 결제한 대표 계정이 포함되며, 팀 초대는 초대받은 회원이 수락하여 팀에 합류한 시점에 사용자 수에 포함됩니다. 요금제의 사용자 수를 초과하여 합류할 수 없습니다.<br/>
+      ⑤ 요금제 변경이 필요한 경우 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.</p>
       <br/>
       <p><strong>제3조 (결제 및 자동결제)</strong><br/>
       ① 구독을 시작하면 선택한 요금제의 첫 달 요금이 즉시 결제되고, 이후 이용기간이 끝나는 날(최초 결제일과 같은 날짜)에 매월 등록된 카드로 자동 결제됩니다. 해당 월에 같은 날짜가 없는 경우 그 달의 말일에 결제됩니다.<br/>
@@ -1555,7 +1561,7 @@
       ② (청약철회) 이용자는 결제일로부터 <strong>7일 이내</strong>에 청약철회(환불)를 요청할 수 있습니다. 다만 서비스는 결제 즉시 이용할 수 있는 디지털 서비스이므로, 분석 보고서(진단 결과)가 1건이라도 생성된 경우에는 서비스 이용이 개시된 것으로 보아 해당 결제분의 환불이 제한됩니다.<br/><br/>
       ③ (중도 해지 시 환불) 청약철회 기간이 지난 후 또는 서비스를 이용한 후에 해지하는 경우, 이미 결제된 이용기간에 대한 요금은 일할 계산하여 환불하지 않습니다. 다만 서비스 장애 등 회사의 귀책사유로 정상적인 이용이 불가능했던 경우에는 이용하지 못한 기간에 해당하는 금액을 환불하거나 이용기간을 연장합니다.<br/><br/>
       ④ (결제 오류) 이용자가 동의한 금액과 다르게 결제되었거나 해지 후에도 결제된 경우, 회사는 확인 후 해당 금액을 전액 환불합니다.<br/><br/>
-      ⑤ (신청 방법 및 처리) 환불은 서비스 내 [내 정보] &gt; [환불 신청] 메뉴 또는 이메일(cngpartners123@gmail.com)로 결제자명·결제일·환불 사유를 기재하여 요청할 수 있습니다. 회사는 접수일로부터 영업일 기준 3~7일 이내에 처리 결과를 안내하며, 환불이 승인된 경우 결제수단에 따라 실제 환급까지 추가로 3~5영업일이 소요될 수 있습니다.<br/><br/>
+      ⑤ (신청 방법 및 처리) 환불은 서비스 내 [내 정보] &gt; [환불 신청] 메뉴 또는 이메일(cngpartners123@gmail.com)로 결제자명·결제일·환불 사유를 기재하여 요청할 수 있습니다. 환불 금액은 이용자가 실제로 결제한 금액을 기준으로 합니다. 회사는 접수일로부터 영업일 기준 3~7일 이내에 처리 결과를 안내하며, 환불이 승인된 경우 결제수단에 따라 실제 환급까지 추가로 3~5영업일이 소요될 수 있습니다.<br/><br/>
       ⑥ (기존 충전 이용권) 구독 도입 전에 충전한 이용권의 잔여 크레딧은 구독이 없는 동안 기존과 같이 분석에 사용할 수 있으며, 그 환불은 충전일로부터 7일 이내이면서 사용하지 않은 금액에 한하여 가능합니다.<br/><br/>
       ⑦ (기타) 위에서 정하지 않은 사항은 관련 법령(전자상거래 등에서의 소비자보호에 관한 법률 등)에 따라 처리됩니다.</p>
       <br/>
@@ -1569,7 +1575,7 @@
       <br/>
       <p><strong>제7조 (공정사용)</strong><br/>분석 횟수에 제한이 없는 요금제라도 자동화 프로그램을 이용한 대량 호출, 계정 공유, 서비스 재판매 등 서비스의 안정적 운영을 해치거나 통상적인 이용 범위를 현저히 벗어나는 이용이 확인되면, 회사는 사전 안내 후 이용을 제한하거나 구독을 해지할 수 있습니다.</p>
       <br/>
-      <p><strong>제8조 (면책)</strong><br/>회사는 AI 분석 결과의 정확성을 보증하지 않으며, 분석 결과를 기반으로 한 의사결정에 따른 손실에 대해 책임을 지지 않습니다. 이용자가 컨설팅 등의 목적으로 제3자에게 분석 결과를 제공하는 경우, 그 내용에 대한 책임은 이용자에게 있습니다.</p>
+      <p><strong>제8조 (면책)</strong><br/>회사는 AI 분석·평가 결과와 예상 한도·신청 가능 기관 정보의 정확성 및 실제 지원 결과를 보증하지 않으며, 분석 결과를 기반으로 한 의사결정에 따른 손실에 대해 책임을 지지 않습니다. 이용자가 컨설팅 등의 목적으로 제3자에게 분석 결과를 제공하는 경우, 그 내용에 대한 책임은 이용자에게 있습니다.</p>
       <br/>
       <p><strong>제9조 (약관의 변경)</strong><br/>회사는 필요한 경우 약관을 변경할 수 있으며, 변경 시 적용일 7일 전(이용자에게 불리한 변경은 30일 전)까지 서비스 화면 또는 이메일로 안내합니다.</p>
       <br/>
@@ -5298,7 +5304,7 @@ ${isSample ? `<div class="sample-mark">SAMPLE</div>
   <div class="cover-brandbar">
     <div class="cover-brand-mark">
       <div class="cover-brand-logo">FN</div>
-      <div class="cover-brand-name">기업분석보고서 피나<span>FinAnalyzer</span></div>
+      <div class="cover-brand-name">기업분석·평가 보고서 피나<span>FinAnalyzer</span></div>
     </div>
     <div class="cover-doc-badge">AI 재무분석 리포트</div>
   </div>
