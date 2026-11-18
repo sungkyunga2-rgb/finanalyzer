@@ -2,7 +2,15 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<!-- 앱 설치(PWA) -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#185FA5" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="피나" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 <title>FinAnalyzer(피나) — AI 재무제표 분석</title>
 <meta name="description" content="재무제표 이미지 한 장으로 부채비율·자본잠식·이자보상배수를 AI가 자동 계산하고, 정책자금 연계 여부까지 확인할 수 있는 AI 재무제표 분석 서비스, 피나(FinAnalyzer)." />
 
@@ -6269,6 +6277,60 @@ window.addEventListener("DOMContentLoaded", () => {
     showPage("landing");
   }
 });
+</script>
+
+<!-- 앱 설치 안내 (휴대폰, 아직 설치 안 했을 때만) -->
+<div id="pwaBanner" style="display:none;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:9998;background:#fff;border:1px solid #d9e3ef;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:12px 14px;font-size:13px;color:#1a1a18;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <img src="icons/icon-192.png" alt="" style="width:40px;height:40px;border-radius:10px;flex-shrink:0;" />
+    <div style="flex:1;min-width:0;line-height:1.5;">
+      <b>피나를 앱으로 설치하세요</b>
+      <div id="pwaBannerText" style="color:#6b6a65;font-size:12px;">홈 화면에서 바로 열 수 있어요.</div>
+    </div>
+    <button type="button" id="pwaInstallBtn" style="display:none;background:#185FA5;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">설치</button>
+    <button type="button" id="pwaCloseBtn" aria-label="닫기" style="background:none;border:none;color:#9b9a95;font-size:20px;cursor:pointer;padding:0 2px;">×</button>
+  </div>
+</div>
+<script>
+(function () {
+  // 서비스워커 등록 (앱 설치 조건)
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+  var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var KEY = "fa_pwa_dismissed";
+  function dismissedRecently() {
+    try { var t = parseInt(localStorage.getItem(KEY) || "0", 10); return Date.now() - t < 14 * 24 * 3600 * 1000; } catch (e) { return false; }
+  }
+  if (standalone || !mobile || dismissedRecently()) return;
+  var banner = document.getElementById("pwaBanner"), btn = document.getElementById("pwaInstallBtn"), txt = document.getElementById("pwaBannerText");
+  document.getElementById("pwaCloseBtn").onclick = function () {
+    banner.style.display = "none";
+    try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
+  };
+  var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    // 아이폰·아이패드: 사파리 공유 메뉴에서 직접 추가해야 한다
+    txt.innerHTML = "사파리 아래쪽 <b>공유 버튼</b>(□↑) → <b>홈 화면에 추가</b>를 눌러 주세요.";
+    setTimeout(function () { banner.style.display = "block"; }, 1500);
+    return;
+  }
+  // 안드로이드(크롬 등): 설치 창을 바로 띄울 수 있다
+  var deferred = null;
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    deferred = e;
+    btn.style.display = "inline-block";
+    banner.style.display = "block";
+  });
+  btn.onclick = function () {
+    if (!deferred) return;
+    deferred.prompt();
+    deferred.userChoice.finally(function () { deferred = null; banner.style.display = "none"; });
+  };
+  window.addEventListener("appinstalled", function () { banner.style.display = "none"; });
+})();
 </script>
 </body>
 </html>

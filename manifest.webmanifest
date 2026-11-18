@@ -1,0 +1,18 @@
+{
+  "name": "피나 FinAnalyzer — AI 재무제표 분석",
+  "short_name": "피나",
+  "description": "재무제표·홈택스 자료로 업체를 분석하고 예상 한도를 확인하는 컨설팅용 서비스",
+  "id": "./",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#185FA5",
+  "lang": "ko",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
