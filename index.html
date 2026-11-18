@@ -1420,7 +1420,7 @@
   <div class="main" style="max-width:720px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">구독</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
-      월 구독으로 재무제표 분석을 <strong>횟수 제한 없이</strong> 이용하세요. 요금제는 함께 사용할 수 있는 사용자 수로 나뉩니다.
+      월 구독으로 재무제표 분석을 <strong>횟수 제한 없이</strong> 이용하세요. 정가 대비 <strong>80% 할인</strong>된 가격으로 시작하세요.
     </p>
 
     <div id="sub-loading" class="card" style="text-align:center;color:var(--text3);font-size:13px;">불러오는 중...</div>
@@ -5624,14 +5624,15 @@ function renderPlanCards(plans) {
   if (plans.length === 1 && !selectedPlan) selectedPlan = plans[0].id;   // 요금제가 하나면 바로 선택
   grid.innerHTML = plans.map(p => {
     const per = p.seats > 1 ? `1인당 월 ${won(Math.round(p.price / p.seats))}` : "";
-    const disc = p.list_price && p.list_price > p.price;
-    const offPct = disc ? Math.floor((1 - p.price / p.list_price) * 100) : 0;
+    const listPrice = p.list_price || (p.id === "starter" ? 300000 : 0);   // 정가 (백엔드 값이 없을 때 대비)
+    const disc = listPrice > p.price;
+    const offPct = disc ? Math.floor((1 - p.price / listPrice) * 100) : 0;
     return `<div class="plan-card${selectedPlan === p.id ? " selected" : ""}" data-plan="${p.id}" onclick="selectPlan('${p.id}')">
       <div class="plan-badge"${disc ? '' : ' style="visibility:hidden"'}>${disc ? "특별 할인가" : "추천"}</div>
       <div class="plan-name">${escapeHtml(p.label)}</div>
-      ${disc ? `<div class="plan-was">정가 ${won(p.list_price)}/월</div>` : ''}
+      ${disc ? `<div class="plan-was">정가 ${won(listPrice)}/월</div>` : ''}
       <div class="plan-price">${won(p.price)}<small>/월</small></div>
-      ${disc ? `<div class="plan-save"><span class="off">${offPct}% 할인</span><span class="won">매월 ${won(p.list_price - p.price)} 절약</span></div>` : ''}
+      ${disc ? `<div class="plan-save"><span class="off">${offPct}% 할인</span><span class="won">매월 ${won(listPrice - p.price)} 절약</span></div>` : ''}
       <div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>
       ${per ? `<div class="plan-per">${per}</div>` : ''}
     </div>`;
