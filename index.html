@@ -117,6 +117,13 @@
   .field { margin-bottom: 1rem; }
   .field label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
   .field input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 14px; background: var(--surface); color: var(--text); outline: none; font-family: inherit; }
+  .field select { padding: 10px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 14px; background: var(--surface); color: var(--text); font-family: inherit; }
+  .email-split { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .email-split .es-id { flex:1 1 120px; min-width:0; width:auto; }
+  .email-split .es-at { color:var(--text2); font-weight:600; }
+  .email-split .es-dom { flex:0 0 auto; min-width:128px; }
+  .email-split .es-custom { display:none; flex:1 1 100%; }
+  .email-split.custom .es-custom { display:block; }
   .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 
   /* ── 히어로 (랜딩) ── */
@@ -537,7 +544,13 @@
       </div>
       <div class="field">
         <label>이메일 <span style="color:var(--danger);font-size:11px;">필수</span> <span style="color:var(--text3);font-weight:400;">(이메일이 ID로 사용됩니다)</span></label>
-        <input type="email" id="reg-email" placeholder="name@company.com" />
+        <div class="email-split" data-for="reg-email">
+          <input type="text" class="es-id" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="아이디" />
+          <span class="es-at">@</span>
+          <select class="es-dom"></select>
+          <input type="text" class="es-custom" autocapitalize="off" spellcheck="false" placeholder="도메인 입력 (예: company.com)" />
+        </div>
+        <input type="hidden" id="reg-email" />
       </div>
       <div class="field">
         <label>비밀번호 <span style="color:var(--danger);font-size:11px;">필수</span></label>
@@ -571,7 +584,13 @@
     <div class="card">
       <div class="field">
         <label>이메일</label>
-        <input type="email" id="login-email" placeholder="name@company.com" />
+        <div class="email-split" data-for="login-email">
+          <input type="text" class="es-id" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="아이디" />
+          <span class="es-at">@</span>
+          <select class="es-dom"></select>
+          <input type="text" class="es-custom" autocapitalize="off" spellcheck="false" placeholder="도메인 입력 (예: company.com)" />
+        </div>
+        <input type="hidden" id="login-email" />
       </div>
       <div class="field">
         <label>비밀번호</label>
@@ -624,7 +643,13 @@
       <p style="font-size:13px;color:var(--text2);margin-bottom:1rem;">가입하신 이메일을 입력하시면, 해당 주소로 임시비밀번호를 보내드려요. 로그인 후 [내 정보]에서 새 비밀번호로 변경해주세요.</p>
       <div class="field">
         <label>이메일</label>
-        <input type="email" id="findpw-email" placeholder="name@company.com" onkeydown="if(event.key==='Enter')doFindPw()" />
+        <div class="email-split" data-for="findpw-email">
+          <input type="text" class="es-id" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="아이디" onkeydown="if(event.key==='Enter')doFindPw()" />
+          <span class="es-at">@</span>
+          <select class="es-dom"></select>
+          <input type="text" class="es-custom" autocapitalize="off" spellcheck="false" placeholder="도메인 입력 (예: company.com)" onkeydown="if(event.key==='Enter')doFindPw()" />
+        </div>
+        <input type="hidden" id="findpw-email" />
       </div>
       <div id="findpw-error" class="error-msg"></div>
       <button class="btn btn-primary btn-full" id="findpw-btn" onclick="doFindPw()">임시비밀번호 받기</button>
@@ -1862,7 +1887,7 @@ async function doRegister() {
   const nickname = document.getElementById("reg-nickname").value.trim();
   const phone    = document.getElementById("reg-phone").value.trim();
   const biz      = document.getElementById("reg-biz").value.trim();
-  const email    = document.getElementById("reg-email").value.trim();
+  const email    = emailFieldValue("reg-email");
   const pw       = document.getElementById("reg-pw").value;
   const pw2      = document.getElementById("reg-pw2").value;
   const agreed   = document.getElementById("reg-agree").checked;
@@ -1910,13 +1935,57 @@ async function doRegister() {
   } catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; }
 }
 
+// ── 이메일 입력: 아이디 + 도메인 선택(직접 입력 가능) ──
+const EMAIL_DOMAINS = ["naver.com", "gmail.com", "daum.net", "hanmail.net", "kakao.com", "nate.com", "hotmail.com", "outlook.com"];
+function emailSplitSync(box) {
+  const id = box.querySelector(".es-id"), dom = box.querySelector(".es-dom"), cus = box.querySelector(".es-custom");
+  let v = id.value.trim();
+  // 저장된 계정 자동완성 등으로 전체 주소가 들어오면 아이디/도메인으로 나눈다
+  if (v.includes("@")) {
+    const [u, d] = [v.slice(0, v.indexOf("@")), v.slice(v.indexOf("@") + 1)];
+    id.value = v = u;
+    if (d) emailSplitSet(box, u + "@" + d);
+  }
+  box.classList.toggle("custom", dom.value === "_custom");
+  const d = dom.value === "_custom" ? cus.value.trim().replace(/^@/, "") : dom.value;
+  document.getElementById(box.dataset.for).value = v && d ? v + "@" + d : v;
+}
+function emailSplitSet(box, email) {
+  const id = box.querySelector(".es-id"), dom = box.querySelector(".es-dom"), cus = box.querySelector(".es-custom");
+  const at = String(email || "").indexOf("@");
+  if (at < 0) { id.value = email || ""; return; }
+  const d = email.slice(at + 1).toLowerCase();
+  id.value = email.slice(0, at);
+  if (EMAIL_DOMAINS.includes(d)) { dom.value = d; cus.value = ""; } else { dom.value = "_custom"; cus.value = d; }
+  box.classList.toggle("custom", dom.value === "_custom");
+  document.getElementById(box.dataset.for).value = email;
+}
+function emailSplitInit() {
+  let last = "";
+  try { last = localStorage.getItem("fa_last_email") || ""; } catch (e) {}
+  document.querySelectorAll(".email-split").forEach(box => {
+    const dom = box.querySelector(".es-dom");
+    dom.innerHTML = '<option value="">선택하세요</option>' + EMAIL_DOMAINS.map(d => `<option value="${d}">${d}</option>`).join("") + '<option value="_custom">직접 입력</option>';
+    box.querySelectorAll("input,select").forEach(el => { el.addEventListener("input", () => emailSplitSync(box)); el.addEventListener("change", () => emailSplitSync(box)); });
+    dom.addEventListener("change", () => { if (dom.value === "_custom") box.querySelector(".es-custom").focus(); });
+    if (last && box.dataset.for === "login-email") emailSplitSet(box, last);   // 지난번 로그인한 이메일 미리 채우기
+  });
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", emailSplitInit); else emailSplitInit();
+function emailFieldValue(id) {
+  const box = document.querySelector(`.email-split[data-for="${id}"]`);
+  if (box) emailSplitSync(box);
+  return document.getElementById(id).value.trim();
+}
+
 async function doLogin() {
-  const email = document.getElementById("login-email").value.trim();
+  const email = emailFieldValue("login-email");
   const pw    = document.getElementById("login-pw").value;
   const errEl = document.getElementById("login-error");
   errEl.style.display = "none";
   try {
     const d = await api("POST", "/auth/login", { email, password: pw });
+    try { localStorage.setItem("fa_last_email", email); } catch (e) {}
     token = d.token; userEmail = d.email; userCredits = d.credits; userHasSub = !!d.subscribed;
     userCompanyName = d.company_name || "";
     userRepName = d.rep_name || "";
@@ -1955,7 +2024,7 @@ async function doFindId() {
 }
 
 async function doFindPw() {
-  const email = document.getElementById("findpw-email").value.trim();
+  const email = emailFieldValue("findpw-email");
   const errEl = document.getElementById("findpw-error");
   const btn = document.getElementById("findpw-btn");
   errEl.style.display = "none";
