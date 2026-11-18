@@ -431,11 +431,14 @@
   .srp-opinion-item { font-size: 10.5px; color: #2d3748; line-height: 1.7; margin-bottom: 5px; }
   .srp-opinion-item:last-child { margin-bottom: 0; }
   .ht-doc-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .ht-doc-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; background: var(--surface); padding: 10px 12px; line-height: 1.4; }
+  .ht-doc-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; background: var(--surface); padding: 22px 14px; line-height: 1.45; min-height: 150px; border: 2px dashed #c9d6e6; border-radius: 12px; transition: border-color .15s, background .15s; }
+  .ht-doc-btn:hover, .ht-doc-btn.drag { border-color: #185FA5; background: #EBF2FA; }
+  .ht-doc-btn .ht-doc-ic { font-size: 28px; line-height: 1; margin-bottom: 2px; }
+  .ht-doc-btn .ht-doc-drop { margin-top: 6px; font-size: 12px; color: #185FA5; font-weight: 600; }
   .ht-doc-btn b { font-size: 13px; color: var(--text); }
   .ht-doc-btn span { font-size: 11px; color: var(--text2); font-weight: 400; }
   .ht-doc-btn:disabled { opacity: .6; }
-  @media (max-width: 560px) { .ht-doc-btns { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) { .ht-doc-btns { grid-template-columns: 1fr; } .ht-doc-btn { min-height: 0; padding: 12px; } .ht-doc-btn .ht-doc-drop { display: none; } }
   /* 원클릭 분석 결과 — 리포트 형태 */
   .ht-rp { padding: 0; overflow: hidden; }
   .ht-rp .srp-body { padding: 18px 20px 20px; }
@@ -447,6 +450,7 @@
   .ht-rp-item { background: #f5f8fc; border-radius: 8px; padding: 9px 11px; }
   .ht-rp-k { font-size: 10.5px; color: #6b7a8d; font-weight: 600; margin-bottom: 3px; }
   .ht-rp-v { font-size: 13px; font-weight: 700; color: #1a1a18; word-break: keep-all; }
+  .ht-mi { color: #b0b8c4; font-weight: 500; }
   .ht-rp-teaser { font-size: 15px; font-weight: 600; color: var(--text); background: #EBF2FA; border-radius: 10px; padding: 12px 14px; }
   .ht-rp-teaser b { color: #185FA5; }
   .ht-rp-total { font-size: 22px; font-weight: 800; color: #185FA5; margin: 10px 0 8px; letter-spacing: -.02em; }
@@ -796,9 +800,11 @@
         <input type="file" id="incomeDocInput" accept="image/*,application/pdf" style="display:none" />
         <div class="ht-doc-btns">
           <button type="button" class="btn ht-doc-btn" id="finDocBtn" onclick="document.getElementById('finDocInput').click()">
-            <b>📊 재무제표</b><span>재무상태표·손익계산서 (최대 10장)<br>→ 회사 정보·매출·재무 수치</span></button>
+            <span class="ht-doc-ic">📊</span><b>재무제표</b><span>재무상태표·손익계산서 (최대 10장)<br>→ 회사 정보·매출·재무 수치</span>
+            <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
           <button type="button" class="btn ht-doc-btn" id="incomeDocBtn" onclick="document.getElementById('incomeDocInput').click()">
-            <b>🧾 부가세과세표준·소득금액증명원</b><span>→ 회사 정보·매출</span></button>
+            <span class="ht-doc-ic">🧾</span><b>부가세과세표준·소득금액증명원</b><span>→ 회사 정보·매출</span>
+            <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
         </div>
         <div id="incomeDocFileName" style="font-size:11px;color:var(--text2);margin-top:6px;"></div>
         <p style="font-size:11px;color:var(--text3);margin-top:4px;">⚠️ 글씨가 작거나 흐리면 잘못 읽을 수 있어요. PDF나 선명한 이미지를 올리고, 채워진 값을 한 번 확인해 주세요.</p>
@@ -2460,6 +2466,9 @@ let incomeDocImage = null;
 document.getElementById("incomeDocInput").addEventListener("change", e => {
   const file = e.target.files[0];
   e.target.value = "";
+  htHandleIncomeFile(file);
+});
+function htHandleIncomeFile(file) {
   if (!file) return;
   if (!(file.type.startsWith("image/") || file.type === "application/pdf")) {
     toast("JPG, PNG, PDF 파일만 업로드 가능합니다.");
@@ -2472,12 +2481,23 @@ document.getElementById("incomeDocInput").addEventListener("change", e => {
     extractIncomeDoc();
   };
   reader.readAsDataURL(file);
-});
+}
 
 // ── 서류로 채우기: 재무제표 (재무상태표·손익계산서) ──
-document.getElementById("finDocInput").addEventListener("change", async e => {
-  const files = Array.from(e.target.files || []).slice(0, 10);
+document.getElementById("finDocInput").addEventListener("change", e => {
+  const files = Array.from(e.target.files || []);
   e.target.value = "";
+  htHandleFinFiles(files);
+});
+// 드래그해서 놓기
+[["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs[0])]].forEach(([id, fn]) => {
+  const el = document.getElementById(id);
+  ["dragenter", "dragover"].forEach(t => el.addEventListener(t, ev => { ev.preventDefault(); el.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach(t => el.addEventListener(t, ev => { ev.preventDefault(); el.classList.remove("drag"); }));
+  el.addEventListener("drop", ev => { const fs = Array.from((ev.dataTransfer && ev.dataTransfer.files) || []); if (fs.length) fn(fs); });
+});
+async function htHandleFinFiles(all) {
+  const files = (all || []).slice(0, 10);
   if (!files.length) return;
   if (!token) { showPage("login"); return; }
   const bad = files.find(f => !(f.type.startsWith("image/") || f.type === "application/pdf"));
@@ -2496,7 +2516,7 @@ document.getElementById("finDocInput").addEventListener("change", async e => {
   } finally {
     btn.disabled = false; btn.innerHTML = btnHtml;
   }
-});
+}
 
 function htFillFromFinancial(d) {
   const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
@@ -3933,11 +3953,12 @@ function htReportBody(r, input) {
     ["기업 인증", input.cert_list ? htCertText(input.cert_list) : (input.certs || "")],
     ["연구소 · 공장", [labMap[input.lab] || "", facMap[input.factory] ? "공장 " + facMap[input.factory] : ""].filter(Boolean).join(" · ")],
     ["수출실적", htNum(input.export_amount) > 0 ? htKwon(htNum(input.export_amount)) : (input.export || "")],
-  ].filter(([, v]) => has(v));
+  ];
   const ovRows = [];
+  const cell = v => has(v) ? e(v) : '<span style="color:#b8c4cc;font-weight:400;">미입력</span>';
   for (let i = 0; i < ov.length; i += 2) {
     const a = ov[i], b = ov[i + 1];
-    ovRows.push(`<tr><td class="cat" style="width:18%;">${a[0]}</td><td style="width:32%;font-weight:600;">${e(a[1])}</td>${b ? `<td class="cat" style="width:18%;">${b[0]}</td><td style="width:32%;font-weight:600;">${e(b[1])}</td>` : "<td></td><td></td>"}</tr>`);
+    ovRows.push(`<tr><td class="cat" style="width:18%;">${a[0]}</td><td style="width:32%;font-weight:600;">${cell(a[1])}</td>${b ? `<td class="cat" style="width:18%;">${b[0]}</td><td style="width:32%;font-weight:600;">${cell(b[1])}</td>` : "<td></td><td></td>"}</tr>`);
   }
   html += sh("기업 개요 (Company Overview)") + `<table class="fin-table"><tbody>${ovRows.join("")}</tbody></table>`;
 
@@ -3973,9 +3994,11 @@ function htReportBody(r, input) {
 
   // 재무 분석 (비율만 — 실제 금액은 표시하지 않는다)
   const f = r.financial, q = r.ratios;
-  if (f || q) {
+  {
     const k = l => (l === "info" ? "safe" : l);
-    const card = (label, value, lvl, hint) => `<div class="kpi-card ${k(lvl)}"><div class="kpi-label">${label}</div><div class="kpi-value ${k(lvl)}">${value}</div><span class="kpi-badge ${k(lvl)}">${lvl === "danger" ? "위험" : lvl === "warn" ? "주의" : "양호"}</span><div class="kpi-hint">${hint}</div></div>`;
+    const card = (label, value, lvl, hint) => value === null
+      ? `<div class="kpi-card" style="border-left-color:#d5dbe3;"><div class="kpi-label">${label}</div><div class="kpi-value" style="color:#b8c4cc;font-size:18px;">미입력</div><div class="kpi-hint">${hint}</div></div>`
+      : `<div class="kpi-card ${k(lvl)}"><div class="kpi-label">${label}</div><div class="kpi-value ${k(lvl)}">${value}</div><span class="kpi-badge ${k(lvl)}">${lvl === "danger" ? "위험" : lvl === "warn" ? "주의" : "양호"}</span><div class="kpi-hint">${hint}</div></div>`;
     let cards = "";
     if (f) {
       cards += card("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass, "400% 초과 위험 · 200% 이하 양호");
@@ -3984,8 +4007,10 @@ function htReportBody(r, input) {
       const gl = f.pct >= 60 ? "safe" : f.pct >= 40 ? "warn" : "danger";
       cards += card("🏆 사업 안정성 종합점수", `${f.total}<span style="font-size:13px;">/${f.max}</span>`, gl, e(f.grade));
     } else {
-      cards += card("📊 부채비율", has(q.dr) ? q.dr + "%" : "-", q.drClass, "400% 초과 위험 · 200% 이하 양호");
-      cards += card("💰 이자보상배수", has(q.icr) ? q.icr + "배" : "-", q.icrClass, "1배 미만 위험 · 2배 이상 양호");
+      cards += card("📊 부채비율", q && has(q.dr) ? q.dr + "%" : null, q ? q.drClass : "info", "400% 초과 위험 · 200% 이하 양호");
+      cards += card("💰 이자보상배수", q && has(q.icr) ? q.icr + "배" : null, q ? q.icrClass : "info", "1배 미만 위험 · 2배 이상 양호");
+      cards += card("🏢 자본잠식", null, "info", "총자산·총부채 입력 시 판단");
+      cards += card("🏆 사업 안정성 종합점수", null, "info", "재무 수치 입력 시 계산");
     }
     html += sh("재무 분석 (Financial Ratios)") + `<div class="kpi-grid">${cards}</div>`;
   }
@@ -3998,7 +4023,7 @@ function htReportBody(r, input) {
   if (r.vat && r.vat.ytd) salesRows += `<tr><td>${r.vat.ytd.year}년 ${r.vat.ytd.month}월까지</td><td class="val">${htKwon(r.vat.ytd.sales)} <span style="color:#6b7a8d;font-weight:400;">(연 환산 ${htKwon(r.vat.ytd.annual)})</span></td>${yoyCell(r.vat.ytd.yoy)}</tr>`;
   html += sh("국세 · 매출 현황 (Tax &amp; Sales)") +
     `<table class="fin-table"><tbody><tr><td class="cat" style="width:22%;">국세 체납</td><td>${arTxt}${ar.other ? ` <span style="color:#8a6d00;">· 기타: ${e(ar.other)}</span>` : ""}</td></tr></tbody></table>` +
-    (salesRows ? `<table class="fin-table"><thead><tr><th>기간</th><th style="text-align:right;">매출(부가세 과세표준)</th><th style="text-align:right;">전년 대비</th></tr></thead><tbody>${salesRows}</tbody></table>` : "");
+    `<table class="fin-table"><thead><tr><th>기간</th><th style="text-align:right;">매출(부가세 과세표준)</th><th style="text-align:right;">전년 대비</th></tr></thead><tbody>${salesRows || '<tr><td>매출</td><td class="val empty">미입력</td><td class="val empty">-</td></tr>'}</tbody></table>`;
 
   // 기대출 현황
   const lo = r.loans || { list: [] };
@@ -4007,8 +4032,9 @@ function htReportBody(r, input) {
     : `<div class="opinion"><div class="opinion-item">${lo.none ? "기대출 없음" : "입력된 기대출이 없습니다."}</div></div>`);
 
   // 우대 · 참고 요소
-  if (r.prefs && r.prefs.length) html += sh("우대 · 참고 요소 (Preferential Factors)") + `<div class="checklist">${r.prefs.map(pr =>
-    `<div class="cl-item"><div class="cl-icon">⭐</div><div><strong>${e(pr.tag)}</strong> · ${e(pr.text)}</div></div>`).join("")}</div>`;
+  html += sh("우대 · 참고 요소 (Preferential Factors)") + (r.prefs && r.prefs.length
+    ? `<div class="checklist">${r.prefs.map(pr => `<div class="cl-item"><div class="cl-icon">⭐</div><div><strong>${e(pr.tag)}</strong> · ${e(pr.text)}</div></div>`).join("")}</div>`
+    : `<div class="opinion"><div class="opinion-item" style="color:#9b9a95;">미입력</div></div>`);
   // 재무건전성 체크리스트
   {
     const L0 = r.limit || {};
@@ -4040,8 +4066,16 @@ function htReportBody(r, input) {
       <div class="opinion"><div class="opinion-item" style="font-weight:700;">📌 체크리스트 ${items.length}개 항목 중 <strong>${pass}개</strong> 항목을 충족하고 있습니다.</div></div>`;
   }
 
-  // 재무안정성 (재무 수치를 넣은 경우 — 비율·등급만, 실제 금액은 표시하지 않음)
-  if (f) {
+  // 재무안정성 (비율·등급만, 실제 금액은 표시하지 않음) — 재무 수치가 없으면 미입력으로 표시
+  if (!f) {
+    html += sh("재무안정성 (Financial Stability)") + `<table class="fin-table"><tbody>
+      <tr><td style="width:40%;">부채비율 · 부채자산비율</td><td class="val empty">미입력</td></tr>
+      <tr><td>안정성 비교</td><td class="val empty">미입력</td></tr>
+      <tr><td>이자보상배수 · 차입상환기간</td><td class="val empty">미입력</td></tr>
+      <tr><td>차입상환 능력 종합등급</td><td class="val empty">미입력</td></tr>
+    </tbody></table>
+    <div class="opinion"><div class="opinion-item" style="color:#6b7a8d;">총자산·총부채·영업이익·이자비용을 입력하면 재무안정성과 차입상환 능력을 분석합니다.</div></div>`;
+  } else {
     const fin = input.fin || {};
     const A = htNum(fin.assets), Lb = htNum(fin.liabilities), op = htNum(fin.operating_income);
     const SC = { safe: "#0F6E56", warn: "#B8860B", danger: "#A32D2D", muted: "#9b9a95" };
@@ -4150,8 +4184,8 @@ function renderHometaxResults(r, input) {
     ["직원 수", has(input.employees) ? input.employees + "명" : ""],
     ["기업 인증", input.cert_list ? htCertText(input.cert_list) : (input.certs || "")],
     ["수출실적", htNum(input.export_amount) > 0 ? htKwon(htNum(input.export_amount)) : (input.export || "")],
-  ].filter(([, v]) => has(v));
-  const ovHTML = `<div class="ht-rp-grid">${ov.map(([k, v]) => `<div class="ht-rp-item"><div class="ht-rp-k">${k}</div><div class="ht-rp-v">${e(v)}</div></div>`).join("")}</div>`;
+  ];
+  const ovHTML = `<div class="ht-rp-grid">${ov.map(([k, v]) => `<div class="ht-rp-item"><div class="ht-rp-k">${k}</div><div class="ht-rp-v">${has(v) ? e(v) : '<span class="ht-mi">미입력</span>'}</div></div>`).join("")}</div>`;
 
   // ── 2. 종합 평가 ──
   const o = r.overall;
@@ -4175,12 +4209,21 @@ function renderHometaxResults(r, input) {
     } else lim += `${L.status === "blocked" || L.status === "low" ? `<div class="ht-rp-total" style="color:${L.status === "blocked" ? "#A32D2D" : "#B8860B"};font-size:18px;">${L.status === "blocked" ? "현재 신청 어려움" : "추가 한도 여력 부족"}</div>` : ""}<div class="srp-opinion-item">${e(L.text || "")}</div>`;
     const f = r.financial, q = r.ratios;
     const kpi = (label, value, lvl) => `<div class="srp-kpi" style="border-left-color:${LC[lvl] || "#185FA5"};"><div class="srp-kpi-label">${label}</div><div class="srp-kpi-value" style="color:${LC[lvl] || "#185FA5"};">${value}</div></div>`;
-    const fin = f ? kpi("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass) + kpi("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass)
-      : q ? kpi("📊 부채비율", has(q.dr) ? q.dr + "%" : "-", q.drClass) + kpi("💰 이자보상배수", has(q.icr) ? q.icr + "배" : "-", q.icrClass) : "";
+    const miK = '<span class="ht-mi" style="font-size:15px;">미입력</span>';
+    const fin = f ? kpi("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass) + kpi("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : miK), f.iceClass)
+        + kpi("🏢 자본잠식", e(f.erosionStatus), f.erosionClass) + kpi("🏆 사업 안정성 점수", `${f.total}/${f.max}`, f.pct >= 60 ? "safe" : f.pct >= 40 ? "warn" : "danger")
+      : q ? kpi("📊 부채비율", has(q.dr) ? q.dr + "%" : miK, q.drClass) + kpi("💰 이자보상배수", has(q.icr) ? q.icr + "배" : miK, q.icrClass)
+        + kpi("🏢 자본잠식", miK, "info") + kpi("🏆 사업 안정성 점수", miK, "info")
+      : kpi("📊 부채비율", miK, "info") + kpi("💰 이자보상배수", miK, "info") + kpi("🏢 자본잠식", miK, "info") + kpi("🏆 사업 안정성 점수", miK, "info");
     const sales = ((r.vat && r.vat.rows) || []).map(x => `<div class="ht-rp-row"><span>${x.year}년 매출</span><b>${htKwon(x.vat)}${x.vatYoy !== null ? ` <span style="color:${x.vatYoy < 0 ? "#A32D2D" : "#0F6E56"};font-weight:600;">(${htPctText(x.vatYoy)})</span>` : ""}</b></div>`).join("");
-    lockedInner = lim + (fin ? sh("재무 분석") + `<div class="srp-kpi-grid">${fin}</div>` : "") +
-      (sales ? sh("국세 · 매출 현황") + sales : "") +
-      (r.prefs && r.prefs.length ? sh("우대 · 참고 요소") + r.prefs.map(p2 => `<div class="ht-rp-row"><span>${e(p2.tag)}</span><b style="font-weight:500;">${e(p2.text)}</b></div>`).join("") : "");
+    const arRow = `<div class="ht-rp-row"><span>국세 체납</span><b>${ar.status === "has" ? '<span style="color:#A32D2D;">있음</span>' : ar.status === "none" ? "없음" : '<span class="ht-mi">미입력</span>'}</b></div>`;
+    const loanRows = r.loans && r.loans.list.length
+      ? r.loans.list.map(l => `<div class="ht-rp-row"><span>${e(l.org || "기관 미입력")}${l.date ? ` <span style="color:#9b9a95;">(${e(l.date)})</span>` : ""}</span><b>${htNum(l.amount) !== null ? htKwon(htNum(l.amount)) : '<span class="ht-mi">미입력</span>'}</b></div>`).join("")
+      : `<div class="ht-rp-row"><span>기대출</span><b>${r.loans && r.loans.none ? "없음" : '<span class="ht-mi">미입력</span>'}</b></div>`;
+    lockedInner = lim + sh("재무 분석") + `<div class="srp-kpi-grid">${fin}</div>` +
+      sh("국세 · 매출 현황") + arRow + (sales || `<div class="ht-rp-row"><span>매출</span><b><span class="ht-mi">미입력</span></b></div>`) +
+      sh("기대출 현황") + loanRows +
+      sh("우대 · 참고 요소") + (r.prefs && r.prefs.length ? r.prefs.map(p2 => `<div class="ht-rp-row"><span>${e(p2.tag)}</span><b style="font-weight:500;">${e(p2.text)}</b></div>`).join("") : `<div class="ht-rp-row"><span>우대 요소</span><b><span class="ht-mi">미입력</span></b></div>`);
   } else {
     // 무료: 실제 값은 넣지 않고 모양만
     const ph = w => `<div style="height:12px;width:${w}%;background:#dfe5ee;border-radius:6px;margin:9px 0;"></div>`;
