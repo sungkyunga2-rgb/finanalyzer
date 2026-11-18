@@ -726,20 +726,10 @@
     </div>
 
     <!-- 직접 입력 -->
-    <div class="card" id="manualCard">
+    <div class="card hidden" id="manualCard"><!-- 직접 입력은 원클릭 분석으로 통합 (예전 분석이력 표시용으로만 남김) -->
       <div class="card-title" style="margin-bottom:.5rem;">직접 입력</div>
       <p style="font-size:14px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">재무제표가 없으신가요?</p>
       <p style="font-size:13px;color:var(--text3);margin-bottom:1rem;line-height:1.5;">부가가치세과세표준증명을 업로드해주시면 매출·월순수익을 AI가 자동으로 채워드려요.<br>대출·자산 정보는 서류에 없어 직접 입력이 필요합니다.<br><span style="color:var(--danger);">⚠️ 전체 항목이 입력되지 않으면 일부 분석결과가 나오지 않을 수 있습니다.</span></p>
-
-      <!-- 서류로 자동 채우기 (부가세과세표준증명원 / 소득금액증명원) -->
-      <div id="incomeDocBox" style="background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:1rem;">
-        <input type="file" id="incomeDocInput" accept="image/*,application/pdf" style="display:none" />
-        <div style="display:flex;gap:8px;">
-          <button type="button" class="btn" style="flex:1;font-size:12px;padding:8px;" onclick="document.getElementById('incomeDocInput').click()">파일 선택</button>
-          <button type="button" class="btn btn-primary" id="incomeDocBtn" style="flex:1;font-size:12px;padding:8px;" disabled onclick="extractIncomeDoc()">자동 인식하기</button>
-        </div>
-        <div id="incomeDocFileName" style="font-size:11px;color:var(--text2);margin-top:6px;"></div>
-      </div>
 
       <div class="fs-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="field" style="grid-column:1/-1;">
@@ -793,7 +783,21 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 본인 인증하기</button>
       </div>
-      <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 자동 연동은 준비 중입니다. 지금은 아래에 직접 입력해 주세요.</p>
+      <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 자동 연동은 준비 중입니다. 지금은 아래 서류 업로드나 직접 입력으로 채워 주세요.</p>
+      <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">📄 서류로 채우기</div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px;">부가가치세과세표준증명원·소득금액증명원을 올리면 회사이름·대표자·사업자번호·매출을 AI가 채워드려요.</p>
+      <!-- 서류로 자동 채우기 (부가세과세표준증명원 / 소득금액증명원) -->
+      <div id="incomeDocBox">
+        <input type="file" id="incomeDocInput" accept="image/*,application/pdf" style="display:none" />
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn" style="flex:1;font-size:12px;padding:8px;background:var(--surface);" onclick="document.getElementById('incomeDocInput').click()">파일 선택</button>
+          <button type="button" class="btn btn-primary" id="incomeDocBtn" style="flex:1;font-size:12px;padding:8px;" disabled onclick="extractIncomeDoc()">자동 인식하기</button>
+        </div>
+        <div id="incomeDocFileName" style="font-size:11px;color:var(--text2);margin-top:6px;"></div>
+      </div>
+
+      </div>
     </div>
 
     <style>
@@ -1532,7 +1536,7 @@
         <div class="plan-grid" id="plan-grid"></div>
         <ul class="plan-common">
           <li><strong>월 분석 횟수 제한 없음</strong></li>
-          <li>재무제표 이미지 분석 · 직접 입력 분석 모두 포함</li>
+          <li>재무제표 분석 · 원클릭 분석 모두 포함</li>
           <li>분석이력 30일 보관 · 리포트 출력 1회</li>
         </ul>
       </div>
@@ -2473,11 +2477,10 @@ async function extractIncomeDoc() {
     const result = await api("POST", "/extract/income-doc", { images: [incomeDocImage] });
     const d = result.data || {};
 
-    const companyEl = document.getElementById("m-company");
-    const repEl      = document.getElementById("m-rep");
-    const bizEl      = document.getElementById("m-biz");
-    const salesEl    = document.getElementById("m-sales");
-    const profitEl   = document.getElementById("m-profit");
+    const companyEl = document.getElementById("ht-company");
+    const repEl      = document.getElementById("ht-rep");
+    const bizEl      = document.getElementById("ht-biz");
+    const salesEl    = document.getElementById("ht-y2-vat");   // 최근 연도 매출 칸
 
     // 인식된 값은 기존 입력값이 있어도 덮어씀 (서류 값이 더 정확하므로)
     if (d.company_name) companyEl.value = String(d.company_name).trim();
@@ -2488,22 +2491,22 @@ async function extractIncomeDoc() {
         ? bizDigits.slice(0, 3) + "-" + bizDigits.slice(3, 5) + "-" + bizDigits.slice(5)
         : String(d.business_number).trim();
     }
-    if (d.revenue) salesEl.value = Math.round(d.revenue).toLocaleString("ko-KR");
-    if (d.income_amount) profitEl.value = Math.round(d.income_amount / 12).toLocaleString("ko-KR");
+    if (d.revenue) { salesEl.value = Math.round(d.revenue).toLocaleString("ko-KR"); salesEl.dispatchEvent(new Event("input")); }
+    [companyEl, repEl, bizEl].forEach(el => el.dispatchEvent(new Event("input")));
 
     // 인식 결과 안내 — 못 읽은 항목이 있으면 어떤 항목인지 알려줌
     const notRead = [];
     if (!d.company_name) notRead.push("회사이름");
     if (!d.rep_name) notRead.push("대표자명");
     if (!d.business_number) notRead.push("사업자등록번호");
-    if (!d.revenue && !d.income_amount) notRead.push("금액");
+    if (!d.revenue) notRead.push("매출");
 
     if (notRead.length === 4) {
       toast("문서에서 정보를 인식하지 못했어요. 서류 전체가 선명하게 보이도록 다시 촬영하거나 직접 입력해주세요.");
     } else if (notRead.length) {
       toast((d.doc_type || "서류") + "에서 정보를 채웠어요. " + notRead.join("·") + "은(는) 인식하지 못했으니 직접 입력해주세요.");
     } else {
-      toast((d.doc_type || "서류") + "에서 정보를 자동으로 채웠어요. 부채·자산 정보는 직접 입력해주세요.");
+      toast((d.doc_type || "서류") + "에서 정보를 자동으로 채웠어요. 나머지 필수 항목을 확인한 뒤 분석해 주세요.");
     }
   } catch (e) {
     toast(e.message);
