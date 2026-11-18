@@ -1,7 +1,7 @@
 // 피나 서비스워커 — 앱 설치(홈 화면 추가)와 오프라인 안내용.
 // 항상 네트워크를 먼저 쓰고(최신 화면 유지), 인터넷이 끊겼을 때만 저장해 둔 화면을 보여준다.
 // 분석 서버(API)·외부 CDN 요청은 건드리지 않는다.
-const CACHE = "fina-v1";
+const CACHE = "fina-v2";
 const PRECACHE = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -22,7 +22,8 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;          // API·CDN 등은 그대로 통과
   e.respondWith(
-    fetch(req)
+    // 브라우저 캐시에 남은 예전 화면을 쓰지 않도록 매번 서버에 최신 여부를 확인한다
+    fetch(req, { cache: "no-cache" })
       .then((res) => {
         if (res && res.ok && res.type === "basic") {
           const copy = res.clone();

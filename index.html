@@ -6358,7 +6358,15 @@ window.addEventListener("DOMContentLoaded", () => {
 (function () {
   // 서비스워커 등록 (앱 설치 조건)
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    // 새 버전이 올라가면 한 번만 자동 새로고침해 최신 화면을 보여준다
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (!hadController || reloaded) return;
+      reloaded = true; location.reload();
+    });
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function (r) { r.update(); }).catch(function () {});
+    });
   }
   var ua = navigator.userAgent || "";
   var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
