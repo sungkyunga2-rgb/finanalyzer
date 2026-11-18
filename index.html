@@ -6316,16 +6316,34 @@ window.addEventListener("DOMContentLoaded", () => {
 </script>
 
 <!-- 앱 설치 안내 (휴대폰, 아직 설치 안 했을 때만) -->
+<style>
+@keyframes pwaBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(10px); } }
+#pwaGuide .pg-step { display:flex; align-items:center; gap:10px; padding:9px 0; font-size:14px; color:#1a1a18; }
+#pwaGuide .pg-num { width:24px; height:24px; border-radius:50%; background:#185FA5; color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+#pwaGuide .pg-key { display:inline-block; min-width:26px; padding:2px 7px; border:1px solid #cfd8e3; border-radius:7px; background:#f5f8fc; font-weight:700; text-align:center; }
+</style>
 <div id="pwaBanner" style="display:none;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:9998;background:#fff;border:1px solid #d9e3ef;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:12px 14px;font-size:13px;color:#1a1a18;">
   <div style="display:flex;align-items:center;gap:10px;">
     <img src="icons/icon-192.png" alt="" style="width:40px;height:40px;border-radius:10px;flex-shrink:0;" />
     <div style="flex:1;min-width:0;line-height:1.5;">
       <b>피나를 앱으로 설치하세요</b>
-      <div id="pwaBannerText" style="color:#6b6a65;font-size:12px;">홈 화면에서 바로 열 수 있어요.</div>
+      <div style="color:#6b6a65;font-size:12px;">홈 화면에서 바로 열 수 있어요.</div>
     </div>
-    <button type="button" id="pwaInstallBtn" style="display:none;background:#185FA5;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">설치</button>
+    <button type="button" id="pwaInstallBtn" style="background:#185FA5;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;">설치</button>
     <button type="button" id="pwaCloseBtn" aria-label="닫기" style="background:none;border:none;color:#9b9a95;font-size:20px;cursor:pointer;padding:0 2px;">×</button>
   </div>
+</div>
+<!-- 설치 버튼을 눌렀는데 바로 설치할 수 없는 브라우저(아이폰 사파리 등)일 때 보여주는 안내 -->
+<div id="pwaGuide" style="display:none;position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.6);">
+  <div id="pwaGuideCard" style="position:absolute;left:16px;right:16px;background:#fff;border-radius:16px;padding:18px 18px 14px;box-shadow:0 10px 30px rgba(0,0,0,.25);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      <img src="icons/icon-192.png" alt="" style="width:36px;height:36px;border-radius:9px;" />
+      <b style="font-size:16px;">홈 화면에 피나 추가하기</b>
+    </div>
+    <div id="pwaGuideSteps"></div>
+    <button type="button" id="pwaGuideClose" style="width:100%;margin-top:8px;background:#f1f4f8;color:#1a1a18;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;">확인</button>
+  </div>
+  <div id="pwaGuideArrow" style="position:absolute;font-size:40px;color:#fff;animation:pwaBounce 1s infinite;text-shadow:0 2px 8px rgba(0,0,0,.4);">⬇</div>
 </div>
 <script>
 (function () {
@@ -6333,39 +6351,83 @@ window.addEventListener("DOMContentLoaded", () => {
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
   }
+  var ua = navigator.userAgent || "";
   var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
-  var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var isIPad = /iPad/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var isIOS = /iPhone|iPod/i.test(ua) || isIPad;
+  var mobile = isIOS || /Android/i.test(ua);
   var KEY = "fa_pwa_dismissed";
   function dismissedRecently() {
     try { var t = parseInt(localStorage.getItem(KEY) || "0", 10); return Date.now() - t < 14 * 24 * 3600 * 1000; } catch (e) { return false; }
   }
-  if (standalone || !mobile || dismissedRecently()) return;
-  var banner = document.getElementById("pwaBanner"), btn = document.getElementById("pwaInstallBtn"), txt = document.getElementById("pwaBannerText");
+  if (standalone || !mobile || /KAKAOTALK|\bLine\//i.test(ua)) return;
+
+  var banner = document.getElementById("pwaBanner"), btn = document.getElementById("pwaInstallBtn");
+  var guide = document.getElementById("pwaGuide"), card = document.getElementById("pwaGuideCard");
+  var steps = document.getElementById("pwaGuideSteps"), arrow = document.getElementById("pwaGuideArrow");
+  function hideBanner() { banner.style.display = "none"; }
   document.getElementById("pwaCloseBtn").onclick = function () {
-    banner.style.display = "none";
+    hideBanner();
     try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
   };
-  var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  if (isIOS) {
-    // 아이폰·아이패드: 사파리 공유 메뉴에서 직접 추가해야 한다
-    txt.innerHTML = "사파리 아래쪽 <b>공유 버튼</b>(□↑) → <b>홈 화면에 추가</b>를 눌러 주세요.";
-    setTimeout(function () { banner.style.display = "block"; }, 1500);
-    return;
+  document.getElementById("pwaGuideClose").onclick = function () { guide.style.display = "none"; };
+  guide.onclick = function (e) { if (e.target === guide) guide.style.display = "none"; };
+
+  function step(n, html) { return '<div class="pg-step"><span class="pg-num">' + n + '</span><span>' + html + '</span></div>'; }
+  function showGuide() {
+    var list, pos;   // pos: 화살표 위치
+    if (isIOS) {
+      var v = parseInt((ua.match(/Version\/(\d+)/) || [])[1] || "0", 10);
+      if (isIPad) {
+        list = [step(1, '오른쪽 위 <span class="pg-key">□↑</span> 공유 버튼'), step(2, '<b>홈 화면에 추가</b>'), step(3, '오른쪽 위 <b>추가</b>')];
+        pos = "top-right";
+      } else if (v >= 26) {
+        list = [step(1, '오른쪽 아래 <span class="pg-key">⋯</span> 버튼'), step(2, '<span class="pg-key">□↑</span> <b>공유</b>'), step(3, '<b>홈 화면에 추가</b> → <b>추가</b>')];
+        pos = "bottom-right";
+      } else {
+        list = [step(1, '아래쪽 가운데 <span class="pg-key">□↑</span> 공유 버튼'), step(2, '<b>홈 화면에 추가</b>'), step(3, '오른쪽 위 <b>추가</b>')];
+        pos = "bottom-center";
+      }
+      if (!/Safari/i.test(ua) || /CriOS|FxiOS|EdgiOS|NAVER|Whale/i.test(ua)) {
+        list.unshift('<div style="font-size:13px;color:#b45309;padding:4px 0 2px;">사파리에서 열면 더 쉽게 추가할 수 있어요.</div>');
+      }
+    } else if (/SamsungBrowser/i.test(ua)) {
+      list = [step(1, '아래쪽 <span class="pg-key">≡</span> 메뉴'), step(2, '<b>현재 페이지 추가</b>'), step(3, '<b>홈 화면</b>')];
+      pos = "bottom-right";
+    } else {
+      list = [step(1, '오른쪽 위 <span class="pg-key">⋮</span> 메뉴'), step(2, '<b>앱 설치</b> 또는 <b>홈 화면에 추가</b>'), step(3, '<b>설치</b>')];
+      pos = "top-right";
+    }
+    steps.innerHTML = list.join("");
+    card.style.top = card.style.bottom = arrow.style.top = arrow.style.bottom = arrow.style.left = arrow.style.right = "";
+    arrow.style.transform = "";
+    if (pos === "top-right") {
+      card.style.top = "90px"; arrow.style.top = "14px"; arrow.style.right = "18px"; arrow.textContent = "⬆";
+    } else {
+      card.style.bottom = "calc(110px + env(safe-area-inset-bottom))"; arrow.style.bottom = "calc(46px + env(safe-area-inset-bottom))"; arrow.textContent = "⬇";
+      if (pos === "bottom-right") arrow.style.right = "28px"; else { arrow.style.left = "50%"; arrow.style.marginLeft = "-16px"; }
+    }
+    hideBanner();
+    guide.style.display = "block";
   }
-  // 안드로이드(크롬 등): 설치 창을 바로 띄울 수 있다
+
+  // 안드로이드 크롬 등: 설치 창을 바로 띄울 수 있다
   var deferred = null;
   window.addEventListener("beforeinstallprompt", function (e) {
     e.preventDefault();
     deferred = e;
-    btn.style.display = "inline-block";
-    banner.style.display = "block";
+    if (!dismissedRecently()) banner.style.display = "block";
   });
   btn.onclick = function () {
-    if (!deferred) return;
-    deferred.prompt();
-    deferred.userChoice.finally(function () { deferred = null; banner.style.display = "none"; });
+    if (deferred) {
+      deferred.prompt();
+      deferred.userChoice.finally(function () { deferred = null; hideBanner(); });
+    } else {
+      showGuide();
+    }
   };
-  window.addEventListener("appinstalled", function () { banner.style.display = "none"; });
+  window.addEventListener("appinstalled", function () { hideBanner(); guide.style.display = "none"; });
+  if (!dismissedRecently()) setTimeout(function () { banner.style.display = "block"; }, 1500);
 })();
 </script>
 </body>
