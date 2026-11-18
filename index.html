@@ -443,6 +443,11 @@
   @media (max-width: 560px) { .ht-doc-btns { grid-template-columns: 1fr; } .ht-doc-btn { min-height: 0; padding: 12px; } .ht-doc-btn .ht-doc-drop { display: none; } }
   /* 원클릭 분석 결과 — 리포트 형태 */
   .ht-rp { padding: 0; overflow: hidden; }
+  .ht-rp-sample .srp-body { padding: 16px 16px 18px; }
+  .ht-rp-sample .srp-title { font-size: 17px; }
+  .ht-rp-sample .ht-rp-total { font-size: 19px; }
+  .ht-rp-sample .ht-rp-row { font-size: 12px; }
+  .ht-rp-sample .ht-rp-btn { font-size: 14px; padding: 11px 12px; }
   .ht-rp .srp-body { padding: 18px 20px 20px; }
   .ht-rp .srp-title { font-size: 20px; }
   .ht-rp .srp-sh-title { font-size: 13px; }
@@ -1084,126 +1089,7 @@
         <p>원클릭 분석으로 기업을 평가하고<br>받을 수 있는 정책자금까지 확인할 수 있습니다</p>
       </div>
 
-      <!-- 헤더 -->
-      <div class="srp-header">
-        <span class="srp-sample-tag" style="font-size:11px;font-weight:800;letter-spacing:.06em;color:#0d3b7c;background:#FFD166;padding:3px 10px;border-radius:10px;">SAMPLE · 예시</span>
-        <div class="srp-top">
-          <div class="srp-brand">피나 · FinAnalyzer</div>
-        </div>
-        <div class="srp-title">재무상태 진단 결과</div>
-        <div class="srp-sub">Financial Health Diagnostic Report</div>
-        <div class="srp-meta">
-          <div class="srp-meta-item"><strong>분석대상</strong>(주)한빛테크</div>
-          <div class="srp-meta-item"><strong>분석일자</strong>2026년 8월 31일</div>
-        </div>
-      </div>
-
-      <div class="srp-body">
-        <!-- 1. 핵심 재무지표 -->
-        <div class="srp-sh">
-          <div class="srp-sh-num">1</div>
-          <div class="srp-sh-title">핵심 재무지표</div>
-          <div class="srp-sh-line"></div>
-        </div>
-        <div class="srp-kpi-grid">
-          <div class="srp-kpi" style="border-left-color:#B8860B;">
-            <div class="srp-kpi-label">📊 부채비율</div>
-            <div class="srp-kpi-value" style="color:#B8860B;">168.4%</div>
-            <span class="srp-kpi-badge" style="background:#FEF6D8;color:#B8860B;">⚠️ 주의</span>
-          </div>
-          <div class="srp-kpi" style="border-left-color:#0F6E56;">
-            <div class="srp-kpi-label">💰 이자보상배수</div>
-            <div class="srp-kpi-value" style="color:#0F6E56;">5.80배</div>
-            <span class="srp-kpi-badge" style="background:#E1F5EE;color:#0F6E56;">✅ 양호</span>
-          </div>
-        </div>
-
-        <!-- 2. 재무건전성 진단 -->
-        <div class="srp-sh">
-          <div class="srp-sh-num">2</div>
-          <div class="srp-sh-title">재무건전성 진단</div>
-          <div class="srp-sh-line"></div>
-        </div>
-        <div class="srp-diag-row">
-          <div class="srp-diag" style="background:#f0faf6;border-color:#a8dcc8;">
-            <div class="srp-diag-label">🏢 자본잠식</div>
-            <div class="srp-diag-value" style="color:#0F6E56;">✅ 정상</div>
-          </div>
-          <div class="srp-diag" style="background:#f0faf6;border-color:#a8dcc8;">
-            <div class="srp-diag-label">📈 결손 여부</div>
-            <div class="srp-diag-value" style="color:#0F6E56;">✅ 이익 발생</div>
-          </div>
-        </div>
-        <div class="srp-diag" style="background:#f0faf6;border-color:#a8dcc8;margin-bottom:6px;">
-          <div class="srp-diag-label">💳 매출 대비 대출 비율</div>
-          <div class="srp-diag-value" style="color:#0F6E56;">✅ 14.2% (적정)</div>
-        </div>
-        <div class="srp-asset-row">
-          <div>
-            <div class="srp-ar-label">💼 총자산</div>
-            <div class="srp-ar-value">2,150,000,000원</div>
-          </div>
-          <div>
-            <div class="srp-ar-label">📉 부채총계</div>
-            <div class="srp-ar-value" style="color:#A32D2D;">985,000,000원</div>
-          </div>
-          <div>
-            <div class="srp-ar-label">📦 자본총계</div>
-            <div class="srp-ar-value" style="color:#0F6E56;">1,165,000,000원</div>
-          </div>
-        </div>
-        <div class="srp-diag" style="background:#f0faf6;border-color:#a8dcc8;margin-bottom:0;">
-          <div class="srp-diag-label">🏛 정책자금 연계 여부</div>
-          <div class="srp-diag-value" style="color:#0F6E56;">✅ 연계 가능</div>
-        </div>
-
-        <!-- 사업 안정성 종합점수 -->
-        <div class="srp-score" style="border-top-color:#0F6E56;">
-          <div class="srp-score-label">🏆 사업 안정성 종합점수</div>
-          <div class="srp-score-top">
-            <div class="srp-score-num" style="color:#0F6E56;">91<span style="font-size:13px;">/100</span></div>
-            <div>
-              <div class="srp-score-grade" style="background:#E1F5EE;color:#0F6E56;">A (우수)</div>
-              <div class="srp-score-hint">100점 만점 기준</div>
-            </div>
-          </div>
-          <div class="srp-score-bar-bg"><div class="srp-score-bar-fill" style="width:91%;background:#0F6E56;"></div></div>
-          <div class="srp-score-items">
-            <div class="srp-si">
-              <div class="srp-si-label">부채비율</div>
-              <div class="srp-si-score" style="color:#B8860B;">21<span style="font-size:9px;font-weight:500;">/30</span></div>
-              <span class="srp-si-badge" style="background:#FEF6D8;color:#B8860B;">보통</span>
-            </div>
-            <div class="srp-si">
-              <div class="srp-si-label">이자보상배수</div>
-              <div class="srp-si-score" style="color:#0F6E56;">25<span style="font-size:9px;font-weight:500;">/25</span></div>
-              <span class="srp-si-badge">우수</span>
-            </div>
-            <div class="srp-si">
-              <div class="srp-si-label">자본건전성</div>
-              <div class="srp-si-score" style="color:#0F6E56;">20<span style="font-size:9px;font-weight:500;">/20</span></div>
-              <span class="srp-si-badge">우수</span>
-            </div>
-            <div class="srp-si">
-              <div class="srp-si-label">수익성</div>
-              <div class="srp-si-score" style="color:#0F6E56;">25<span style="font-size:9px;font-weight:500;">/25</span></div>
-              <span class="srp-si-badge">우수</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. 종합 분석 의견 -->
-        <div class="srp-sh">
-          <div class="srp-sh-num">3</div>
-          <div class="srp-sh-title">종합 분석 의견</div>
-          <div class="srp-sh-line"></div>
-        </div>
-        <div class="srp-opinion">
-          <div class="srp-opinion-item">📌 부채비율이 168.4%로 주의 수준입니다. 부채 규모를 점진적으로 축소하는 것이 바람직합니다.</div>
-          <div class="srp-opinion-item">📌 이자보상배수가 5.80배로 양호합니다. 영업이익이 이자비용을 충분히 커버하고 있어 재무안정성이 높은 편입니다.</div>
-          <div class="srp-opinion-item">📌 당기순이익이 발생하여 수익성은 양호한 상태이며, 매출 대비 대출 비율도 적정 수준을 유지하고 있습니다.</div>
-        </div>
-      </div>
+      <div id="sampleCardBody"></div>
 
       <div class="srp-footnote">💡 분석이 완료되면 이와 같은 형태의 리포트를 확인하실 수 있어요. 위 내용은 가상의 예시이며 실제 결과와 다를 수 있습니다.</div>
     </div>
@@ -1870,6 +1756,7 @@ function showPage(name) {
     if (mCompany && userCompanyName && !mCompany.value) mCompany.value = userCompanyName;
     prefillManualFields();
     initHometaxPage();
+    renderSampleCard();
   }
   if (name === "charge") {
     loadSubscription();
@@ -4156,7 +4043,17 @@ function showHometaxReport() {
 function renderHometaxResults(r, input) {
   window.__htLast = { r, input };
   const wrap = document.getElementById("ht-results");
-  const full = faFullAccess(input);
+  wrap.innerHTML = htResultCardHTML(r, input, faFullAccess(input)) + `
+    <p class="note" style="margin-bottom:12px;">※ 입력하신 자료를 기준으로 자동 계산한 참고용 분석이며, 실제 심사 결과와 다를 수 있습니다.</p>
+    <div style="display:flex;gap:8px;margin-bottom:24px;">
+      <button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ 입력 수정하기</button>
+    </div>`;
+  wrap.classList.remove("hidden");
+}
+
+// 원클릭 결과 카드 HTML — 분석 화면과 예시(샘플) 카드가 같이 쓴다. opts.sample: 예시용
+function htResultCardHTML(r, input, full, opts) {
+  opts = opts || {};
   const e = v => escapeHtml(String(v));
   const has = v => v !== null && v !== undefined && v !== "" && v !== false;
   const LC = { safe: "#0F6E56", info: "#185FA5", warn: "#B8860B", danger: "#A32D2D" };
@@ -4164,7 +4061,7 @@ function renderHometaxResults(r, input) {
   let n = 0;
   const sh = t => `<div class="srp-sh"><div class="srp-sh-num">${++n}</div><div class="srp-sh-title">${t}</div><div class="srp-sh-line"></div></div>`;
   const now = new Date();
-  const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
+  const dateStr = opts.date || `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
   const pf = r.profile || {}, c = r.credit || {}, rp = input.rep || {}, ar = input.arrears || {};
   const sh1 = sh("기업 개요"), sh2 = sh("종합 평가"), sh3 = sh("예상 한도 · 신청 가능 기관");   // 번호 순서 고정
 
@@ -4228,18 +4125,23 @@ function renderHometaxResults(r, input) {
       sh("국세 · 매출 현황") + [85, 70, 75].map(ph).join("") + sh("우대 · 참고 요소") + [60, 75].map(ph).join("");
   }
 
-  const cta = full
+  const cta = opts.sample
+    ? `<button class="btn ht-rp-btn" onclick="event.preventDefault();showSampleReport()">📄 샘플 리포트 전체 보기</button>
+       <div class="ht-rp-cta-sub">분석이 끝나면 이런 리포트를 저장·인쇄할 수 있어요</div>`
+    : full
     ? `<button class="btn ht-rp-btn" onclick="showHometaxReport()">📄 분석결과 전체 확인하기</button>
        <div class="ht-rp-cta-sub">저장·인쇄할 수 있는 리포트로 확인하세요</div>`
     : `<div style="font-size:22px;">🔒</div>
        <div class="ht-rp-cta-title">예상 한도와 신청 가능 기관은 구독 후 확인할 수 있어요</div>
        <button class="btn ht-rp-btn" onclick="showPage('charge')">구독하고 전체 결과 확인하기</button>`;
 
-  wrap.innerHTML = `
-    <div class="card ht-rp">
+  return `
+    <div class="${opts.sample ? "ht-rp ht-rp-sample" : "card ht-rp"}">
       <div class="srp-header">
         <div class="srp-top"><div class="srp-brand">피나 · FinAnalyzer</div>
-          <span style="font-size:9px;font-weight:700;letter-spacing:.04em;color:#0d3b7c;background:#fff;padding:2px 8px;border-radius:10px;">AI 기업분석 리포트</span></div>
+          ${opts.sample
+            ? '<span style="font-size:11px;font-weight:800;letter-spacing:.06em;color:#0d3b7c;background:#FFD166;padding:3px 10px;border-radius:10px;">SAMPLE · 예시</span>'
+            : '<span style="font-size:9px;font-weight:700;letter-spacing:.04em;color:#0d3b7c;background:#fff;padding:2px 8px;border-radius:10px;">AI 기업분석 리포트</span>'}</div>
         <div class="srp-title">기업분석·평가 결과</div>
         <div class="srp-sub">Corporate Analysis &amp; Evaluation Report</div>
         <div class="srp-meta">
@@ -4258,12 +4160,45 @@ function renderHometaxResults(r, input) {
         </div>`}
         <div class="ht-rp-cta${full ? " open" : ""}">${cta}</div>
       </div>
-    </div>
-    <p class="note" style="margin-bottom:12px;">※ 입력하신 자료를 기준으로 자동 계산한 참고용 분석이며, 실제 심사 결과와 다를 수 있습니다.</p>
-    <div style="display:flex;gap:8px;margin-bottom:24px;">
-      <button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ 입력 수정하기</button>
     </div>`;
-  wrap.classList.remove("hidden");
+}
+
+// ── 예시(샘플) — 가상의 기업 정보 ──
+const HT_SAMPLE_INPUT = {
+  company_name: "(주)한빛테크", rep_name: "김한빛", business_number: "123-45-67890", biz_type: "corp",
+  industry: "제조업 (전자부품)", founded: "2019-05", location: "경기", employees: 8,
+  years: [{ year: 2023, vat: 1800000000 }, { year: 2024, vat: 2100000000 }, { year: 2025, vat: 2400000000 }],
+  credit: { kcb: 820, nice: 860, co_none: true },
+  arrears: { status: "none" },
+  loans_none: false, loans: [{ org: "신용보증기금", date: "2024.06", amount: 100000000 }],
+  need: { max: 500000000, min: 300000000 },
+  rep: { age: 45, career: 15 },
+  cert_list: [{ type: "벤처", count: 1 }, { type: "ISO", count: 1 }, { type: "특허등록", count: 2 }],
+  naeil: "가입 2명", umbrella: "yes", export_amount: 350000000,
+  fin: { assets: 2150000000, liabilities: 985000000, capital_stock: 300000000, operating_income: 290000000, interest_expense: 50000000, net_income: 190000000 },
+};
+const HT_SAMPLE_LIMIT = {
+  available: true, status: "ok", low: 500000000, high: 620000000, text: "",
+  orgs: [
+    { key: "sojin", name: "소상공인시장진흥공단", low: 100000000, high: 200000000, status: "ok" },
+    { key: "jungjin", name: "중소벤처기업진흥공단", low: 500000000, high: 620000000, status: "ok" },
+    { key: "jaedan", name: "지역신용보증재단", low: 0, high: 0, status: "blocked" },
+    { key: "kodit", name: "신용보증기금", low: 400000000, high: 500000000, status: "ok" },
+    { key: "kibo", name: "기술보증기금", low: 0, high: 0, status: "blocked" },
+  ],
+};
+function htSample() {
+  const input = JSON.parse(JSON.stringify(HT_SAMPLE_INPUT));
+  input.certs = htCertText(input.cert_list);
+  return { input, r: analyzeHometax(input, { limit: HT_SAMPLE_LIMIT }) };
+}
+function renderSampleCard() {
+  const el = document.getElementById("sampleCardBody");
+  if (!el) return;
+  try {
+    const { r, input } = htSample();
+    el.innerHTML = htResultCardHTML(r, input, true, { sample: true, date: "2026년 8월 31일" });
+  } catch (e) { console.warn("sample card", e); }
 }
 
 // ── 팀 관리 (구독 요금제별 사용자 수) ───────────────────────────────
@@ -5472,7 +5407,7 @@ function downloadResult() {
 ${isSample ? `<div class="sample-mark">SAMPLE</div>
 <div class="sample-note">
   본 화면은 <strong>가상의 기업 정보</strong>로 만든 샘플 리포트입니다. 실제 데이터가 아닙니다.<br>
-  회원가입 후 재무제표를 업로드하시면 우리 회사 기준으로 동일한 형식의 리포트를 받아보실 수 있습니다.
+  회원가입 후 원클릭 분석을 하시면 우리 회사 기준으로 동일한 형식의 리포트를 받아보실 수 있습니다.
 </div>` : ``}
 
 <div id="reportCaptureArea">
@@ -6425,8 +6360,7 @@ const SAMPLE_DATA = {
 };
 
 function showSampleReport() {
-  // ⚠️ 새 창은 "버튼을 누른 바로 그 순간"에 열어야 한다.
-  //    setTimeout 안에서 열면 브라우저가 팝업으로 보고 차단한다 (특히 모바일).
+  // ⚠️ 새 창은 "버튼을 누른 바로 그 순간"에 열어야 한다 (setTimeout 안에서 열면 팝업 차단).
   let win = null;
   try {
     win = window.open("", "_blank");
@@ -6438,41 +6372,26 @@ function showSampleReport() {
         '샘플 리포트를 준비하고 있습니다...</p>');
     }
   } catch (e) { win = null; }
-
-  // 현재 화면 상태를 건드리지 않도록 값을 보관해 뒀다가 되돌린다
-  const keepId = window.currentHistoryId;
-  const keepPrinted = window.currentHistoryPrinted;
-  const keepData = window.currentAnalysisData;
-  const keepCompany = window.lastCompanyName;
-
+  const keep = { id: window.currentHistoryId, printed: window.currentHistoryPrinted, c: window.lastCompanyName, r: window.lastRepName, b: window.lastBizNumber };
+  const sample = htSample();
   window.currentHistoryId = null;
   window.currentHistoryPrinted = false;
+  window.lastCompanyName = sample.input.company_name;
+  window.lastRepName = sample.input.rep_name;
+  window.lastBizNumber = sample.input.business_number;
   window.__sampleReport = true;
   window.__reportWindow = win;
   window.__sampleSameTab = !win;   // 새 창이 막혔으면 현재 탭을 리포트로 교체
-
-  const results = document.getElementById("results");
-  const wasHidden = results.classList.contains("hidden");
-  const dash = document.getElementById("page-dashboard");
-  const wasActive = dash.classList.contains("active");
-
-  // 리포트 생성에는 화면이 그려져 있어야 하므로 잠시 대시보드를 띄운다
-  dash.classList.add("active");
-  results.classList.remove("hidden");
-  renderResults(SAMPLE_DATA);
-  void results.offsetHeight;   // 레이아웃을 강제로 계산시켜 수치가 비는 것을 막는다
-
-  downloadResult();
-
-  // 원래 화면으로 복구
-  window.__sampleReport = false;
-  window.__sampleSameTab = false;
-  window.__reportWindow = null;
-  window.currentHistoryId = keepId;
-  window.currentHistoryPrinted = keepPrinted;
-  if (keepData) { renderResults(keepData); window.lastCompanyName = keepCompany; }
-  if (wasHidden) results.classList.add("hidden");
-  if (!wasActive) dash.classList.remove("active");
+  window.__htReport = sample;
+  try { downloadResult(); }
+  finally {
+    window.__htReport = null;
+    window.__sampleReport = false;
+    window.__sampleSameTab = false;
+    window.__reportWindow = null;
+    window.currentHistoryId = keep.id; window.currentHistoryPrinted = keep.printed;
+    window.lastCompanyName = keep.c; window.lastRepName = keep.r; window.lastBizNumber = keep.b;
+  }
 }
 
 // ── 관리자 열람 모드 ────────────────────────────────────────────
