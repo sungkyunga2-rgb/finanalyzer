@@ -694,7 +694,7 @@ async def analyze(
     # 구독(팀 요금제)이 유효하면 크레딧 없이 분석. 아니면 기존 크레딧 방식.
     from fastapi.concurrency import run_in_threadpool
     subscribed = await run_in_threadpool(user_has_subscription_access, db, user)
-    if not subscribed and user.credits < COST_PER_ANALYSIS:
+    if not subscribed:
         await run_in_threadpool(_check_free_quota, db, user)
 
     prompt = """이 문서는 한국 기업/개인사업자의 재무제표입니다(이미지 또는 PDF, 1장 이상 첨부될 수 있음). 여러 장이 첨부된 경우 표지·재무상태표·손익계산서 등 서로 다른 페이지일 수 있으니, 페이지 번호(예: "1/5", "2/5")를 참고해 순서대로 모든 이미지를 함께 분석한 뒤 아래 항목들을 추출하세요. 절대로 짐작하지 말고, 각 숫자가 어느 페이지의 어느 항목(계정과목/코드)에서 나온 것인지 반드시 확인하고 추출하세요.
@@ -1165,7 +1165,7 @@ def hometax_limit(body: HometaxLimitBody, user: models.User = Depends(get_curren
     subscribed = user_has_subscription_access(db, user)
     used = 0
     if body.consume:
-        if not subscribed and user.credits < COST_PER_ANALYSIS:
+        if not subscribed:
             _check_free_quota(db, user)
         used, full = _consume_analysis(db, user, subscribed)
     else:
@@ -1186,7 +1186,7 @@ def analyze_manual(
     db: Session = Depends(get_db)
 ):
     subscribed = user_has_subscription_access(db, user)
-    if not subscribed and user.credits < COST_PER_ANALYSIS:
+    if not subscribed:
         _check_free_quota(db, user)
     used, full = _consume_analysis(db, user, subscribed)
     return {"credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed, "full": full}
@@ -1205,13 +1205,7 @@ def _check_free_quota(db: Session, user):
 
 def _consume_analysis(db: Session, user, subscribed: bool):
     """분석 1회 기록. (차감 크레딧, 전체 결과 공개 여부)"""
-    if subscribed:
-        used, full = 0, True
-    elif user.credits >= COST_PER_ANALYSIS:                           # 예전에 충전한 이용권 → 1건 차감, 전체 공개
-        used, full = COST_PER_ANALYSIS, True
-        user.credits -= used
-    else:                                                             # 무료 분석 → 일부 공개
-        used, full = 0, False
+    used, full = 0, bool(subscribed)                                 # 구독 = 전체 공개 / 무료 = 일부 공개
     db.add(models.AnalysisLog(user_id=user.id, credits_used=used))
     db.commit()
     return used, full
