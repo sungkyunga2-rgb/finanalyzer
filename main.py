@@ -40,6 +40,7 @@ def run_auto_migration():
         "terms_agreed_at": "TIMESTAMP",
         "nickname": "VARCHAR DEFAULT ''",
     })
+    add_missing_columns("teams", {"plan_expires_at": "TIMESTAMP"})
     # 커뮤니티 글/댓글 수정 기능을 위한 updated_at 컬럼 추가
     add_missing_columns("community_posts", {"updated_at": "TIMESTAMP"})
     add_missing_columns("community_comments", {"updated_at": "TIMESTAMP"})
@@ -1737,7 +1738,7 @@ def cleanup_user_team(db: Session, user):
     )).delete(synchronize_session=False)
     db.flush()
 
-def set_team_plan(db: Session, owner, plan: str):
+def set_team_plan(db: Session, owner, plan: str, expires_at=None):
     """대표에게 요금제를 지정(없으면 팀 생성). plan이 ""이면 요금제 해지. 구독 결제 연동 시에도 이 함수를 사용."""
     if plan and plan not in SUBSCRIPTION_PLANS:
         raise HTTPException(status_code=400, detail="알 수 없는 요금제입니다.")
@@ -1751,8 +1752,15 @@ def set_team_plan(db: Session, owner, plan: str):
         db.add(models.TeamMember(team_id=team.id, user_id=owner.id, role="owner"))
     team.plan = plan or ""
     team.plan_updated_at = datetime.utcnow()
+    team.plan_expires_at = expires_at if plan else None
     db.commit()
     return team
+
+def _kst_date(dt):
+    """만료 시각(UTC) → 이용 가능한 마지막 날짜(한국) 'YYYY-MM-DD'"""
+    if not dt:
+        return None
+    return (dt + timedelta(hours=9) - timedelta(seconds=1)).strftime("%Y-%m-%d")
 
 def _plan_label(plan: str) -> str:
     return SUBSCRIPTION_PLANS.get(plan or "", {}).get("label", "요금제 없음")
@@ -1762,6 +1770,7 @@ def admin_team_info(db: Session, user):
     team, m = get_membership(db, user)
     if not team:
         return None
+    _expire_admin_plan(db, team)
     owner = db.query(models.User).filter(models.User.id == team.owner_id).first()
     members_n, pending_n = team_counts(db, team)
     return {
@@ -1769,6 +1778,7 @@ def admin_team_info(db: Session, user):
         "owner_email": owner.email if owner else "",
         "plan": team.plan or "",
         "plan_label": _plan_label(team.plan),
+        "plan_expires_on": _kst_date(team.plan_expires_at),
         "seat_limit": team_seat_limit(team),
         "members_count": members_n,
         "pending_count": pending_n,
@@ -1989,6 +1999,7 @@ def team_leave(user: models.User = Depends(get_current_user), db: Session = Depe
 class AdminSetPlanBody(BaseModel):
     email: str
     plan: str = ""   # starter / standard / pro / "" (요금제 해지)
+    expires_on: str | None = None   # 만료일 "YYYY-MM-DD" (한국 날짜, 그날 23:59:59까지 이용). 없으면 만료 없음
 
 @app.post("/admin/team/set-plan")
 def admin_set_team_plan(body: AdminSetPlanBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
@@ -2001,7 +2012,16 @@ def admin_set_team_plan(body: AdminSetPlanBody, _: bool = Depends(check_admin), 
     ).first()
     if live_sub:
         raise HTTPException(status_code=400, detail="결제 중인 구독이 있는 회원은 요금제를 직접 바꿀 수 없습니다. 구독을 해지(종료)한 뒤 변경해주세요.")
-    team = set_team_plan(db, owner, (body.plan or "").strip())
+    expires_at = None
+    if (body.plan or "").strip() and body.expires_on:
+        try:
+            d = datetime.strptime(body.expires_on.strip()[:10], "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="만료일 형식이 올바르지 않습니다. (예: 2026-12-31)")
+        expires_at = d + timedelta(days=1) - timedelta(hours=9)          # 한국 날짜 기준 그날 자정(다음 날 0시)까지
+        if expires_at <= datetime.utcnow():
+            raise HTTPException(status_code=400, detail="만료일은 오늘 이후 날짜여야 합니다.")
+    team = set_team_plan(db, owner, (body.plan or "").strip(), expires_at)
     limit = team_seat_limit(team)
     members_n, pending_n = team_counts(db, team)
     return {
@@ -2059,6 +2079,7 @@ def admin_list_teams(_: bool = Depends(check_admin), db: Session = Depends(get_d
             "pending_count": pending_n,
             "over_limit": members_n > limit,
             "plan_updated_at": t.plan_updated_at.isoformat() if t.plan_updated_at else None,
+            "plan_expires_on": _kst_date(t.plan_expires_at),
             "subscription": _sub_view(sub) if sub else None,
             "members": members,
             "invites": invites,
@@ -3354,7 +3375,16 @@ def user_has_subscription_access(db: Session, user) -> bool:
     if sub:
         sync_subscription(db, sub)
         db.refresh(team)
+    _expire_admin_plan(db, team)
     return bool(team.plan)
+
+def _expire_admin_plan(db: Session, team):
+    """관리자가 기간을 정해 지정한 요금제가 만료됐으면 해제"""
+    if team and team.plan and team.plan_expires_at and datetime.utcnow() >= team.plan_expires_at:
+        team.plan = ""
+        team.plan_expires_at = None
+        team.plan_updated_at = datetime.utcnow()
+        db.commit()
 
 def cleanup_user_subscription(db: Session, user):
     """회원 탈퇴/삭제 시 구독 정리 — 예약 결제 취소, 빌링키 삭제. (commit은 호출한 쪽에서)"""
@@ -3388,6 +3418,7 @@ def subscription_me(user: models.User = Depends(get_current_user), db: Session =
     team, _m = get_membership(db, user)
     if team:
         db.refresh(team)
+        _expire_admin_plan(db, team)
     is_member = bool(team and team.owner_id != user.id)
     live = bool(sub and sub.status in SUB_LIVE_STATUSES)
     return {
@@ -3400,6 +3431,7 @@ def subscription_me(user: models.User = Depends(get_current_user), db: Session =
         "subscription": _sub_view(sub) if live else None,
         # 결제 없이 관리자가 요금제를 부여한 경우
         "admin_plan_label": _plan_label(team.plan) if (team and team.owner_id == user.id and team.plan and not live) else None,
+        "admin_plan_expires_on": _kst_date(team.plan_expires_at) if (team and team.owner_id == user.id and team.plan and not live) else None,
     }
 
 class SubscriptionStartBody(BaseModel):
@@ -3501,6 +3533,24 @@ def subscription_resume(user: models.User = Depends(get_current_user), db: Sessi
     return {"message": "해지 예약을 취소했습니다. 구독이 계속됩니다.", "subscription": _sub_view(sub)}
 
 # ── 관리자 ──────────────────────────────────────────────────────
+class AdminEmailBody(BaseModel):
+    email: str
+
+@app.post("/admin/subscription/resume")
+def admin_resume_subscription(body: AdminEmailBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    """관리자: 해지 예약된 결제 구독을 다시 이어가기 (다음 결제일에 자동결제 재예약)"""
+    owner = db.query(models.User).filter(_email_eq(body.email)).first()
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == owner.id).first() if owner else None
+    if not sub or sub.status != "cancel_scheduled":
+        raise HTTPException(status_code=400, detail="해지 예약된 구독이 없습니다.")
+    if not sub.period_end or datetime.utcnow() >= sub.period_end or not sub.billing_key:
+        raise HTTPException(status_code=400, detail="이용기간이 이미 끝나 해지를 취소할 수 없습니다.")
+    sub.status = "active"
+    sub.cancel_requested_at = None
+    sub.next_payment_id = _sub_schedule(sub, owner, sub.period_end)
+    db.commit()
+    return {"email": owner.email, "status": sub.status}
+
 @app.post("/admin/subscriptions/sync")
 def admin_sync_subscriptions(_: bool = Depends(check_admin), db: Session = Depends(get_db)):
     """이용기간이 지난 모든 구독의 갱신을 확인한다. 외부 cron이 하루 1번 호출하도록 설정하면 안전망이 된다."""

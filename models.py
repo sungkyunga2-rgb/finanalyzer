@@ -144,6 +144,7 @@ class Team(Base):
     owner_id        = Column(Integer, ForeignKey("users.id"), unique=True, index=True)
     plan            = Column(String, default="")      # starter / standard / pro / "" (요금제 없음)
     plan_updated_at = Column(DateTime, nullable=True)
+    plan_expires_at = Column(DateTime, nullable=True)   # 관리자가 지정한 요금제의 만료 시각(UTC). None = 만료 없음 (결제 구독은 항상 None)
     created_at      = Column(DateTime, default=datetime.utcnow)
 
 

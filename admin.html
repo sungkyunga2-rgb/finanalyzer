@@ -963,7 +963,7 @@ function renderTeamCard(d) {
       : "";
     return `<div style="border:1px solid var(--border, #e3e8ef);border-radius:10px;padding:14px;margin-bottom:12px;">
       <div style="font-weight:700;color:var(--navy);">${esc(t.owner_email)}${t.company_name ? ` <span class="muted" style="font-weight:400;">${esc(t.company_name)}</span>` : ""}</div>
-      <div style="margin:6px 0;">${esc(t.plan_label || "요금제 없음")} · 사용자 ${t.members_count}/${t.seat_limit}명${t.over_limit ? ' <span class="tag tag-pct">한도 초과</span>' : ""}</div>
+      <div style="margin:6px 0;">${esc(t.plan_label || "요금제 없음")}${t.plan && !(t.subscription && t.subscription.status !== "cancelled") ? (t.plan_expires_on ? " · " + esc(t.plan_expires_on) + "까지" : " · 만료 없음") : ""} · 사용자 ${t.members_count}/${t.seat_limit}명${t.over_limit ? ' <span class="tag tag-pct">한도 초과</span>' : ""}</div>
       <div style="margin-bottom:8px;">${subLine}</div>
       <div class="table-wrap"><table>
         <thead><tr><th>구성원</th><th>구분</th><th>합류일</th><th style="text-align:right;">분석(30일)</th><th></th></tr></thead>
@@ -1174,7 +1174,13 @@ function renderResult(d) {
     : `<tr><td colspan="2" style="text-align:center;color:#9aa7b8;">분석 내역 없음</td></tr>`;
 
   card.innerHTML = `
-    <div class="count-badge">잔여횟수 ${d.remaining_count}건 <span>(${d.credits} 크레딧)</span></div>
+    <div class="count-badge">${(() => {
+      const ps = d.subscription && d.subscription.status !== "cancelled" ? d.subscription : null;
+      if (ps) return ps.status === "cancel_scheduled" ? "구독 해지 예정" : ps.status === "past_due" ? "구독 결제 실패" : "구독 중 <span>(카드 결제)</span>";
+      if (d.team && d.team.role !== "owner") return "팀원 <span>(" + d.team.owner_email + " 팀)</span>";
+      if (d.team && d.team.plan) return "구독 중 <span>(관리자 지정 · " + (d.team.plan_expires_on ? d.team.plan_expires_on + "까지" : "만료 없음") + ")</span>";
+      return "무료 회원";
+    })()}</div>
 
     <div class="info-grid">
       <div class="info-item"><div class="l">회사명</div><div class="v">${d.company_name || "-"}</div></div>
@@ -1184,52 +1190,48 @@ function renderResult(d) {
       <div class="info-item" style="grid-column:1/-1;"><div class="l">이메일 / 가입일</div><div class="v">${d.email} · ${d.created_at ? d.created_at.slice(0,10) : "-"}</div></div>
     </div>
 
-    <div class="section-title">⚡ 빠른 조정</div>
-    <div class="quick-row">
-      <button class="btn-ghost" onclick="adjust(-10)">-10건</button>
-      <button class="btn-ghost" onclick="adjust(-1)">-1건</button>
-      <button class="btn-ghost" onclick="adjust(1)">+1건</button>
-      <button class="btn-ghost" onclick="adjust(5)">+5건</button>
-      <button class="btn-ghost" onclick="adjust(10)">+10건</button>
-    </div>
-
-    <div class="section-title">직접 입력</div>
-    <div class="row" style="margin-bottom:8px;">
-      <input type="number" id="delta-input" placeholder="증감할 건수 (예: -3 또는 7)" />
-      <button class="btn-primary" onclick="adjustCustom()">증감 적용</button>
-    </div>
-    <div class="row">
-      <input type="number" id="set-input" placeholder="정확한 잔여횟수로 설정 (예: 20)" />
-      <button class="btn-primary" onclick="setExact()">값으로 설정</button>
-    </div>
-
-    <div class="section-title">👥 구독 요금제 (사용자 수)</div>
+    <div class="section-title">👥 구독 관리</div>
     ${d.subscription && d.subscription.status !== "cancelled"
       ? `<p style="font-size:12px;color:#7a8ca3;margin-bottom:10px;line-height:1.7;">
            <b>결제 중인 구독</b> — ${d.subscription.plan_label} · 월 ${(d.subscription.amount||0).toLocaleString()}원<br>
            상태: <b>${({active:"이용 중", cancel_scheduled:"해지 예정", past_due:"결제 실패(재시도 중)"})[d.subscription.status] || d.subscription.status}</b>
            · ${d.subscription.status === "cancel_scheduled" ? "이용 종료" : "다음 결제"}: ${d.subscription.period_end ? d.subscription.period_end.slice(0,10) : "-"}
            ${d.subscription.fail_count ? ` · 연속 실패 ${d.subscription.fail_count}회` : ""}<br>
-           구독 중인 회원은 요금제를 직접 바꿀 수 없습니다. 변경하려면 먼저 해지(종료)하세요.
+           카드 결제 중인 구독은 결제일·금액을 바꿀 수 없습니다. 변경하려면 먼저 해지(종료)한 뒤 관리자 구독으로 지정하세요.
          </p>
          <div class="quick-row">
-           ${d.subscription.status === "cancel_scheduled" ? "" : `<button class="btn-ghost" onclick="adminCancelSub(false)">이용기간 종료 시 해지</button>`}
+           ${d.subscription.status === "cancel_scheduled" ? `<button class="btn-ghost" onclick="adminResumeSub()">해지 예약 취소 (구독 유지)</button>` : `<button class="btn-ghost" onclick="adminCancelSub(false)">이용기간 종료 시 해지</button>`}
            <button class="btn-ghost" style="color:#A32D2D;" onclick="adminCancelSub(true)">즉시 종료(결제 중단)</button>
          </div>`
     : d.team && d.team.role !== "owner"
       ? `<p style="font-size:12px;color:#7a8ca3;margin-bottom:10px;">이 회원은 <b>${d.team.owner_email}</b> 팀의 팀원입니다. 요금제는 팀 대표 계정에서 지정하세요.</p>`
-      : `<p style="font-size:12px;color:#7a8ca3;margin-bottom:10px;">
-           현재: <b>${d.team ? d.team.plan_label : "요금제 없음"}</b>
-           ${d.team && d.team.seat_limit ? ` · 사용자 ${d.team.members_count} / ${d.team.seat_limit}명 (수락 대기 초대 ${d.team.pending_count}건은 미포함)` : ""}
+      : `<p style="font-size:12px;color:#7a8ca3;margin-bottom:10px;line-height:1.7;">
+           현재: <b>${d.team && d.team.plan ? d.team.plan_label + " (관리자 지정)" : "구독 없음"}</b>
+           ${d.team && d.team.plan ? ` · 이용 기간: <b>${d.team.plan_expires_on ? d.team.plan_expires_on + "까지" : "만료 없음"}</b>` : ""}
+           ${d.team && d.team.seat_limit > 1 ? `<br>사용자 ${d.team.members_count} / ${d.team.seat_limit}명 (수락 대기 초대 ${d.team.pending_count}건은 미포함)` : ""}
+           <br>결제 없이 관리자가 구독을 지정합니다. 기간이 끝나면 자동으로 해지됩니다.
          </p>
-         <div class="row">
+         <div class="row" style="margin-bottom:8px;">
            <select id="plan-select" style="flex:1;padding:10px 12px;border:1px solid #d6dde8;border-radius:8px;font-size:14px;">
-             <option value="">요금제 없음 (해지)</option>
-             <option value="starter" ${d.team && d.team.plan === "starter" ? "selected" : ""}>피나 구독 — 1명 (월 59,000원)</option>
+             <option value="starter" ${!d.team || !d.team.plan || d.team.plan === "starter" ? "selected" : ""}>피나 구독 — 1명</option>
              <option value="standard" ${d.team && d.team.plan === "standard" ? "selected" : ""}>스탠다드 — 3명 (이전 요금제)</option>
              <option value="pro" ${d.team && d.team.plan === "pro" ? "selected" : ""}>프로 — 10명 (이전 요금제)</option>
            </select>
-           <button class="btn-primary" onclick="setTeamPlan()">요금제 적용</button>
+         </div>
+         <div class="row" style="margin-bottom:8px;">
+           <select id="plan-period" onchange="planPeriodChanged()" style="flex:1;padding:10px 12px;border:1px solid #d6dde8;border-radius:8px;font-size:14px;">
+             <option value="1">1개월</option>
+             <option value="3">3개월</option>
+             <option value="6">6개월</option>
+             <option value="12">12개월</option>
+             <option value="date" ${d.team && d.team.plan_expires_on ? "selected" : ""}>만료일 직접 선택</option>
+             <option value="none" ${d.team && d.team.plan && !d.team.plan_expires_on ? "selected" : ""}>만료 없음</option>
+           </select>
+           <input type="date" id="plan-expires" value="${d.team && d.team.plan_expires_on ? d.team.plan_expires_on : ""}" style="flex:1;padding:9px 12px;border:1px solid #d6dde8;border-radius:8px;font-size:14px;${d.team && d.team.plan_expires_on ? "" : "display:none;"}" />
+         </div>
+         <div class="quick-row">
+           <button class="btn-primary" onclick="setTeamPlan()">${d.team && d.team.plan ? "구독 수정" : "구독 지정"}</button>
+           ${d.team && d.team.plan ? `<button class="btn-ghost" style="color:#A32D2D;" onclick="clearTeamPlan()">구독 해지</button>` : ""}
          </div>`}
 
     <div class="section-title">✏️ 회원정보 수정</div>
@@ -1313,13 +1315,50 @@ async function adminCancelSub(immediate) {
   } catch (e) { toast("오류: " + e.message); }
 }
 
+function planPeriodChanged() {
+  const v = document.getElementById("plan-period").value;
+  document.getElementById("plan-expires").style.display = v === "date" ? "" : "none";
+}
+// 오늘(한국)부터 n개월 뒤 하루 전까지 — 예: 11/18에 1개월 → 12/17까지
+function planExpiresAfter(months) {
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const y = now.getUTCFullYear(), m = now.getUTCMonth(), day = now.getUTCDate();
+  const last = new Date(Date.UTC(y, m + months + 1, 0)).getUTCDate();
+  const end = new Date(Date.UTC(y, m + months, Math.min(day, last)));
+  end.setUTCDate(end.getUTCDate() - 1);
+  return end.toISOString().slice(0, 10);
+}
+async function clearTeamPlan() {
+  if (!confirm(`${currentEmail} 회원의 구독을 해지할까요?\n바로 무료 회원(일부 결과만 공개)으로 바뀝니다.`)) return;
+  try {
+    await api("POST", "/admin/team/set-plan", { email: currentEmail, plan: "" });
+    toast("구독을 해지했습니다.");
+    searchUser();
+  } catch (e) { toast("오류: " + e.message); }
+}
+async function adminResumeSub() {
+  if (!confirm(`${currentEmail} 회원의 해지 예약을 취소할까요?\n다음 결제일에 다시 자동 결제됩니다.`)) return;
+  try {
+    await api("POST", "/admin/subscription/resume", { email: currentEmail });
+    toast("해지 예약을 취소했습니다. 구독이 계속됩니다.");
+    searchUser();
+  } catch (e) { toast("오류: " + e.message); }
+}
 async function setTeamPlan() {
   const plan = document.getElementById("plan-select").value;
-  const label = plan ? document.getElementById("plan-select").selectedOptions[0].textContent : "요금제 해지";
-  if (!confirm(`${currentEmail} 회원의 요금제를 "${label}"(으)로 적용할까요?`)) return;
+  const label = document.getElementById("plan-select").selectedOptions[0].textContent;
+  const period = document.getElementById("plan-period").value;
+  let expires_on = null;
+  if (period === "date") {
+    expires_on = document.getElementById("plan-expires").value;
+    if (!expires_on) { toast("만료일을 선택하세요."); return; }
+  } else if (period !== "none") {
+    expires_on = planExpiresAfter(parseInt(period, 10));
+  }
+  if (!confirm(`${currentEmail} 회원에게 "${label}" 구독을 ${expires_on ? expires_on + "까지" : "만료 없이"} 적용할까요?`)) return;
   try {
-    const d = await api("POST", "/admin/team/set-plan", { email: currentEmail, plan });
-    let msg = `요금제 적용 완료: ${d.plan_label}`;
+    const d = await api("POST", "/admin/team/set-plan", { email: currentEmail, plan, expires_on });
+    let msg = `구독 적용 완료: ${d.plan_label}${expires_on ? " · " + expires_on + "까지" : " · 만료 없음"}`;
     if (d.over_limit) msg += ` (주의: 현재 팀원 ${d.members_count}명이 한도 ${d.seat_limit}명을 초과합니다. 새 초대만 막히며, 팀원은 자동으로 내보내지지 않습니다.)`;
     toast(msg);
     searchUser();

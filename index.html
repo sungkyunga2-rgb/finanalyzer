@@ -5501,7 +5501,7 @@ function renderSubscription(d) {
     document.getElementById("sub-current-card").classList.remove("hidden");
   } else if (d.admin_plan_label) {
     document.getElementById("sub-admin-text").textContent =
-      `${d.admin_plan_label} 요금제가 적용되어 있습니다. 결제·요금제 변경은 문의하기로 알려주세요.`;
+      `${d.admin_plan_label} 이용 중입니다${d.admin_plan_expires_on ? " (" + d.admin_plan_expires_on + "까지)" : ""}. 결제·요금제 변경은 문의하기로 알려주세요.`;
     document.getElementById("sub-admin-card").classList.remove("hidden");
   } else {
     renderPlanCards(d.plans);
