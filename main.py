@@ -692,10 +692,21 @@ async def analyze(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 구독(팀 요금제)이 유효하면 크레딧 없이 분석. 아니면 기존 크레딧 방식.
+    return await _analyze_financial(body, user, db, consume=True)
+
+# 원클릭 분석 '서류로 채우기' — 재무제표에서 숫자만 읽어 입력칸을 채운다 (분석 횟수는 원클릭 분석 때 1회만)
+@app.post("/extract/financial")
+async def extract_financial(
+    body: AnalysisRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return await _analyze_financial(body, user, db, consume=False)
+
+async def _analyze_financial(body, user, db, consume: bool):
     from fastapi.concurrency import run_in_threadpool
     subscribed = await run_in_threadpool(user_has_subscription_access, db, user)
-    if not subscribed:
+    if consume and not subscribed:
         await run_in_threadpool(_check_free_quota, db, user)
 
     prompt = """이 문서는 한국 기업/개인사업자의 재무제표입니다(이미지 또는 PDF, 1장 이상 첨부될 수 있음). 여러 장이 첨부된 경우 표지·재무상태표·손익계산서 등 서로 다른 페이지일 수 있으니, 페이지 번호(예: "1/5", "2/5")를 참고해 순서대로 모든 이미지를 함께 분석한 뒤 아래 항목들을 추출하세요. 절대로 짐작하지 말고, 각 숫자가 어느 페이지의 어느 항목(계정과목/코드)에서 나온 것인지 반드시 확인하고 추출하세요.
@@ -877,6 +888,8 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
         raise HTTPException(status_code=500, detail=f"AI 분석 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
 
     # 구독 → 전체 공개 / 예전 충전분이 있으면 1건 차감 후 전체 공개 / 둘 다 없으면 무료(일부 공개)
+    if not consume:
+        return {"data": data}
     used, full = _consume_analysis(db, user, subscribed)
     return {"data": data, "credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed, "full": full}
 
