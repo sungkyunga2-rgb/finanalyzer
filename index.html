@@ -75,6 +75,8 @@
   .hero-band header .logo .logo-kr .c2 { color: #ffffff !important; }
   .header-right { display: flex; align-items: center; gap: 12px; }
   .credit-badge { background: var(--accent-bg); color: var(--accent); font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 20px; display: none; }
+  .credit-badge.is-sub { background: #0F6E56; color: #fff; font-weight: 700; box-shadow: 0 2px 6px rgba(15,110,86,.3); }
+  .credit-badge.is-free { background: #FFF4D6; color: #8a5a00; font-weight: 700; border: 1px solid #F2D27A; cursor: pointer; }
 
   /* ── 핵심 지표 큰 숫자: 단위(%, 배)와 줄바꿈되어 끊기지 않도록 처리 ── */
   .metric-value { word-break: keep-all; overflow-wrap: normal; }
@@ -1863,7 +1865,11 @@ function fmt(n) {
 
 function updateCreditBadges() {
   document.querySelectorAll(".credit-badge").forEach(el => {
-    el.textContent = userHasSub ? "구독 이용 중" : "무료 분석 이용 중";
+    el.textContent = userHasSub ? "✓ 구독 이용 중" : "무료 이용 중";
+    el.classList.toggle("is-sub", !!userHasSub);
+    el.classList.toggle("is-free", !userHasSub);
+    el.title = userHasSub ? "" : "구독하면 전체 결과를 볼 수 있어요";
+    el.onclick = userHasSub ? null : () => showPage("charge");
     el.style.display = "inline-block";
   });
 }
@@ -3823,7 +3829,128 @@ function htInfoCard(r, input) {
     <div class="card ht-sheet" style="margin-bottom:1rem;">${rows.join("")}</div>`;
 }
 
+// ── 원클릭 분석 리포트 (재무제표 분석 리포트와 같은 양식, 기업분석·평가 항목 추가) ──
+function htReportBody(r, input) {
+  const e = v => escapeHtml(String(v));
+  const has = v => v !== null && v !== undefined && v !== "" && v !== false;
+  const LC = { safe: "#0F6E56", info: "#185FA5", warn: "#B8860B", danger: "#A32D2D" };
+  const LB = { safe: "#E1F5EE", info: "#EBF2FA", warn: "#FEF6D8", danger: "#FCEBEB" };
+  let n = 0;
+  const sh = (t) => `<div class="sh"><div class="sh-num">${++n}</div><div class="sh-title">${t}</div><div class="sh-line"></div></div>`;
+  const pf = r.profile || {}, c = r.credit || {}, rp = input.rep || {}, ar = input.arrears || {};
+  const labMap = { lab: "기업부설연구소", dept: "연구개발전담부서" };
+  const facMap = { own: "자가", rent: "임차" };
+  let html = "";
+
+  // 기업 개요
+  const ov = [
+    ["회사명", input.company_name], ["대표자", input.rep_name], ["사업자번호", input.business_number],
+    ["사업자 구분", r.biz === "corp" ? "법인사업자" : "개인사업자"], ["업태", input.industry],
+    ["창업 · 업력", pf.founded ? pf.founded + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""],
+    ["소재지", input.location], ["직원 수", has(input.employees) ? input.employees + "명" : ""],
+    ["대표자 정보", [has(rp.age) ? `만 ${rp.age}세` : "", has(rp.career) ? `동종업계 ${rp.career}년` : "", rp.woman ? "여성 대표" : ""].filter(Boolean).join(" · ")],
+    ["신용점수", has(c.kcb) || has(c.nice) ? `KCB ${has(c.kcb) ? c.kcb : "-"} · NICE ${has(c.nice) ? c.nice : "-"}` : ""],
+    ["기업 인증", input.cert_list ? htCertText(input.cert_list) : (input.certs || "")],
+    ["연구소 · 공장", [labMap[input.lab] || "", facMap[input.factory] ? "공장 " + facMap[input.factory] : ""].filter(Boolean).join(" · ")],
+    ["수출실적", htNum(input.export_amount) > 0 ? htKwon(htNum(input.export_amount)) : (input.export || "")],
+  ].filter(([, v]) => has(v));
+  const ovRows = [];
+  for (let i = 0; i < ov.length; i += 2) {
+    const a = ov[i], b = ov[i + 1];
+    ovRows.push(`<tr><td class="cat" style="width:18%;">${a[0]}</td><td style="width:32%;font-weight:600;">${e(a[1])}</td>${b ? `<td class="cat" style="width:18%;">${b[0]}</td><td style="width:32%;font-weight:600;">${e(b[1])}</td>` : "<td></td><td></td>"}</tr>`);
+  }
+  html += sh("기업 개요 (Company Overview)") + `<table class="fin-table"><tbody>${ovRows.join("")}</tbody></table>`;
+
+  // 종합 평가
+  const o = r.overall;
+  html += sh("종합 평가 (Overall Evaluation)") + `<div class="opinion" style="border-left-color:${LC[o.level]};">
+    <div class="opinion-title" style="color:${LC[o.level]};">${o.level === "danger" ? "🔴" : o.level === "warn" ? "🟡" : "🟢"} ${e(o.title)}</div>
+    <div class="opinion-item">${e(o.text)}</div>
+    ${r.flags.map(f => `<div class="opinion-item">• <strong style="color:${LC[f.level]};">${e(f.title)}</strong> — ${e(f.text)}</div>`).join("")}
+  </div>`;
+
+  // 예상 한도 · 신청 가능 기관
+  const L = r.limit || {};
+  let limHTML;
+  if (!L.available) limHTML = `<div class="opinion"><div class="opinion-item">${e(L.text || "매출을 입력하면 예상 한도를 계산합니다.")}</div></div>`;
+  else if (L.status === "blocked" || L.status === "low") {
+    const lv = L.status === "blocked" ? "danger" : "warn";
+    limHTML = `<div class="opinion" style="background:${LB[lv]};border-left-color:${LC[lv]};">
+      <div class="opinion-title" style="color:${LC[lv]};">${L.status === "blocked" ? "현재 신청 어려움" : "추가 한도 여력 부족"}</div>
+      <div class="opinion-item">${e(L.text)}</div></div>`;
+  } else {
+    const amt = (a, b) => a === b ? "약 " + htKwon(b) : a <= 0 ? "최대 약 " + htKwon(b) : "약 " + htKwon(a) + " ~ " + htKwon(b);
+    limHTML = `<div style="background:#EBF2FA;border-radius:10px;padding:14px 16px;margin-bottom:8px;border-left:4px solid #185FA5;">
+        <div style="font-size:10px;color:#6b7a8d;font-weight:600;margin-bottom:4px;">총 예상 한도</div>
+        <div style="font-size:24px;font-weight:800;color:#185FA5;letter-spacing:-.02em;">${amt(L.low, L.high)}</div></div>`;
+  }
+  if (L.available && (L.orgs || []).length) {
+    limHTML += `<table class="fin-table"><thead><tr><th>신청 가능 기관</th><th style="text-align:right;">예상 금액</th></tr></thead><tbody>${L.orgs.map(g =>
+      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${g.status === "ok" ? (g.low === g.high ? htKwon(g.high) : g.low <= 0 ? "최대 " + htKwon(g.high) : htKwon(g.low) + " ~ " + htKwon(g.high)) : g.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</td></tr>`).join("")}</tbody></table>`;
+  }
+  if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;
+  html += sh("예상 한도 · 신청 가능 기관 (Expected Funding)") + limHTML;
+
+  // 재무 분석 (비율만 — 실제 금액은 표시하지 않는다)
+  const f = r.financial, q = r.ratios;
+  if (f || q) {
+    const k = l => (l === "info" ? "safe" : l);
+    const card = (label, value, lvl, hint) => `<div class="kpi-card ${k(lvl)}"><div class="kpi-label">${label}</div><div class="kpi-value ${k(lvl)}">${value}</div><span class="kpi-badge ${k(lvl)}">${lvl === "danger" ? "위험" : lvl === "warn" ? "주의" : "양호"}</span><div class="kpi-hint">${hint}</div></div>`;
+    let cards = "";
+    if (f) {
+      cards += card("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass, "400% 초과 위험 · 200% 이하 양호");
+      cards += card("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass, "1배 미만 위험 · 2배 이상 양호");
+      cards += card("🏢 자본잠식", e(f.erosionStatus), f.erosionClass, f.erosionClass === "safe" ? "자본 건전" : "자본 확충 필요");
+      const gl = f.pct >= 60 ? "safe" : f.pct >= 40 ? "warn" : "danger";
+      cards += card("🏆 사업 안정성 종합점수", `${f.total}<span style="font-size:13px;">/${f.max}</span>`, gl, e(f.grade));
+    } else {
+      cards += card("📊 부채비율", has(q.dr) ? q.dr + "%" : "-", q.drClass, "400% 초과 위험 · 200% 이하 양호");
+      cards += card("💰 이자보상배수", has(q.icr) ? q.icr + "배" : "-", q.icrClass, "1배 미만 위험 · 2배 이상 양호");
+    }
+    html += sh("재무 분석 (Financial Ratios)") + `<div class="kpi-grid">${cards}</div>`;
+  }
+
+  // 국세 · 매출 현황
+  const arTxt = ar.status === "has" ? `<span style="color:#A32D2D;font-weight:700;">체납 있음${r.arrears && r.arrears.amount ? " · " + htKwon(r.arrears.amount) : ""}</span>`
+    : ar.status === "none" ? `<span style="color:#0F6E56;font-weight:700;">체납 없음</span>` : "미확인";
+  const yoyCell = v => `<td class="val" style="color:${v === null ? "#9b9a95" : v < 0 ? "#A32D2D" : "#0F6E56"};">${v === null ? "-" : htPctText(v)}</td>`;
+  let salesRows = ((r.vat && r.vat.rows) || []).map(x => `<tr><td>${x.year}년</td><td class="val">${htKwon(x.vat)}</td>${yoyCell(x.vatYoy)}</tr>`).join("");
+  if (r.vat && r.vat.ytd) salesRows += `<tr><td>${r.vat.ytd.year}년 ${r.vat.ytd.month}월까지</td><td class="val">${htKwon(r.vat.ytd.sales)} <span style="color:#6b7a8d;font-weight:400;">(연 환산 ${htKwon(r.vat.ytd.annual)})</span></td>${yoyCell(r.vat.ytd.yoy)}</tr>`;
+  html += sh("국세 · 매출 현황 (Tax &amp; Sales)") +
+    `<table class="fin-table"><tbody><tr><td class="cat" style="width:22%;">국세 체납</td><td>${arTxt}${ar.other ? ` <span style="color:#8a6d00;">· 기타: ${e(ar.other)}</span>` : ""}</td></tr></tbody></table>` +
+    (salesRows ? `<table class="fin-table"><thead><tr><th>기간</th><th style="text-align:right;">매출(부가세 과세표준)</th><th style="text-align:right;">전년 대비</th></tr></thead><tbody>${salesRows}</tbody></table>` : "");
+
+  // 기대출 현황
+  const lo = r.loans || { list: [] };
+  html += sh("기대출 현황 (Existing Loans)") + (lo.list.length
+    ? `<table class="fin-table"><thead><tr><th>기관</th><th>시기</th><th style="text-align:right;">금액</th></tr></thead><tbody>${lo.list.map(l => `<tr><td>${e(l.org || "기관 미입력")}</td><td class="cat">${e(l.date || "-")}</td><td class="val">${htNum(l.amount) !== null ? htKwon(htNum(l.amount)) : "-"}</td></tr>`).join("")}<tr><td colspan="2" style="font-weight:700;">합계</td><td class="val">${htKwon(lo.total)}</td></tr></tbody></table>`
+    : `<div class="opinion"><div class="opinion-item">${lo.none ? "기대출 없음" : "입력된 기대출이 없습니다."}</div></div>`);
+
+  // 우대 · 참고 요소
+  if (r.prefs && r.prefs.length) html += sh("우대 · 참고 요소 (Preferential Factors)") + `<div class="checklist">${r.prefs.map(pr =>
+    `<div class="cl-item"><div class="cl-icon">⭐</div><div><strong>${e(pr.tag)}</strong> · ${e(pr.text)}</div></div>`).join("")}</div>`;
+  return html;
+}
+
+// 원클릭 분석 리포트 열기
+function showHometaxReport() {
+  const last = window.__htLast;
+  if (!last) return;
+  if (!faFullAccess(last.input)) { toast("전체 결과와 리포트는 구독 후 확인할 수 있어요."); showPage("charge"); return; }
+  const keep = { c: window.lastCompanyName, r: window.lastRepName, b: window.lastBizNumber };
+  window.lastCompanyName = last.input.company_name || "";
+  window.lastRepName = last.input.rep_name || "";
+  window.lastBizNumber = last.input.business_number || "";
+  window.__htReport = last;
+  try { downloadResult(); }
+  finally {
+    window.__htReport = null;
+    window.lastCompanyName = keep.c; window.lastRepName = keep.r; window.lastBizNumber = keep.b;
+  }
+}
+
 function renderHometaxResults(r, input) {
+  window.__htLast = { r, input };
   const wrap = document.getElementById("ht-results");
   const o = r.overall;
   const oc = HT_LEVEL_COLOR[o.level];
@@ -3938,6 +4065,7 @@ function renderHometaxResults(r, input) {
       <span style="font-size:13px;color:#2d3748;line-height:1.6;">${escapeHtml(p.text)}</span></div>`).join(""));
   }
   html += `<p class="note" style="margin-bottom:12px;">※ 입력하신 자료를 기준으로 자동 계산한 참고용 분석이며, 실제 심사 결과와 다를 수 있습니다. 중요한 의사결정 전에 홈택스 원본 서류를 반드시 확인하세요.</p>
+    <button class="btn btn-full" id="htReportBtn" onclick="showHometaxReport()" style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(90deg,#185FA5,#2e80d8);color:#fff;border-color:#185FA5;font-weight:700;box-shadow:0 4px 12px rgba(24,95,165,.25);margin-bottom:10px;">📄 분석결과 전체 확인하기 (리포트)</button>
     <div style="display:flex;gap:8px;margin-bottom:24px;">
       <button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ 입력 수정하기</button>
     </div>`;
@@ -4648,7 +4776,8 @@ async function submitContactUs() {
 // ── 분석 결과 다운로드 ──────────────────────────────────────────
 function downloadResult() {
   const isSample = !!window.__sampleReport;   // 샘플 보기 모드 (저장·인쇄 불가)
-  if (!isSample && !faFullAccess(window.currentAnalysisData)) {
+  const HT = window.__htReport || null;      // 원클릭 분석 리포트
+  if (!isSample && !HT && !faFullAccess(window.currentAnalysisData)) {
     toast("전체 결과와 리포트는 구독 후 확인할 수 있어요.");
     showPage("charge");
     return;
@@ -5169,13 +5298,13 @@ ${isSample ? `<div class="sample-mark">SAMPLE</div>
       <div class="cover-brand-logo">FN</div>
       <div class="cover-brand-name">기업분석·평가 보고서 피나<span>FinAnalyzer</span></div>
     </div>
-    <div class="cover-doc-badge">AI 재무분석 리포트</div>
+    <div class="cover-doc-badge">${HT ? "AI 기업분석 리포트" : "AI 재무분석 리포트"}</div>
   </div>
   <div class="cover-mid">
   <div class="cover-titleblock">
-    <div class="cover-eyebrow">FINANCIAL HEALTH DIAGNOSTIC REPORT</div>
-    <div class="cover-maintitle">재무제표<br>진단 결과 보고서</div>
-    <div class="cover-subtitle">AI Financial Statement Diagnostic Report</div>
+    <div class="cover-eyebrow">${HT ? "CORPORATE ANALYSIS &amp; EVALUATION REPORT" : "FINANCIAL HEALTH DIAGNOSTIC REPORT"}</div>
+    <div class="cover-maintitle">${HT ? "기업분석·평가<br>결과 보고서" : "재무제표<br>진단 결과 보고서"}</div>
+    <div class="cover-subtitle">${HT ? "AI Corporate Analysis &amp; Evaluation Report" : "AI Financial Statement Diagnostic Report"}</div>
   </div>
   <svg class="cover-signature" viewBox="0 0 780 300" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -5215,7 +5344,7 @@ ${isSample ? `<div class="sample-mark">SAMPLE</div>
   <div class="cover-footer">
     <div>
       <div class="cover-footer-brand">피나 FinAnalyzer</div>
-      <div class="cover-footer-tagline">AI 기반 재무제표 자동진단 서비스</div>
+      <div class="cover-footer-tagline">AI 기업분석·평가 서비스</div>
     </div>
     <div class="cover-footer-note">본 문서는 재무건전성 참고자료이며<br>공인 회계사의 검토를 대체하지 않습니다.</div>
   </div>
@@ -5225,10 +5354,10 @@ ${isSample ? `<div class="sample-mark">SAMPLE</div>
 <div class="rh">
   <div class="rh-top">
     <div class="rh-brand">피나 · FinAnalyzer</div>
-    <div class="rh-badge">AI 재무분석 리포트</div>
+    <div class="rh-badge">${HT ? "AI 기업분석 리포트" : "AI 재무분석 리포트"}</div>
   </div>
-  <div class="rh-title">재무상태 진단 결과</div>
-  <div class="rh-sub">Financial Health Diagnostic Report</div>
+  <div class="rh-title">${HT ? "기업분석·평가 결과" : "재무상태 진단 결과"}</div>
+  <div class="rh-sub">${HT ? "Corporate Analysis &amp; Evaluation Report" : "Financial Health Diagnostic Report"}</div>
   <div class="rh-meta">
     ${window.lastCompanyName ? `<div class="rh-meta-item"><strong>분석대상</strong>${window.lastCompanyName}</div>` : ""}
     <div class="rh-meta-item"><strong>분석일자</strong>${dateStr}</div>
@@ -5238,6 +5367,7 @@ ${isSample ? `<div class="sample-mark">SAMPLE</div>
 
 <div class="body">
 
+${HT ? htReportBody(HT.r, HT.input) : `
   <!-- 1. 핵심 재무지표 -->
   <div class="sh">
     <div class="sh-num">1</div>
@@ -5295,10 +5425,12 @@ ${isSample ? `<div class="sample-mark">SAMPLE</div>
     </div>
   </div>
 
+`}
   <!-- 면책 고지 -->
   <div class="disclaimer-box">
-    <p>※ 본 리포트는 AI가 재무제표에서 추출한 수치를 기반으로 자동 계산된 참고자료로, 공인 회계사 또는 재무 전문가의 검토를 대체하지 않습니다.<br/>
-    ※ 원본 이미지의 글씨가 작거나 화질이 낮은 경우 항목이나 숫자가 다르게 인식될 수 있으니, 원문 재무제표와 반드시 대조 확인하시기 바랍니다.<br/>
+    <p>${HT ? `※ 본 리포트는 입력·연동된 자료를 기준으로 자동 계산한 참고자료이며, 예상 한도와 신청 가능 기관은 실제 심사 결과와 다를 수 있습니다.<br/>
+    ※ 중요한 의사결정 전에 홈택스 원본 서류를 반드시 확인하시기 바랍니다.<br/>` : `※ 본 리포트는 AI가 재무제표에서 추출한 수치를 기반으로 자동 계산된 참고자료로, 공인 회계사 또는 재무 전문가의 검토를 대체하지 않습니다.<br/>
+    ※ 원본 이미지의 글씨가 작거나 화질이 낮은 경우 항목이나 숫자가 다르게 인식될 수 있으니, 원문 재무제표와 반드시 대조 확인하시기 바랍니다.<br/>`}
     ※ 본 리포트의 출력은 1회만 가능하며 출력 이후에는 재발급되지 않습니다. 반드시 저장하여 별도 보관하시기 바랍니다.</p>
   </div>
 
