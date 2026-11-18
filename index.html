@@ -430,6 +430,29 @@
   .srp-opinion { background: #f0f4f8; border-radius: 8px; padding: 12px; border-left: 3px solid #185FA5; margin-top: 14px; }
   .srp-opinion-item { font-size: 10.5px; color: #2d3748; line-height: 1.7; margin-bottom: 5px; }
   .srp-opinion-item:last-child { margin-bottom: 0; }
+  /* 원클릭 분석 결과 — 리포트 형태 */
+  .ht-rp { padding: 0; overflow: hidden; }
+  .ht-rp .srp-body { padding: 18px 20px 20px; }
+  .ht-rp .srp-title { font-size: 20px; }
+  .ht-rp .srp-sh-title { font-size: 13px; }
+  .ht-rp .srp-sh-num { width: 20px; height: 20px; font-size: 10px; }
+  .ht-rp .srp-opinion-item { font-size: 12.5px; }
+  .ht-rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+  .ht-rp-item { background: #f5f8fc; border-radius: 8px; padding: 9px 11px; }
+  .ht-rp-k { font-size: 10.5px; color: #6b7a8d; font-weight: 600; margin-bottom: 3px; }
+  .ht-rp-v { font-size: 13px; font-weight: 700; color: #1a1a18; word-break: keep-all; }
+  .ht-rp-teaser { font-size: 15px; font-weight: 600; color: var(--text); background: #EBF2FA; border-radius: 10px; padding: 12px 14px; }
+  .ht-rp-teaser b { color: #185FA5; }
+  .ht-rp-total { font-size: 22px; font-weight: 800; color: #185FA5; margin: 10px 0 8px; letter-spacing: -.02em; }
+  .ht-rp-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 7px 0; border-bottom: 1px solid #eef2f7; }
+  .ht-rp-row b { color: #0d3b7c; text-align: right; }
+  .ht-rp-locked { position: relative; max-height: 300px; overflow: hidden; margin-top: 4px; }
+  .ht-rp-blur { filter: blur(4.5px); opacity: .8; pointer-events: none; user-select: none; }
+  .ht-rp-fade { position: absolute; left: 0; right: 0; bottom: 0; height: 70%; background: linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 92%); }
+  .ht-rp-cta { text-align: center; margin-top: -40px; position: relative; padding-top: 4px; }
+  .ht-rp-cta-title { font-size: 15px; font-weight: 700; color: var(--text); margin: 4px 0 10px; }
+  .ht-rp-cta-sub { font-size: 12px; color: var(--text2); margin-top: 8px; }
+  .ht-rp-btn { width: 100%; max-width: 420px; justify-content: center; background: linear-gradient(90deg,#185FA5,#2e80d8); color: #fff; border-color: #185FA5; font-weight: 700; padding: 13px 16px; font-size: 15px; box-shadow: 0 4px 12px rgba(24,95,165,.25); }
   .srp-footnote { font-size: 10.5px; color: var(--text3); line-height: 1.6; padding: 14px 18px 16px; border-top: 1px solid var(--border); }
 </style>
 </head>
@@ -3849,7 +3872,7 @@ function htReportBody(r, input) {
     ["창업 · 업력", pf.founded ? pf.founded + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""],
     ["소재지", input.location], ["직원 수", has(input.employees) ? input.employees + "명" : ""],
     ["대표자 정보", [has(rp.age) ? `만 ${rp.age}세` : "", has(rp.career) ? `동종업계 ${rp.career}년` : "", rp.woman ? "여성 대표" : ""].filter(Boolean).join(" · ")],
-    ["신용점수", has(c.kcb) || has(c.nice) ? `KCB ${has(c.kcb) ? c.kcb : "-"} · NICE ${has(c.nice) ? c.nice : "-"}` : ""],
+    ["신용점수", [has(c.kcb) ? `KCB ${c.kcb}` : "", has(c.nice) ? `NICE ${c.nice}` : ""].filter(Boolean).join(" · ")],
     ["기업 인증", input.cert_list ? htCertText(input.cert_list) : (input.certs || "")],
     ["연구소 · 공장", [labMap[input.lab] || "", facMap[input.factory] ? "공장 " + facMap[input.factory] : ""].filter(Boolean).join(" · ")],
     ["수출실적", htNum(input.export_amount) > 0 ? htKwon(htNum(input.export_amount)) : (input.export || "")],
@@ -3952,125 +3975,104 @@ function showHometaxReport() {
 function renderHometaxResults(r, input) {
   window.__htLast = { r, input };
   const wrap = document.getElementById("ht-results");
+  const full = faFullAccess(input);
+  const e = v => escapeHtml(String(v));
+  const has = v => v !== null && v !== undefined && v !== "" && v !== false;
+  const LC = { safe: "#0F6E56", info: "#185FA5", warn: "#B8860B", danger: "#A32D2D" };
+  const LB = { safe: "#E1F5EE", info: "#EBF2FA", warn: "#FEF6D8", danger: "#FCEBEB" };
+  let n = 0;
+  const sh = t => `<div class="srp-sh"><div class="srp-sh-num">${++n}</div><div class="srp-sh-title">${t}</div><div class="srp-sh-line"></div></div>`;
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
+  const pf = r.profile || {}, c = r.credit || {}, rp = input.rep || {}, ar = input.arrears || {};
+  const sh1 = sh("기업 개요"), sh2 = sh("종합 평가"), sh3 = sh("예상 한도 · 신청 가능 기관");   // 번호 순서 고정
+
+  // ── 1. 기업 개요 ──
+  const ov = [
+    ["업태", input.industry], ["구분", r.biz === "corp" ? "법인사업자" : "개인사업자"],
+    ["창업 · 업력", pf.founded ? pf.founded + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""],
+    ["소재지", input.location], ["대표자", input.rep_name], ["사업자번호", input.business_number],
+    ["최근 매출", r.vat && r.vat.latest ? `${r.vat.latest.year}년 ${htKwon(r.vat.latest.vat)}` : ""],
+    ["신용점수", [has(c.kcb) ? `KCB ${c.kcb}` : "", has(c.nice) ? `NICE ${c.nice}` : ""].filter(Boolean).join(" · ")],
+    ["국세 체납", ar.status === "has" ? "있음" : ar.status === "none" ? "없음" : ""],
+    ["기대출", r.loans && r.loans.none ? "없음" : (r.loans && r.loans.list.length ? `${r.loans.list.length}건 · ${htKwon(r.loans.total)}` : "")],
+    ["직원 수", has(input.employees) ? input.employees + "명" : ""],
+    ["기업 인증", input.cert_list ? htCertText(input.cert_list) : (input.certs || "")],
+    ["수출실적", htNum(input.export_amount) > 0 ? htKwon(htNum(input.export_amount)) : (input.export || "")],
+  ].filter(([, v]) => has(v));
+  const ovHTML = `<div class="ht-rp-grid">${ov.map(([k, v]) => `<div class="ht-rp-item"><div class="ht-rp-k">${k}</div><div class="ht-rp-v">${e(v)}</div></div>`).join("")}</div>`;
+
+  // ── 2. 종합 평가 ──
   const o = r.overall;
-  const oc = HT_LEVEL_COLOR[o.level];
-
-  // 종합 요약
-  const flagsHtml = r.flags.length ? r.flags.map(f => `
-    <div style="display:flex;gap:8px;align-items:flex-start;background:${HT_LEVEL_BG[f.level]};border-radius:10px;padding:10px 12px;margin-top:8px;">
-      <span>${HT_LEVEL_ICON[f.level]}</span>
-      <div><div style="font-size:13px;font-weight:700;color:${HT_LEVEL_COLOR[f.level]};">${escapeHtml(f.title)}</div>
-      <div style="font-size:12px;color:#4a4a45;line-height:1.6;margin-top:2px;">${escapeHtml(f.text)}</div></div>
-    </div>`).join("") : `<div style="font-size:13px;color:var(--text2);margin-top:8px;">확인이 필요한 항목이 없습니다.</div>`;
-  let html = `
-    <div style="font-size:16px;font-weight:600;margin-bottom:.75rem;">🏢 ${escapeHtml(input.company_name)} <span style="font-size:12px;font-weight:400;color:var(--text3);">${r.biz === "corp" ? "법인사업자" : "개인사업자"}</span></div>
-    ${htInfoCard(r, input)}
-    <div class="card" style="border-top:4px solid ${oc};">
-      <div class="card-title">종합 요약</div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div style="background:${HT_LEVEL_BG[o.level]};color:${oc};font-size:18px;font-weight:700;padding:6px 16px;border-radius:24px;">${HT_LEVEL_ICON[o.level]} ${o.title}</div>
-        <div style="font-size:13px;color:var(--text2);">${o.text}</div>
-      </div>
-      ${flagsHtml}
+  const evalHTML = `<div class="srp-opinion" style="margin-top:0;border-left-color:${LC[o.level]};">
+      <div class="srp-opinion-item" style="font-size:12.5px;font-weight:700;color:${LC[o.level]};">${HT_LEVEL_ICON[o.level]} ${e(o.title)}</div>
+      <div class="srp-opinion-item">${e(o.text)}</div>
+      ${r.flags.map(f => `<div class="srp-opinion-item">📌 <b style="color:${LC[f.level]};">${e(f.title)}</b> — ${e(f.text)}</div>`).join("")}
     </div>`;
 
-  // ── 무료 분석이면 여기까지만 공개 (예상 한도부터 잠금) ──
-  if (!faFullAccess(input)) {
-    const okOrgs = input.__okOrgs || 0;
-    const teaser = `<div class="card" style="border-top:4px solid #185FA5;">
-      <div class="card-title">💰 예상 한도</div>
-      <div style="font-size:15px;font-weight:600;color:var(--text);">${okOrgs > 0 ? `신청 가능 기관 <b style="color:#185FA5;">${okOrgs}곳</b> · ` : ""}예상 한도 <span class="fa-mask">■■■■</span>원</div>
-    </div>`;
-    html += faLockHtml("예상 한도와 신청 가능 기관은 구독 후 확인할 수 있어요", teaser);
-    html += `<div style="display:flex;gap:8px;margin-bottom:24px;"><button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ 입력 수정하기</button></div>`;
-    wrap.innerHTML = html;
-    wrap.classList.remove("hidden");
-    return;
-  }
+  // ── 3. 예상 한도 (여기서부터 흐리게) ──
+  const okOrgs = full ? ((r.limit && r.limit.orgs) || []).filter(x => x.status === "ok").length : (input.__okOrgs || 0);
+  const teaser = `<div class="ht-rp-teaser">${okOrgs > 0 ? `신청 가능 기관 <b>${okOrgs}곳</b> · ` : ""}예상 한도 <span class="fa-mask">■■■■</span>원</div>`;
 
-  // 예상 한도
-  html += htLimitCard(r.limit);
-
-  // 국세 체납
-  html += htCard("국세 체납", r.arrears.level, `
-    <div style="font-size:20px;font-weight:700;color:${HT_LEVEL_COLOR[r.arrears.level]};">${r.arrears.label}${r.arrears.amount ? " · " + htWon(r.arrears.amount) : ""}</div>
-    ${r.arrears.note ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(r.arrears.note)}</div>` : ""}
-    ${r.arrears.items ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">${[["income_tax", "종합소득세"], ["corp_tax", "법인세"], ["vat", "부가세"], ["insurance", "4대보험"]]
-      .filter(([k]) => r.arrears.items[k]).map(([k, n]) => `<span style="font-size:12px;background:#FCEBEB;color:#A32D2D;border-radius:8px;padding:4px 8px;">${n} <b>${htWon(r.arrears.items[k])}</b>${r.arrears.periods && r.arrears.periods[k] ? " · " + escapeHtml(r.arrears.periods[k]) : ""}</span>`).join("")}</div>` : ""}
-    ${input.arrears && input.arrears.other ? `<div style="font-size:12px;color:#8a6d00;margin-top:8px;">기타 연체·체납·가압류: ${escapeHtml(input.arrears.other)}</div>` : ""}
-    ${htTextBox(r.arrears.text, r.arrears.level)}`);
-
-  // 매출
-  html += htCard("매출 · 부가세 과세표준", r.vat.level,
-    (r.vat.rows.length ? htBars(r.vat.rows, "vat", "#185FA5") +
-      `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${r.vat.rows.filter(x => x.vatYoy !== null).map(x => `<span>${x.year}년 전년 대비 <b style="color:${x.vatYoy < 0 ? "#A32D2D" : "#0F6E56"}">${htPctText(x.vatYoy)}</b></span>`).join("")}</div>` : "") +
-    (r.vat.ytd ? `<div style="font-size:13px;margin-top:10px;background:#f9f9f8;border-radius:10px;padding:10px 12px;">${r.vat.ytd.year}년 ${r.vat.ytd.month}월까지 <b>${htWon(r.vat.ytd.sales)}</b> → 연 환산 약 <b>${htKwon(r.vat.ytd.annual)}</b>${r.vat.ytd.yoy !== null ? ` (전년 대비 <b style="color:${r.vat.ytd.yoy < 0 ? "#A32D2D" : "#0F6E56"}">${htPctText(r.vat.ytd.yoy)}</b>)` : ""}</div>` : "") +
-    htTextBox(r.vat.text, r.vat.level));
-
-  // 대표자 소득 (자료가 있을 때만)
-  if (r.income.rows.length) html += htCard(r.biz === "corp" ? "대표자 소득금액 (급여·배당 등)" : "대표자 종합소득금액", r.income.level,
-    (r.income.rows.length ? htBars(r.income.rows, "income", "#0F6E56") +
-      `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${r.income.rows.filter(x => x.incomeRate !== null).map(x => `<span>${x.year}년 소득률 <b>${x.incomeRate.toFixed(1)}%</b></span>`).join("")}</div>` : "") +
-    htTextBox(r.income.text, r.income.level));
-
-  // 매입
-  const pairRows = r.purchase.rows;
-  if (pairRows.length) html += htCard("매입금액", r.purchase.level,
-    (pairRows.length ? htBars(pairRows, "purchase", "#B8860B") +
-      `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-top:6px;">${pairRows.filter(x => x.purchaseRatio !== null).map(x => `<span>${x.year}년 매입률 <b>${x.purchaseRatio.toFixed(1)}%</b> · 매출-매입 <b>${htWon(x.margin)}</b></span>`).join("")}</div>` : "") +
-    htTextBox(r.purchase.text, r.purchase.level));
-
-  // 재무(기존 분석)
-  const f = r.financial;
-  if (f) {
-    const metric = (label, value, level, sub) => `<div style="background:#fff;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;border-top:4px solid ${HT_LEVEL_COLOR[level]};">
-      <div style="font-size:12px;color:#9b9a95;margin-bottom:6px;">${label}</div>
-      <div style="font-size:24px;font-weight:700;color:${HT_LEVEL_COLOR[level]};">${value}</div>
-      <div style="font-size:11px;color:#9b9a95;margin-top:6px;">${sub}</div></div>`;
-    const gc = f.pct >= 80 ? "#0F6E56" : f.pct >= 60 ? "#185FA5" : f.pct >= 40 ? "#B8860B" : "#A32D2D";
-    html += htCard("재무 분석", f.erosionClass === "danger" || f.drClass === "danger" ? "danger" : (f.drClass === "warn" || f.erosionClass === "warn" ? "warn" : "safe"), `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
-        ${metric("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "N/A", f.drClass, "400% 초과 위험 · 200% 이하 양호")}
-        ${metric("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass, f.noInt ? "이자 상환 부담 없음" : "1배 미만 위험 · 2배 이상 양호")}
-        ${metric("🏢 자본잠식", f.erosionStatus, f.erosionClass, f.erosionClass === "safe" ? "자본 건전" : "자본 확충 필요")}
-      </div>
-      <div style="margin-top:14px;background:#f9f9f8;border-radius:12px;padding:12px;">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
-          <div style="font-size:12px;color:#9b9a95;font-weight:600;">🏆 사업 안정성 종합점수</div>
-          <div style="font-size:22px;font-weight:700;color:${gc};">${f.total}<span style="font-size:12px;">/${f.max}</span></div>
-          <div style="background:${HT_LEVEL_BG[f.pct >= 80 ? "safe" : f.pct >= 60 ? "info" : f.pct >= 40 ? "warn" : "danger"]};color:${gc};font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px;">${f.grade}</div>
-        </div>
-        <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;"><div style="height:100%;width:${f.pct}%;background:${gc};border-radius:20px;"></div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">${f.items.map(it => `<span style="font-size:11px;background:#fff;border:1px solid #e5e4e0;border-radius:8px;padding:4px 8px;">${it.label} <b>${it.score}/${it.max}</b> ${it.comment}</span>`).join("")}</div>
-      </div>`);
-  } else if (r.ratios) {
-    const q = r.ratios;
-    html += htCard("재무 분석", htLevelRank(q.drClass) >= 3 || htLevelRank(q.icrClass) >= 3 ? "danger" : (q.drClass === "warn" || q.icrClass === "warn" ? "warn" : "safe"), `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
-        <div style="background:#fff;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;border-top:4px solid ${HT_LEVEL_COLOR[q.drClass]};"><div style="font-size:12px;color:#9b9a95;margin-bottom:6px;">📊 부채비율</div><div style="font-size:24px;font-weight:700;color:${HT_LEVEL_COLOR[q.drClass]};">${q.dr !== null ? q.dr + "%" : "-"}</div><div style="font-size:11px;color:#9b9a95;margin-top:6px;">${q.dr !== null && q.dr < 0 ? "마이너스 = 자본잠식(부채가 자산보다 많음)" : "400% 초과 위험 · 200% 이하 양호"}</div></div>
-        <div style="background:#fff;border-radius:12px;padding:1rem;border:1px solid #e5e4e0;border-top:4px solid ${HT_LEVEL_COLOR[q.icrClass]};"><div style="font-size:12px;color:#9b9a95;margin-bottom:6px;">💰 이자보상배수</div><div style="font-size:24px;font-weight:700;color:${HT_LEVEL_COLOR[q.icrClass]};">${q.icr !== null ? q.icr + "배" : "-"}</div><div style="font-size:11px;color:#9b9a95;margin-top:6px;">${q.icr !== null && q.icr < 0 ? "마이너스 = 영업손실" : "1배 미만 위험 · 2배 이상 양호"}</div></div>
-      </div>
-      <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 직접 입력한 비율입니다. 총자산·총부채를 입력하면 자본잠식과 사업 안정성 점수까지 계산합니다.</p>`);
+  let lockedInner;
+  if (full) {
+    const L = r.limit || {};
+    let lim = "";
+    if (L.available && L.status === "ok") {
+      lim += `<div class="ht-rp-total">약 ${htKwon(L.low)} ~ ${htKwon(L.high)}</div>`;
+      lim += (L.orgs || []).map(g => `<div class="ht-rp-row"><span>${e(g.name)}</span><b>${g.status === "ok" ? (g.low === g.high ? htKwon(g.high) : htKwon(g.low) + " ~ " + htKwon(g.high)) : g.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</b></div>`).join("");
+    } else lim += `${L.status === "blocked" || L.status === "low" ? `<div class="ht-rp-total" style="color:${L.status === "blocked" ? "#A32D2D" : "#B8860B"};font-size:18px;">${L.status === "blocked" ? "현재 신청 어려움" : "추가 한도 여력 부족"}</div>` : ""}<div class="srp-opinion-item">${e(L.text || "")}</div>`;
+    const f = r.financial, q = r.ratios;
+    const kpi = (label, value, lvl) => `<div class="srp-kpi" style="border-left-color:${LC[lvl] || "#185FA5"};"><div class="srp-kpi-label">${label}</div><div class="srp-kpi-value" style="color:${LC[lvl] || "#185FA5"};">${value}</div></div>`;
+    const fin = f ? kpi("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass) + kpi("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass)
+      : q ? kpi("📊 부채비율", has(q.dr) ? q.dr + "%" : "-", q.drClass) + kpi("💰 이자보상배수", has(q.icr) ? q.icr + "배" : "-", q.icrClass) : "";
+    const sales = ((r.vat && r.vat.rows) || []).map(x => `<div class="ht-rp-row"><span>${x.year}년 매출</span><b>${htKwon(x.vat)}${x.vatYoy !== null ? ` <span style="color:${x.vatYoy < 0 ? "#A32D2D" : "#0F6E56"};font-weight:600;">(${htPctText(x.vatYoy)})</span>` : ""}</b></div>`).join("");
+    lockedInner = lim + (fin ? sh("재무 분석") + `<div class="srp-kpi-grid">${fin}</div>` : "") +
+      (sales ? sh("국세 · 매출 현황") + sales : "") +
+      (r.prefs && r.prefs.length ? sh("우대 · 참고 요소") + r.prefs.map(p2 => `<div class="ht-rp-row"><span>${e(p2.tag)}</span><b style="font-weight:500;">${e(p2.text)}</b></div>`).join("") : "");
   } else {
-    html += `<div class="card" style="background:var(--surface2);">
-      <div class="card-title" style="margin-bottom:.4rem;">재무 분석</div>
-      <p style="font-size:13px;color:var(--text2);line-height:1.6;">재무 수치(총자산·총부채 등)가 입력되지 않아 부채비율·이자보상배수·사업 안정성 점수는 분석하지 않았습니다. 입력창의 "재무 수치"를 채우고 다시 분석해 보세요.</p>
-    </div>`;
+    // 무료: 실제 값은 넣지 않고 모양만
+    const ph = w => `<div style="height:12px;width:${w}%;background:#dfe5ee;border-radius:6px;margin:9px 0;"></div>`;
+    lockedInner = `<div class="ht-rp-total" style="color:#c3cfdd;">약 ■억 ■천만원 ~ ■억 ■천만원</div>${[80, 65, 72, 58].map(ph).join("")}` +
+      sh("재무 분석") + `<div class="srp-kpi-grid"><div class="srp-kpi" style="border-left-color:#c3cfdd;">${ph(60)}${ph(40)}</div><div class="srp-kpi" style="border-left-color:#c3cfdd;">${ph(60)}${ph(40)}</div></div>` +
+      sh("국세 · 매출 현황") + [85, 70, 75].map(ph).join("") + sh("우대 · 참고 요소") + [60, 75].map(ph).join("");
   }
 
-  // 우대·참고 요소
-  if (r.prefs && r.prefs.length) {
-    html += htCard("우대 · 참고 요소", "info", r.prefs.map(p => `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #f0efeb;">
-      <span style="flex-shrink:0;font-size:11px;font-weight:700;color:#185FA5;background:#EBF2FA;border-radius:8px;padding:3px 8px;">${escapeHtml(p.tag)}</span>
-      <span style="font-size:13px;color:#2d3748;line-height:1.6;">${escapeHtml(p.text)}</span></div>`).join(""));
-  }
-  html += `<p class="note" style="margin-bottom:12px;">※ 입력하신 자료를 기준으로 자동 계산한 참고용 분석이며, 실제 심사 결과와 다를 수 있습니다. 중요한 의사결정 전에 홈택스 원본 서류를 반드시 확인하세요.</p>
-    <button class="btn btn-full" id="htReportBtn" onclick="showHometaxReport()" style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(90deg,#185FA5,#2e80d8);color:#fff;border-color:#185FA5;font-weight:700;box-shadow:0 4px 12px rgba(24,95,165,.25);margin-bottom:10px;">📄 분석결과 전체 확인하기 (리포트)</button>
+  const cta = full
+    ? `<button class="btn ht-rp-btn" onclick="showHometaxReport()">📄 분석결과 전체 확인하기</button>
+       <div class="ht-rp-cta-sub">예상 한도 · 신청 가능 기관 · 재무 분석을 리포트로 확인하세요</div>`
+    : `<div style="font-size:22px;">🔒</div>
+       <div class="ht-rp-cta-title">예상 한도와 신청 가능 기관은 구독 후 확인할 수 있어요</div>
+       <button class="btn ht-rp-btn" onclick="showPage('charge')">구독하고 전체 결과 확인하기</button>`;
+
+  wrap.innerHTML = `
+    <div class="card ht-rp">
+      <div class="srp-header">
+        <div class="srp-top"><div class="srp-brand">피나 · FinAnalyzer</div>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.04em;color:#0d3b7c;background:#fff;padding:2px 8px;border-radius:10px;">AI 기업분석 리포트</span></div>
+        <div class="srp-title">기업분석·평가 결과</div>
+        <div class="srp-sub">Corporate Analysis &amp; Evaluation Report</div>
+        <div class="srp-meta">
+          <div class="srp-meta-item"><strong>분석대상</strong>${e(input.company_name || "-")}</div>
+          <div class="srp-meta-item"><strong>분석일자</strong>${dateStr}</div>
+          <div class="srp-meta-item"><strong>발행기관</strong>피나 (FinAnalyzer)</div>
+        </div>
+      </div>
+      <div class="srp-body">
+        ${sh1}${ovHTML}
+        ${sh2}${evalHTML}
+        ${sh3}${teaser}
+        <div class="ht-rp-locked">
+          <div class="ht-rp-blur" aria-hidden="true">${lockedInner}</div>
+          <div class="ht-rp-fade"></div>
+        </div>
+        <div class="ht-rp-cta">${cta}</div>
+      </div>
+    </div>
+    <p class="note" style="margin-bottom:12px;">※ 입력하신 자료를 기준으로 자동 계산한 참고용 분석이며, 실제 심사 결과와 다를 수 있습니다.</p>
     <div style="display:flex;gap:8px;margin-bottom:24px;">
       <button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ 입력 수정하기</button>
     </div>`;
-
-  wrap.innerHTML = html;
   wrap.classList.remove("hidden");
 }
 
