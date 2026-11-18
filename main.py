@@ -132,7 +132,7 @@ CREDIT_PACKAGES = {
 # price = 월 구독료(원). 이 금액 그대로 카드에 청구된다.
 # list_price = 정가(할인 표시용). hidden = 새로 가입은 받지 않는 이전 요금제(기존 팀·관리자 부여용으로만 유지)
 SUBSCRIPTION_PLANS = {
-    "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 300000},
+    "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 330000},
     "standard": {"label": "스탠다드",  "seats": 3,  "price": 550000, "hidden": True},
     "pro":      {"label": "프로",      "seats": 10, "price": 1100000, "hidden": True},
 }

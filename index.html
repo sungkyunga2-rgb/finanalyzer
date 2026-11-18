@@ -504,9 +504,9 @@
       <p>신청 가능한 정책자금 기관과 기관별 예상 한도를 금액으로 바로 확인할 수 있습니다.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon">💳</div>
-      <h3>월 59,000원 무제한</h3>
-      <p>정가 월 300,000원에서 80% 할인된 가격으로, 분석 횟수 제한 없이 이용하세요.</p>
+      <div class="feature-icon">♾️</div>
+      <h3>분석 횟수 무제한</h3>
+      <p>구독 한 번이면 업체가 몇 곳이든 횟수 제한 없이 분석할 수 있습니다.</p>
     </div>
   </div>
   <div class="community-promo" style="max-width:1080px;margin:0 auto 60px;padding:32px 28px;background:var(--accent-bg);border-radius:16px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
@@ -1450,7 +1450,7 @@
   <div class="main" style="max-width:720px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">구독</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
-      월 구독으로 기업분석·평가를 <strong>횟수 제한 없이</strong> 이용하세요. 정가 대비 <strong>80% 할인</strong>된 가격으로 시작하세요.
+      월 구독으로 기업분석·평가를 <strong>횟수 제한 없이</strong> 이용하세요. 정가 대비 <strong>82% 할인</strong>된 가격으로 시작하세요.
     </p>
 
     <div id="sub-loading" class="card" style="text-align:center;color:var(--text3);font-size:13px;">불러오는 중...</div>
@@ -1543,7 +1543,7 @@
       <br/>
       <p><strong>제2조 (구독 요금제)</strong><br/>
       ① 서비스는 월 단위 구독(정기결제) 방식으로 제공되며, 월 분석 횟수는 제한하지 않습니다(제7조의 공정사용 원칙 적용).<br/>
-      &nbsp;&nbsp;· 피나 구독: 사용자 1명, 정가 월 300,000원 → 할인가 <strong>월 59,000원</strong><br/>
+      &nbsp;&nbsp;· 피나 구독: 사용자 1명, 정가 월 330,000원 → 할인가 <strong>월 59,000원</strong><br/>
       ② 표시된 금액은 부가가치세를 포함한 금액이며, 매월 결제되는 금액은 할인가(월 59,000원)입니다.<br/>
       ③ 할인가는 회사의 정책에 따라 변경될 수 있으며, 변경하는 경우 제3조 ④에 따라 사전에 안내합니다.<br/>
       ④ 사용자 수에는 요금제를 결제한 대표 계정이 포함되며, 팀 초대는 초대받은 회원이 수락하여 팀에 합류한 시점에 사용자 수에 포함됩니다. 요금제의 사용자 수를 초과하여 합류할 수 없습니다.<br/>
@@ -5249,6 +5249,12 @@ function downloadResult() {
     padding: 7px 14px; font-size: 13px; border-radius: 8px; }
   .fa-print-confirm .fa-no { background: rgba(255,255,255,0.18); color: #fff; }
   @media print { .fa-print-confirm { display: none !important; } }
+  .fa-back-btn { position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 10px; z-index: 1000;
+    width: auto; max-width: none; margin: 0; background: rgba(255,255,255,.95); color: #0d3b7c;
+    border: 1px solid #d9e3ef; border-radius: 20px; padding: 7px 14px; font-size: 13px; font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15); cursor: pointer; font-family: inherit; text-decoration: none; display: inline-block; }
+  .save-pdf-bar { padding-top: calc(52px + env(safe-area-inset-top)) !important; }
+  @media print { .fa-back-btn { display: none !important; } }
   ${isSample ? `
   /* 샘플 리포트 — 인쇄/저장 차단 + 워터마크 */
   @media print { html, body { display: none !important; } }
@@ -5268,6 +5274,7 @@ function downloadResult() {
 </head>
 <body>
 
+<a class="fa-back-btn" href="${location.origin + location.pathname}" onclick="try{if(window.opener&&!window.opener.closed){window.close();}}catch(e){}">← 돌아가기</a>
 <div class="save-pdf-bar">
   ${isSample ? `
     <div style="font-size:15px;font-weight:700;color:#ffffff;">📄 샘플 리포트 — 가상의 기업 정보로 만든 예시입니다</div>
@@ -5296,7 +5303,7 @@ ${isSample ? `<div class="sample-mark">SAMPLE</div>
 <div class="page-footer">
   <div>
     <div class="page-footer-brand">피나<span>FinAnalyzer</span></div>
-    <div class="page-footer-tagline">AI 기반 재무제표 자동진단 서비스</div>
+    <div class="page-footer-tagline">AI 기업분석·평가 서비스</div>
   </div>
 </div>
 <!-- 0. 표지 -->
@@ -5699,7 +5706,7 @@ function renderPlanCards(plans) {
   if (plans.length === 1 && !selectedPlan) selectedPlan = plans[0].id;   // 요금제가 하나면 바로 선택
   grid.innerHTML = plans.map(p => {
     const per = p.seats > 1 ? `1인당 월 ${won(Math.round(p.price / p.seats))}` : "";
-    const listPrice = p.list_price || (p.id === "starter" ? 300000 : 0);   // 정가 (백엔드 값이 없을 때 대비)
+    const listPrice = p.list_price || (p.id === "starter" ? 330000 : 0);   // 정가 (백엔드 값이 없을 때 대비)
     const disc = listPrice > p.price;
     const offPct = disc ? Math.floor((1 - p.price / listPrice) * 100) : 0;
     return `<div class="plan-card${selectedPlan === p.id ? " selected" : ""}" data-plan="${p.id}" onclick="selectPlan('${p.id}')">
