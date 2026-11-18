@@ -6318,7 +6318,7 @@ window.addEventListener("DOMContentLoaded", () => {
 <!-- 앱 설치 안내 (휴대폰, 아직 설치 안 했을 때만) -->
 <style>
 @keyframes pwaBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(10px); } }
-#pwaGuide .pg-step { display:flex; align-items:center; gap:10px; padding:9px 0; font-size:14px; color:#1a1a18; }
+#pwaGuide .pg-step { display:flex; align-items:center; gap:10px; padding:7px 0; font-size:14px; color:#1a1a18; }
 #pwaGuide .pg-num { width:24px; height:24px; border-radius:50%; background:#185FA5; color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 #pwaGuide .pg-key { display:inline-block; min-width:26px; padding:2px 7px; border:1px solid #cfd8e3; border-radius:7px; background:#f5f8fc; font-weight:700; text-align:center; }
 </style>
@@ -6382,10 +6382,10 @@ window.addEventListener("DOMContentLoaded", () => {
         list = [step(1, '오른쪽 위 <span class="pg-key">□↑</span> 공유 버튼'), step(2, '<b>홈 화면에 추가</b>'), step(3, '오른쪽 위 <b>추가</b>')];
         pos = "top-right";
       } else if (v >= 26) {
-        list = [step(1, '오른쪽 아래 <span class="pg-key">⋯</span> 버튼'), step(2, '<span class="pg-key">□↑</span> <b>공유</b>'), step(3, '<b>홈 화면에 추가</b> → <b>추가</b>')];
+        list = [step(1, '오른쪽 아래 <span class="pg-key">⋯</span> 버튼'), step(2, '<span class="pg-key">□↑</span> <b>공유</b>'), step(3, '오른쪽 <span class="pg-key">∨</span> <b>더 보기</b>'), step(4, '목록에서 <span class="pg-key">⊞</span> <b>홈 화면에 추가</b>'), step(5, '오른쪽 위 <b>추가</b>')];
         pos = "bottom-right";
       } else {
-        list = [step(1, '아래쪽 가운데 <span class="pg-key">□↑</span> 공유 버튼'), step(2, '<b>홈 화면에 추가</b>'), step(3, '오른쪽 위 <b>추가</b>')];
+        list = [step(1, '아래쪽 가운데 <span class="pg-key">□↑</span> 공유 버튼'), step(2, '목록을 위로 올려 <span class="pg-key">⊞</span> <b>홈 화면에 추가</b>'), step(3, '오른쪽 위 <b>추가</b>')];
         pos = "bottom-center";
       }
       if (!/Safari/i.test(ua) || /CriOS|FxiOS|EdgiOS|NAVER|Whale/i.test(ua)) {
