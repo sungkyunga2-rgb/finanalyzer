@@ -121,6 +121,9 @@ ADMIN_PASSWORD     = os.getenv("ADMIN_PASSWORD", "")       # 관리자 페이지
 SENDER_EMAIL       = "cngpartners123@gmail.com"             # 임시비밀번호 발송용 발신 계정 (Brevo에 발신자로 등록 필요)
 BREVO_API_KEY      = os.getenv("BREVO_API_KEY", "")         # Brevo(구 Sendinblue) API 키 (Render 환경변수에 설정)
 COST_PER_ANALYSIS = 10  # 분석 1회당 차감 크레딧
+# 무료 분석: 구독이 없어도 분석은 할 수 있고, 결과는 일부만 보여준다(예상 한도부터는 구독 시 공개).
+# AI 비용이 드는 만큼 구독 없는 회원은 월 무료 분석 횟수를 둔다.
+FREE_ANALYSES_PER_MONTH = 30
 
 CREDIT_PACKAGES = {
     "single":   {"price": 13900, "credits": 10,  "label": "1건"},
@@ -692,7 +695,7 @@ async def analyze(
     from fastapi.concurrency import run_in_threadpool
     subscribed = await run_in_threadpool(user_has_subscription_access, db, user)
     if not subscribed and user.credits < COST_PER_ANALYSIS:
-        raise HTTPException(status_code=402, detail=f"구독이 필요합니다. 구독하시면 분석 횟수 제한 없이 이용할 수 있어요. (기존 충전분 잔여: {user.credits // COST_PER_ANALYSIS}건)")
+        await run_in_threadpool(_check_free_quota, db, user)
 
     prompt = """이 문서는 한국 기업/개인사업자의 재무제표입니다(이미지 또는 PDF, 1장 이상 첨부될 수 있음). 여러 장이 첨부된 경우 표지·재무상태표·손익계산서 등 서로 다른 페이지일 수 있으니, 페이지 번호(예: "1/5", "2/5")를 참고해 순서대로 모든 이미지를 함께 분석한 뒤 아래 항목들을 추출하세요. 절대로 짐작하지 말고, 각 숫자가 어느 페이지의 어느 항목(계정과목/코드)에서 나온 것인지 반드시 확인하고 추출하세요.
 
@@ -872,14 +875,9 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
     if data is None:
         raise HTTPException(status_code=500, detail=f"AI 분석 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
 
-    # 크레딧 차감 (구독 이용 중이면 차감 없이 이용 기록만 남김)
-    used = 0 if subscribed else COST_PER_ANALYSIS
-    user.credits -= used
-    log = models.AnalysisLog(user_id=user.id, credits_used=used)
-    db.add(log)
-    db.commit()
-
-    return {"data": data, "credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed}
+    # 구독 → 전체 공개 / 예전 충전분이 있으면 1건 차감 후 전체 공개 / 둘 다 없으면 무료(일부 공개)
+    used, full = _consume_analysis(db, user, subscribed)
+    return {"data": data, "credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed, "full": full}
 
 # 직접 입력(수동) 분석 — AI 호출 없이 프론트에서 계산하지만, 크레딧 차감은 서버에서 검증
 @app.post("/analyze/manual")
@@ -889,16 +887,34 @@ def analyze_manual(
 ):
     subscribed = user_has_subscription_access(db, user)
     if not subscribed and user.credits < COST_PER_ANALYSIS:
-        raise HTTPException(status_code=402, detail=f"구독이 필요합니다. 구독하시면 분석 횟수 제한 없이 이용할 수 있어요. (기존 충전분 잔여: {user.credits // COST_PER_ANALYSIS}건)")
+        _check_free_quota(db, user)
+    used, full = _consume_analysis(db, user, subscribed)
+    return {"credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed, "full": full}
+
+def _check_free_quota(db: Session, user):
+    """구독·충전분이 없는 회원의 이번 달 무료 분석 횟수 확인"""
+    now = datetime.utcnow() + timedelta(hours=9)                     # 한국 시간 기준 '이번 달'
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=9)
+    n = db.query(models.AnalysisLog).filter(
+        models.AnalysisLog.user_id == user.id,
+        models.AnalysisLog.credits_used == 0,
+        models.AnalysisLog.created_at >= month_start,
+    ).count()
+    if n >= FREE_ANALYSES_PER_MONTH:
+        raise HTTPException(status_code=402, detail=f"이번 달 무료 분석 {FREE_ANALYSES_PER_MONTH}회를 모두 사용했어요. 구독하시면 분석 횟수 제한 없이 이용할 수 있어요. (구독이 필요합니다)")
+
+def _consume_analysis(db: Session, user, subscribed: bool):
+    """분석 1회 기록. (차감 크레딧, 전체 결과 공개 여부)"""
     if subscribed:
-        db.add(models.AnalysisLog(user_id=user.id, credits_used=0))   # 구독 이용 기록 (크레딧 차감 없음)
-        db.commit()
-        return {"credits_used": 0, "remaining_credits": user.credits, "subscribed": True}
-    user.credits -= COST_PER_ANALYSIS
-    log = models.AnalysisLog(user_id=user.id, credits_used=COST_PER_ANALYSIS)
-    db.add(log)
+        used, full = 0, True
+    elif user.credits >= COST_PER_ANALYSIS:                           # 예전에 충전한 이용권 → 1건 차감, 전체 공개
+        used, full = COST_PER_ANALYSIS, True
+        user.credits -= used
+    else:                                                             # 무료 분석 → 일부 공개
+        used, full = 0, False
+    db.add(models.AnalysisLog(user_id=user.id, credits_used=used))
     db.commit()
-    return {"credits_used": COST_PER_ANALYSIS, "remaining_credits": user.credits}
+    return used, full
 
 # 부가세과세표준증명원 / 소득금액증명원 등 국세청 서류에서 매출·소득 자동 인식
 # (재무제표가 없는 개인사업자용 "직접 입력" 보조 기능 — 크레딧 차감 없음, 대출/자산은 서류에 없어 여전히 직접 입력 필요)

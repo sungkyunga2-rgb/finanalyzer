@@ -337,6 +337,12 @@
   .plan-price small { font-size:12px; font-weight:500; color:var(--text2); margin-left:2px; }
   .plan-seats { font-size:13px; color:var(--text2); margin-top:6px; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
+  .fa-lock-body { position: relative; }
+  .fa-lock-blur { filter: blur(5px); opacity: .75; pointer-events: none; user-select: none; }
+  .fa-lock-cta { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(92%, 380px);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px 18px;
+    text-align: center; box-shadow: 0 10px 30px rgba(13,59,124,.15); }
+  .fa-mask { display: inline-block; filter: blur(4px); color: #185FA5; font-weight: 700; user-select: none; }
   .plan-was { font-size:14px; color:var(--text3); text-decoration:line-through; margin-top:2px; }
   .plan-save { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
   .plan-save span { font-size:12px; font-weight:700; padding:3px 9px; border-radius:20px; }
@@ -1547,7 +1553,8 @@
       ② 표시된 금액은 부가가치세를 포함한 금액이며, 매월 결제되는 금액은 할인가(월 59,000원)입니다.<br/>
       ③ 할인가는 회사의 정책에 따라 변경될 수 있으며, 변경하는 경우 제3조 ④에 따라 사전에 안내합니다.<br/>
       ④ 사용자 수에는 요금제를 결제한 대표 계정이 포함되며, 팀 초대는 초대받은 회원이 수락하여 팀에 합류한 시점에 사용자 수에 포함됩니다. 요금제의 사용자 수를 초과하여 합류할 수 없습니다.<br/>
-      ⑤ 요금제 변경이 필요한 경우 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.</p>
+      ⑤ 요금제 변경이 필요한 경우 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.<br/>
+      ⑥ 구독하지 않은 회원도 매월 30회까지 무료로 분석할 수 있으며, 이 경우 분석 결과의 일부(기업 정보·종합 요약 등)만 제공되고 예상 한도·신청 가능 기관 등 나머지 결과는 구독 후 확인할 수 있습니다.</p>
       <br/>
       <p><strong>제3조 (결제 및 자동결제)</strong><br/>
       ① 구독을 시작하면 선택한 요금제의 첫 달 요금이 즉시 결제되고, 이후 이용기간이 끝나는 날(최초 결제일과 같은 날짜)에 매월 등록된 카드로 자동 결제됩니다. 해당 월에 같은 날짜가 없는 경우 그 달의 말일에 결제됩니다.<br/>
@@ -1559,7 +1566,7 @@
       <p><strong>제4조 (해지 및 환불)</strong><br/>
       ① (해지) 이용자는 서비스 내 [구독] 화면에서 언제든지 구독을 해지할 수 있습니다. 해지하면 다음 결제부터 청구되지 않으며, 이미 결제한 이용기간이 끝나는 날까지는 서비스를 계속 이용할 수 있습니다. 해지 후에도 이용기간이 남아 있는 동안에는 [해지 취소]로 구독을 유지할 수 있습니다.<br/><br/>
       ② (청약철회) 이용자는 결제일로부터 <strong>7일 이내</strong>에 청약철회(환불)를 요청할 수 있습니다. 다만 서비스는 결제 즉시 이용할 수 있는 디지털 서비스이므로, 분석 보고서(진단 결과)가 1건이라도 생성된 경우에는 서비스 이용이 개시된 것으로 보아 해당 결제분의 환불이 제한됩니다.<br/><br/>
-      ③ (이용 후 환불 불가) 결제 후 분석을 <strong>1회 이상</strong> 진행한 경우, 해당 결제분에 대한 <strong>환불 및 부분환불(남은 기간의 일할 환불 포함)은 불가</strong>합니다. 청약철회 기간이 지난 후 해지하는 경우에도 이미 결제된 이용기간에 대한 요금은 환불하지 않습니다. 다만 서비스 장애 등 회사의 귀책사유로 정상적인 이용이 불가능했던 경우에는 이용하지 못한 기간에 해당하는 금액을 환불하거나 이용기간을 연장합니다.<br/><br/>
+      ③ (이용 후 환불 불가) 결제 후 분석을 <strong>1회 이상</strong> 진행하거나 구독 전에 분석한 결과의 전체 내용을 열람한 경우, 해당 결제분에 대한 <strong>환불 및 부분환불(남은 기간의 일할 환불 포함)은 불가</strong>합니다. 청약철회 기간이 지난 후 해지하는 경우에도 이미 결제된 이용기간에 대한 요금은 환불하지 않습니다. 다만 서비스 장애 등 회사의 귀책사유로 정상적인 이용이 불가능했던 경우에는 이용하지 못한 기간에 해당하는 금액을 환불하거나 이용기간을 연장합니다.<br/><br/>
       ④ (결제 오류) 이용자가 동의한 금액과 다르게 결제되었거나 해지 후에도 결제된 경우, 회사는 확인 후 해당 금액을 전액 환불합니다.<br/><br/>
       ⑤ (신청 방법 및 처리) 환불은 서비스 내 [내 정보] &gt; [환불 신청] 메뉴 또는 이메일(cngpartners123@gmail.com)로 결제자명·결제일·환불 사유를 기재하여 요청할 수 있습니다. 환불 금액은 이용자가 실제로 결제한 금액을 기준으로 합니다. 회사는 접수일로부터 영업일 기준 3~7일 이내에 처리 결과를 안내하며, 환불이 승인된 경우 결제수단에 따라 실제 환급까지 추가로 3~5영업일이 소요될 수 있습니다.<br/><br/>
       ⑥ (기존 충전 이용권) 구독 도입 전에 충전한 이용권의 잔여 크레딧은 구독이 없는 동안 기존과 같이 분석에 사용할 수 있으며, 그 환불은 충전일로부터 7일 이내이면서 사용하지 않은 금액에 한하여 가능합니다.<br/><br/>
@@ -1859,7 +1866,7 @@ function fmt(n) {
 function updateCreditBadges() {
   const remainingCount = Math.floor(userCredits / 10);
   document.querySelectorAll(".credit-badge").forEach(el => {
-    el.textContent = userHasSub ? "구독 이용 중" : "잔여횟수 " + remainingCount.toLocaleString() + "건";
+    el.textContent = userHasSub ? "구독 이용 중" : (remainingCount > 0 ? "잔여횟수 " + remainingCount.toLocaleString() + "건" : "무료 분석 이용 중");
     el.style.display = "inline-block";
   });
 }
@@ -2358,8 +2365,6 @@ function moveResultsAfter(cardId) {
 async function doAnalyze() {
   if (!token) { showPage("login"); return; }
   if (uploadedImages.length === 0) return;
-  if (!userHasSub && userCredits < 10) { openPaymentModal(); return; }
-
   moveResultsAfter("imageCard");
   window.currentHistoryId = null;
   window.currentHistoryPrinted = false;
@@ -2376,9 +2381,10 @@ async function doAnalyze() {
     userCredits = d.remaining_credits;
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
+    d.data.__full = d.full !== false;
     renderResults(d.data);
     saveAnalysisHistory(d.data, "image");
-    toast(userHasSub ? "분석 완료" : `분석 완료 · 잔여횟수 ${Math.floor(userCredits / 10)}건`);
+    toast("분석 완료");
   } catch (e) {
     toast(e.message);
     if (e.message.includes("부족") || e.message.includes("구독이 필요")) openPaymentModal();
@@ -2512,14 +2518,12 @@ async function doManualAnalyze() {
     if (!confirm(confirmMsg)) return;
   }
 
-  // 구독이 없고 크레딧도 부족하면 구독 화면으로 안내 (직접입력도 이미지 분석과 동일하게 유료)
-  if (!userHasSub && userCredits < 10) { openPaymentModal(); return; }
-
   // 서버에서 크레딧을 검증하고 차감 (클라이언트 체크만으로는 우회 가능하므로 반드시 서버 확인)
   const btn = document.getElementById("manualAnalyzeBtn");
   btn.disabled = true; btn.textContent = "분석 중...";
   try {
     const deductResult = await api("POST", "/analyze/manual");
+    window.__lastFull = deductResult.full !== false;
     userCredits = deductResult.remaining_credits;
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
@@ -2551,7 +2555,8 @@ async function doManualAnalyze() {
     operating_income: annualProfit,
     interest_expense: annualInterest,
     net_income: annualProfit,
-    comment: "직접 입력 데이터 기반 추정 분석입니다. 실제 재무제표와 차이가 있을 수 있습니다."
+    comment: "직접 입력 데이터 기반 추정 분석입니다. 실제 재무제표와 차이가 있을 수 있습니다.",
+    __full: window.__lastFull !== false,
   };
 
   window.currentHistoryId = null;
@@ -2561,7 +2566,7 @@ async function doManualAnalyze() {
   renderResults(d);
   saveAnalysisHistory(d, "manual");
   document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
-  toast(userHasSub ? "입력 정보로 분석 완료" : `입력 정보로 분석 완료 · 잔여횟수 ${Math.floor(userCredits / 10)}건`);
+  toast("입력 정보로 분석 완료");
 }
 
 function renderResults(d) {
@@ -2849,6 +2854,47 @@ function renderResults(d) {
 
   document.getElementById("results").classList.remove("hidden");
   updateReportButtons();
+  applyResultLock(faFullAccess(d));
+}
+
+// ── 무료 분석: 결과 일부만 공개 ──────────────────────────────────
+// 구독 중이거나(또는 예전 충전분으로 분석한 건) 전체 공개. 이전 버전 분석이력(__full 없음)도 전체 공개.
+function faFullAccess(d) {
+  return !!userHasSub || !d || d.__full !== false;
+}
+function faLockHtml(title, teaser) {
+  const ph = (w) => `<div style="height:14px;width:${w}%;background:#dfe5ee;border-radius:7px;margin:10px 0;"></div>`;
+  return `<div class="fa-lock">
+    ${teaser || ""}
+    <div class="fa-lock-body">
+      <div class="fa-lock-blur" aria-hidden="true">
+        ${[["💰 예상 한도", [70, 45, 60]], ["🏛️ 신청 가능 기관", [80, 55, 65, 50]], ["📋 상세 분석", [90, 70, 85, 60]]].map(([t, ws]) =>
+          `<div class="card" style="margin-bottom:10px;"><div class="card-title">${t}</div>${ws.map(ph).join("")}</div>`).join("")}
+      </div>
+      <div class="fa-lock-cta">
+        <div style="font-size:26px;">🔒</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-top:4px;">${title}</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.6;">구독하면 지금 분석한 결과를 포함해<br>전체 결과를 바로 확인할 수 있어요.</div>
+        <button class="btn btn-primary" style="margin-top:12px;" onclick="showPage('charge')">구독하고 전체 결과 보기</button>
+      </div>
+    </div>
+  </div>`;
+}
+function applyResultLock(full) {
+  const diagCard = document.getElementById("diagList").closest(".card");
+  const opCard = document.getElementById("opinionBox").closest(".card");
+  let lock = document.getElementById("resultLock");
+  [diagCard, opCard, document.getElementById("fullReportBtn"), document.getElementById("companyReportBtn")].forEach(el => { if (el) el.style.display = full ? "" : "none"; });
+  if (full) { if (lock) lock.remove(); return; }
+  // 잠긴 부분의 실제 내용은 화면에 남기지 않는다
+  document.getElementById("diagList").innerHTML = "";
+  document.getElementById("opinionBox").innerHTML = "";
+  if (!lock) {
+    lock = document.createElement("div");
+    lock.id = "resultLock";
+    diagCard.insertAdjacentElement("beforebegin", lock);
+  }
+  lock.innerHTML = faLockHtml("진단 결과와 정책자금 연계 분석은 구독 후 확인할 수 있어요");
 }
 
 // ── 인식 결과 직접 수정 ──────────────────────────────────────────
@@ -3814,12 +3860,11 @@ async function doHometaxAnalyze() {
     toast("필요자금 최소가 최대보다 큽니다."); return;
   }
 
-  if (!userHasSub && userCredits < 10) { openPaymentModal(); return; }
-
   const btn = document.getElementById("ht-analyze-btn");
   btn.disabled = true; btn.textContent = "분석 중...";
   try {
     const dr = await api("POST", "/analyze/manual");   // 구독/횟수 확인 (직접 입력 분석과 동일한 이용 기준)
+    input.__full = dr.full !== false;
     userCredits = dr.remaining_credits;
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
@@ -3841,7 +3886,7 @@ async function doHometaxAnalyze() {
     revenue: latestVat, hometax: input,
   }, "hometax");
   document.getElementById("ht-results").scrollIntoView({ behavior: "smooth", block: "start" });
-  toast(userHasSub ? "분석 완료" : `분석 완료 · 잔여횟수 ${Math.floor(userCredits / 10)}건`);
+  toast("분석 완료");
 }
 
 // ── 결과창 ────────────────────────────────────────────────────────
@@ -4009,6 +4054,20 @@ function renderHometaxResults(r, input) {
       </div>
       ${flagsHtml}
     </div>`;
+
+  // ── 무료 분석이면 여기까지만 공개 (예상 한도부터 잠금) ──
+  if (!faFullAccess(input)) {
+    const okOrgs = (r.limit && r.limit.orgs || []).filter(x => x.status === "ok").length;
+    const teaser = `<div class="card" style="border-top:4px solid #185FA5;">
+      <div class="card-title">💰 예상 한도</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);">${okOrgs > 0 ? `신청 가능 기관 <b style="color:#185FA5;">${okOrgs}곳</b> · ` : ""}예상 한도 <span class="fa-mask">■■■■</span>원</div>
+    </div>`;
+    html += faLockHtml("예상 한도와 신청 가능 기관은 구독 후 확인할 수 있어요", teaser);
+    html += `<div style="display:flex;gap:8px;margin-bottom:24px;"><button class="btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑ 입력 수정하기</button></div>`;
+    wrap.innerHTML = html;
+    wrap.classList.remove("hidden");
+    return;
+  }
 
   // 예상 한도
   html += htLimitCard(r.limit);
@@ -4797,6 +4856,11 @@ async function submitContactUs() {
 // ── 분석 결과 다운로드 ──────────────────────────────────────────
 function downloadResult() {
   const isSample = !!window.__sampleReport;   // 샘플 보기 모드 (저장·인쇄 불가)
+  if (!isSample && !faFullAccess(window.currentAnalysisData)) {
+    toast("전체 결과와 리포트는 구독 후 확인할 수 있어요.");
+    showPage("charge");
+    return;
+  }
   // 이미 출력한 건은 재발급 불가 (이용약관 제3조)
   if (!isSample && window.currentHistoryPrinted) {
     toast("이미 출력하신 분석 결과입니다. 리포트 출력은 1회만 가능하며 재발급되지 않습니다.");
