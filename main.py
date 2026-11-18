@@ -130,11 +130,16 @@ CREDIT_PACKAGES = {
 
 # 구독 요금제 — 월 분석 건수는 제한하지 않고 '사용자 수(seats)'로만 구분한다.
 # price = 월 구독료(원). 이 금액 그대로 카드에 청구된다.
+# list_price = 정가(할인 표시용). hidden = 새로 가입은 받지 않는 이전 요금제(기존 팀·관리자 부여용으로만 유지)
 SUBSCRIPTION_PLANS = {
-    "starter":  {"label": "스타터",   "seats": 1,  "price": 199000},
-    "standard": {"label": "스탠다드", "seats": 3,  "price": 550000},
-    "pro":      {"label": "프로",     "seats": 10, "price": 1100000},
+    "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 300000},
+    "standard": {"label": "스탠다드",  "seats": 3,  "price": 550000, "hidden": True},
+    "pro":      {"label": "프로",      "seats": 10, "price": 1100000, "hidden": True},
 }
+
+def _public_plans():
+    return [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"], "list_price": v.get("list_price")}
+            for k, v in SUBSCRIPTION_PLANS.items() if not v.get("hidden")]
 TEAM_INVITE_VALID_DAYS = 14   # 초대 유효기간 (지나면 수락 불가)
 TEAM_MAX_PENDING_INVITES = 20 # 수락 대기 초대 상한 (초대 남발 방지용 — 사용자 수 한도와는 별개)
 
@@ -1459,7 +1464,7 @@ def admin_subscription_info(db: Session, user):
 
 @app.get("/plans")
 def list_plans():
-    return [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"]} for k, v in SUBSCRIPTION_PLANS.items()]
+    return _public_plans()
 
 @app.get("/team/me")
 def team_me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2854,7 +2859,8 @@ def _sub_customer(user) -> dict:
     return {"id": f"fa-{user.id}", "name": {"full": name}, "email": user.email}
 
 def _sub_order_name(plan_id: str) -> str:
-    return f"피나 {SUBSCRIPTION_PLANS[plan_id]['label']} 월 구독"
+    label = SUBSCRIPTION_PLANS[plan_id]['label']
+    return f"{label} 월 구독" if label.startswith("피나") else f"피나 {label} 월 구독"
 
 def _sub_charge(billing_key: str, payment_id: str, plan_id: str, amount: int, user):
     """빌링키로 즉시 결제 후, 포트원 조회로 PAID·금액을 확인. (성공여부, 결제정보 또는 오류메시지)"""
@@ -3062,7 +3068,7 @@ def subscription_me(user: models.User = Depends(get_current_user), db: Session =
     return {
         "customer_id": f"fa-{user.id}",
         "customer_name": _sub_customer(user)["name"]["full"],
-        "plans": [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"]} for k, v in SUBSCRIPTION_PLANS.items()],
+        "plans": _public_plans(),
         "is_team_member": is_member,
         "team_plan_label": _plan_label(team.plan) if is_member else None,
         "access": bool(team and team.plan),
@@ -3078,6 +3084,8 @@ class SubscriptionStartBody(BaseModel):
 @app.post("/subscription/start")
 def subscription_start(body: SubscriptionStartBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     plan = SUBSCRIPTION_PLANS.get(body.plan)
+    if plan and plan.get("hidden"):
+        plan = None
     billing_key = (body.billing_key or "").strip()
     if not plan:
         raise HTTPException(status_code=400, detail="알 수 없는 요금제입니다.")

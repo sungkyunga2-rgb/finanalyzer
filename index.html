@@ -330,6 +330,11 @@
   .plan-price small { font-size:12px; font-weight:500; color:var(--text2); margin-left:2px; }
   .plan-seats { font-size:13px; color:var(--text2); margin-top:6px; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
+  .plan-was { font-size:14px; color:var(--text3); text-decoration:line-through; margin-top:2px; }
+  .plan-save { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .plan-save span { font-size:12px; font-weight:700; padding:3px 9px; border-radius:20px; }
+  .plan-save .off { background:#e5267a; color:#fff; }
+  .plan-save .won { background:#fde8f1; color:#c21d66; }
   .plan-common { list-style:none; margin:1rem 0 0; padding:0; font-size:12px; color:var(--text2); line-height:1.8; }
   .plan-common li::before { content:"✓ "; color:var(--success); font-weight:700; }
 
@@ -1461,10 +1466,10 @@
     <!-- 구독 신청 -->
     <div id="sub-buy-wrap" class="hidden">
       <div class="card">
-        <div class="card-title">요금제 선택</div>
+        <div class="card-title">구독 요금제</div>
         <div class="plan-grid" id="plan-grid"></div>
         <ul class="plan-common">
-          <li>모든 요금제 <strong>월 분석 횟수 제한 없음</strong></li>
+          <li><strong>월 분석 횟수 제한 없음</strong></li>
           <li>재무제표 이미지 분석 · 직접 입력 분석 모두 포함</li>
           <li>분석이력 30일 보관 · 리포트 출력 1회</li>
         </ul>
@@ -1507,10 +1512,8 @@
       <p><strong>제1조 (서비스 이용)</strong><br/>서비스는 재무제표 이미지 또는 직접 입력한 재무 수치를 AI로 분석하여 주요 재무지표와 진단 리포트를 제공합니다. 분석 결과는 참고용이며 공인 회계사·세무사 등 전문가의 검토를 대체하지 않습니다.</p>
       <br/>
       <p><strong>제2조 (구독 요금제)</strong><br/>
-      ① 서비스는 월 단위 구독(정기결제) 방식으로 제공되며, 요금제는 함께 사용할 수 있는 사용자 수에 따라 구분됩니다. 월 분석 횟수는 제한하지 않습니다(제7조의 공정사용 원칙 적용).<br/>
-      &nbsp;&nbsp;· 스타터: 사용자 1명, 월 199,000원<br/>
-      &nbsp;&nbsp;· 스탠다드: 사용자 3명, 월 550,000원<br/>
-      &nbsp;&nbsp;· 프로: 사용자 10명, 월 1,100,000원<br/>
+      ① 서비스는 월 단위 구독(정기결제) 방식으로 제공되며, 월 분석 횟수는 제한하지 않습니다(제7조의 공정사용 원칙 적용).<br/>
+      &nbsp;&nbsp;· 피나 구독: 사용자 1명, 월 59,000원<br/>
       ② 표시된 금액은 부가가치세를 포함한 금액입니다.<br/>
       ③ 사용자 수에는 요금제를 결제한 대표 계정이 포함되며, 팀 초대는 초대받은 회원이 수락하여 팀에 합류한 시점에 사용자 수에 포함됩니다. 요금제의 사용자 수를 초과하여 합류할 수 없습니다.<br/>
       ④ 요금제 변경이 필요한 경우 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.</p>
@@ -5617,13 +5620,18 @@ function renderCurrentSubscription(sub) {
 
 function renderPlanCards(plans) {
   const grid = document.getElementById("plan-grid");
-  grid.innerHTML = (plans || []).map(p => {
+  plans = plans || [];
+  if (plans.length === 1 && !selectedPlan) selectedPlan = plans[0].id;   // 요금제가 하나면 바로 선택
+  grid.innerHTML = plans.map(p => {
     const per = p.seats > 1 ? `1인당 월 ${won(Math.round(p.price / p.seats))}` : "";
-    const rec = p.id === "standard";
+    const disc = p.list_price && p.list_price > p.price;
+    const offPct = disc ? Math.floor((1 - p.price / p.list_price) * 100) : 0;
     return `<div class="plan-card${selectedPlan === p.id ? " selected" : ""}" data-plan="${p.id}" onclick="selectPlan('${p.id}')">
-      <div class="plan-badge"${rec ? '' : ' style="visibility:hidden"'}>추천</div>
+      <div class="plan-badge"${disc ? '' : ' style="visibility:hidden"'}>${disc ? "특별 할인가" : "추천"}</div>
       <div class="plan-name">${escapeHtml(p.label)}</div>
+      ${disc ? `<div class="plan-was">정가 ${won(p.list_price)}/월</div>` : ''}
       <div class="plan-price">${won(p.price)}<small>/월</small></div>
+      ${disc ? `<div class="plan-save"><span class="off">${offPct}% 할인</span><span class="won">매월 ${won(p.list_price - p.price)} 절약</span></div>` : ''}
       <div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>
       ${per ? `<div class="plan-per">${per}</div>` : ''}
     </div>`;
