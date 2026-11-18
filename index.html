@@ -4053,9 +4053,9 @@ function htReportBody(r, input) {
     const items = [
       { ok: has(input.business_number) ? true : null, text: has(input.business_number) ? "사업자 정보 확인 완료" : "사업자등록번호 미입력" },
       { ok: arOk, text: arOk === false ? "국세 체납 있음 (납세증명서 발급 불가)" : arOk ? "국세 체납 없음 (납세증명서 발급 가능)" : "국세 체납 여부 미확인" },
-      { ok: drOk, text: drOk === false ? "부채비율 400% 초과" : drOk ? "부채비율 400% 이하 유지" : "부채비율 미산정 (재무 수치 미입력)" },
-      { ok: iceOk, text: iceOk === false ? "이자보상배수 1배 미만 (이자 상환 능력 부족)" : iceOk ? "이자보상배수 1배 이상 유지 (이자 상환 능력)" : "이자보상배수 미산정 (재무 수치 미입력)" },
-      { ok: erosionOk, text: erosionOk === false ? "자본잠식 상태" : erosionOk ? "자본잠식 없음" : "자본잠식 여부 미산정" },
+      { ok: drOk, text: drOk === false ? "부채비율 400% 초과" : drOk ? "부채비율 400% 이하 유지" : "부채비율 미입력" },
+      { ok: iceOk, text: iceOk === false ? "이자보상배수 1배 미만 (이자 상환 능력 부족)" : iceOk ? "이자보상배수 1배 이상 유지 (이자 상환 능력)" : "이자보상배수 미입력" },
+      { ok: erosionOk, text: erosionOk === false ? "자본잠식 상태" : erosionOk ? "자본잠식 없음" : "자본잠식 여부 미입력" },
       { ok: profitOk, text: profitOk === false ? "당기순이익 적자 (수익성 미확보)" : profitOk ? "당기순이익 흑자 (수익성 확보)" : "당기순이익 미입력" },
       { ok: crOk, text: crOk === false ? "대표자 신용점수 낮음 (심사 시 불리할 수 있음)" : crOk ? "대표자 신용점수 양호" : "대표자 신용점수 미입력" },
       { ok: policyOk, text: policyOk ? "정책자금 연계 가능" : policyOk === false ? `정책자금 연계 어려움${fail.length ? " (" + fail.join(", ") + ")" : ""}` : "정책자금 연계 여부 확인 필요" },
@@ -4067,29 +4067,22 @@ function htReportBody(r, input) {
   }
 
   // 재무안정성 (비율·등급만, 실제 금액은 표시하지 않음) — 재무 수치가 없으면 미입력으로 표시
-  if (!f) {
-    html += sh("재무안정성 (Financial Stability)") + `<table class="fin-table"><tbody>
-      <tr><td style="width:40%;">부채비율 · 부채자산비율</td><td class="val empty">미입력</td></tr>
-      <tr><td>안정성 비교</td><td class="val empty">미입력</td></tr>
-      <tr><td>이자보상배수 · 차입상환기간</td><td class="val empty">미입력</td></tr>
-      <tr><td>차입상환 능력 종합등급</td><td class="val empty">미입력</td></tr>
-    </tbody></table>
-    <div class="opinion"><div class="opinion-item" style="color:#6b7a8d;">총자산·총부채·영업이익·이자비용을 입력하면 재무안정성과 차입상환 능력을 분석합니다.</div></div>`;
-  } else {
+  {
+    const F = f || { capitalEroded: false, dr: null, ice: null, noInt: false, total: null, max: null, grade: "" };
     const fin = input.fin || {};
     const A = htNum(fin.assets), Lb = htNum(fin.liabilities), op = htNum(fin.operating_income);
     const SC = { safe: "#0F6E56", warn: "#B8860B", danger: "#A32D2D", muted: "#9b9a95" };
     let cmp = "자료미비", cmpCls = "muted";
-    if (f.capitalEroded) { cmp = "취약"; cmpCls = "danger"; }
-    else if (f.dr !== null) {
-      if (f.dr <= 200) { cmp = "우수"; cmpCls = "safe"; } else if (f.dr <= 300) { cmp = "양호"; cmpCls = "safe"; }
-      else if (f.dr <= 400) { cmp = "보통"; cmpCls = "warn"; } else if (f.dr <= 500) { cmp = "열위"; cmpCls = "danger"; } else { cmp = "취약"; cmpCls = "danger"; }
+    if (F.capitalEroded) { cmp = "취약"; cmpCls = "danger"; }
+    else if (F.dr !== null) {
+      if (F.dr <= 200) { cmp = "우수"; cmpCls = "safe"; } else if (F.dr <= 300) { cmp = "양호"; cmpCls = "safe"; }
+      else if (F.dr <= 400) { cmp = "보통"; cmpCls = "warn"; } else if (F.dr <= 500) { cmp = "열위"; cmpCls = "danger"; } else { cmp = "취약"; cmpCls = "danger"; }
     }
     let rep = "자료미비", repCls = "muted";
-    if (f.noInt) { rep = "우수"; repCls = "safe"; }
-    else if (f.ice !== null) {
-      if (f.ice >= 3) { rep = "우수"; repCls = "safe"; } else if (f.ice >= 2) { rep = "양호"; repCls = "safe"; }
-      else if (f.ice >= 1) { rep = "보통"; repCls = "warn"; } else { rep = "열위"; repCls = "danger"; }
+    if (F.noInt) { rep = "우수"; repCls = "safe"; }
+    else if (F.ice !== null) {
+      if (F.ice >= 3) { rep = "우수"; repCls = "safe"; } else if (F.ice >= 2) { rep = "양호"; repCls = "safe"; }
+      else if (F.ice >= 1) { rep = "보통"; repCls = "warn"; } else { rep = "열위"; repCls = "danger"; }
     }
     const row = (opts, active) => opts.map(o2 => {
       const cl = (o2 === "우수" || o2 === "양호") ? "safe" : o2 === "보통" ? "warn" : "danger";
@@ -4099,36 +4092,37 @@ function htReportBody(r, input) {
     const repayYears = op > 0 && Lb > 0 ? Lb / op : null;
     const barMax = Math.max(A || 0, Lb || 0, 1);
     const taPct = Math.max(Math.round((A || 0) / barMax * 100), 4), tlPct = Math.max(Math.round((Lb || 0) / barMax * 100), 4);
-    const icePct = f.noInt ? 100 : f.ice !== null ? Math.min(Math.round(f.ice / 5 * 100), 100) : 0;
+    const icePct = F.noInt ? 100 : F.ice !== null ? Math.min(Math.round(F.ice / 5 * 100), 100) : 0;
     const box = "background:#fff;border:1px solid #e5e4e0;border-radius:10px;padding:12px;";
     html += `<div style="page-break-before:always;break-before:always;">` + sh("재무안정성 (Financial Stability)") + `
       <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:14px;margin-bottom:10px;">
         <div style="${box}">
           <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:10px;">자산 · 부채 구성</div>
           <div style="display:flex;align-items:flex-end;gap:16px;height:100px;">
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:60%;height:${taPct}%;background:#378ADD;border-radius:4px 4px 0 0;"></div><div style="font-size:9px;color:#9b9a95;margin-top:4px;">총자산</div></div>
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:60%;height:${tlPct}%;background:#D85A30;border-radius:4px 4px 0 0;"></div><div style="font-size:9px;color:#9b9a95;margin-top:4px;">총부채</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:60%;height:${taPct}%;background:${f ? "#378ADD" : "#e5e4e0"};border-radius:4px 4px 0 0;"></div><div style="font-size:9px;color:#9b9a95;margin-top:4px;">총자산</div></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:60%;height:${tlPct}%;background:${f ? "#D85A30" : "#e5e4e0"};border-radius:4px 4px 0 0;"></div><div style="font-size:9px;color:#9b9a95;margin-top:4px;">총부채</div></div>
           </div>
-          <div style="text-align:center;font-size:11px;color:#6b7a8d;margin-top:8px;">부채비율 <strong style="color:${SC[cmpCls]};">${f.capitalEroded ? "자본잠식" : f.dr !== null ? f.dr.toFixed(1) + "%" : "미산정"}</strong> · 부채자산비율 <strong>${daRatio !== null ? daRatio.toFixed(1) + "%" : "미산정"}</strong></div>
+          <div style="text-align:center;font-size:11px;color:#6b7a8d;margin-top:8px;">부채비율 <strong style="color:${SC[cmpCls]};">${F.capitalEroded ? "자본잠식" : F.dr !== null ? F.dr.toFixed(1) + "%" : (f ? "미산정" : "미입력")}</strong> · 부채자산비율 <strong>${daRatio !== null ? daRatio.toFixed(1) + "%" : (f ? "미산정" : "미입력")}</strong></div>
         </div>
         <div style="${box}display:flex;flex-direction:column;justify-content:center;">
-          <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">안정성 비교</div>
+          <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">안정성 비교${f ? "" : ' <span style="color:#b8c4cc;">· 미입력</span>'}</div>
           <div style="display:flex;gap:3px;">${row(["우수", "양호", "보통", "열위", "취약"], cmp)}</div>
         </div>
       </div>
       <div style="font-size:11px;font-weight:700;color:#0d3b7c;margin:4px 0 8px;">■ 차입상환 능력</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px;">
         <table class="fin-table"><tbody>
-          <tr><td>이자보상배수</td><td class="val">${f.noInt ? "이자비용 없음" : f.ice !== null ? f.ice.toFixed(1) + "배" : "미산정"}</td></tr>
-          <tr><td>차입상환기간</td><td class="val">${repayYears !== null ? repayYears.toFixed(1) + "년" : "미산정"}</td></tr>
-          <tr><td>사업 안정성 종합점수</td><td class="val">${f.total}/${f.max} · ${e(f.grade)}</td></tr>
+          <tr><td>이자보상배수</td><td class="val">${F.noInt ? "이자비용 없음" : F.ice !== null ? F.ice.toFixed(1) + "배" : (f ? "미산정" : "미입력")}</td></tr>
+          <tr><td>차입상환기간</td><td class="val">${repayYears !== null ? repayYears.toFixed(1) + "년" : (f ? "미산정" : "미입력")}</td></tr>
+          <tr><td>사업 안정성 종합점수</td><td class="val">${f ? `${F.total}/${F.max} · ${e(F.grade)}` : "미입력"}</td></tr>
         </tbody></table>
         <div style="${box}">
-          <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">차입상환 능력 종합등급</div>
+          <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">차입상환 능력 종합등급${f ? "" : ' <span style="color:#b8c4cc;">· 미입력</span>'}</div>
           <div style="display:flex;gap:3px;margin-bottom:10px;">${row(["우수", "양호", "보통", "열위"], rep)}</div>
           <div style="height:8px;background:#e5e4e0;border-radius:20px;overflow:hidden;"><div style="height:100%;width:${icePct}%;background:${SC[repCls]};border-radius:20px;"></div></div>
         </div>
       </div>
+      ${f ? "" : '<div class="opinion"><div class="opinion-item" style="color:#6b7a8d;">총자산·총부채·영업이익·이자비용을 입력하거나 재무제표를 올리면 재무안정성과 차입상환 능력을 분석합니다.</div></div>'}
       <table class="fin-table"><thead><tr><th style="width:16%;">등급</th><th>설명</th></tr></thead><tbody>
         <tr><td style="font-weight:700;color:#0F6E56;">우수</td><td class="cat">영업이익으로 이자비용을 부담할 능력이 충분하고, 단기간 내 차입상환이 가능한 수준입니다.</td></tr>
         <tr><td style="font-weight:700;color:#0F6E56;">양호</td><td class="cat">이자비용 부담 능력이 양호하고, 차입상환에 필요한 기간이 적절한 수준입니다.</td></tr>
