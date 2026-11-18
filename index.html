@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="피나" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+
 <title>FinAnalyzer(피나) — AI 재무제표 분석</title>
 <meta name="description" content="재무제표 이미지 한 장으로 부채비율·자본잠식·이자보상배수를 AI가 자동 계산하고, 정책자금 연계 여부까지 확인할 수 있는 AI 재무제표 분석 서비스, 피나(FinAnalyzer)." />
 
@@ -6277,6 +6278,41 @@ window.addEventListener("DOMContentLoaded", () => {
     showPage("landing");
   }
 });
+</script>
+
+<!-- 카카오톡 안에서 열렸을 때 안내 (자동 전환이 안 된 경우) -->
+<div id="inAppNotice" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(10,30,60,.92);color:#fff;padding:32px 24px;text-align:center;font-size:15px;line-height:1.7;">
+  <img src="icons/icon-192.png" alt="" style="width:72px;height:72px;border-radius:18px;margin:12vh auto 18px;display:block;" />
+  <b style="font-size:18px;">다른 브라우저에서 열어 주세요</b>
+  <p id="inAppNoticeText" style="margin-top:10px;color:#dbe6f3;"></p>
+  <button type="button" id="inAppOpenBtn" style="margin-top:18px;background:#FFD166;color:#1a1a18;border:none;border-radius:10px;padding:12px 22px;font-size:15px;font-weight:700;">브라우저로 열기</button>
+  <div><button type="button" onclick="document.getElementById('inAppNotice').style.display='none'" style="margin-top:14px;background:none;border:none;color:#9fb6d1;font-size:13px;text-decoration:underline;">그냥 여기서 볼게요</button></div>
+</div>
+<script>
+// 카카오톡·라인 등 앱 안의 브라우저로 열면 앱 설치·로그인 유지가 안 되므로 기본 브라우저로 자동으로 다시 연다
+(function () {
+  var ua = navigator.userAgent || "", url = location.href;
+  var isAndroid = /Android/i.test(ua);
+  if (/\bLine\//i.test(ua) && !/openExternalBrowser=1/.test(url)) {
+    location.href = url + (url.indexOf("?") >= 0 ? "&" : "?") + "openExternalBrowser=1";
+    return;
+  }
+  if (!/KAKAOTALK/i.test(ua)) return;
+  var external = "kakaotalk://web/openExternal?url=" + encodeURIComponent(url);
+  if (isAndroid) {
+    // 안드로이드: 크롬으로 열기 (크롬이 없으면 기본 브라우저로)
+    location.href = "intent://" + url.replace(/^https?:\/\//, "") + "#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + encodeURIComponent(url) + ";end";
+    setTimeout(function () { if (document.visibilityState === "visible") location.href = external; }, 1200);
+  } else {
+    // 아이폰: 사파리로 열기
+    location.href = external;
+  }
+  document.getElementById("inAppNoticeText").innerHTML = isAndroid
+    ? "카카오톡 안에서는 앱 설치가 되지 않아요.<br>오른쪽 위 <b>⋮</b> → <b>다른 브라우저로 열기</b>를 눌러 주세요."
+    : "카카오톡 안에서는 앱 설치가 되지 않아요.<br>오른쪽 아래 <b>⋯</b> → <b>Safari로 열기</b>를 눌러 주세요.";
+  document.getElementById("inAppOpenBtn").onclick = function () { location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(url); };
+  setTimeout(function () { if (document.visibilityState === "visible") document.getElementById("inAppNotice").style.display = "block"; }, 2500);
+})();
 </script>
 
 <!-- 앱 설치 안내 (휴대폰, 아직 설치 안 했을 때만) -->
