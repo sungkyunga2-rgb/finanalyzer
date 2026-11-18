@@ -1404,7 +1404,7 @@
     <!-- 환불 신청 -->
     <div class="card hidden" id="myinfo-refund-card">
       <div class="card-title" style="margin-bottom:.5rem;">환불 신청</div>
-      <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;">결제일로부터 7일 이내이면서 분석 보고서를 생성하기 전인 경우 환불 신청이 가능합니다. 구독 해지는 [구독] 화면에서 직접 하실 수 있습니다. (<a href="#" onclick="showPage('terms')" style="color:var(--accent);">이용약관 제4조 참고</a>)</p>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:1rem;">결제일로부터 7일 이내이면서 분석을 한 번도 이용하지 않은 경우에만 환불 신청이 가능합니다. 분석을 1회 이상 이용한 경우 환불 및 부분환불은 불가합니다. 구독 해지는 [구독] 화면에서 직접 하실 수 있습니다. (<a href="#" onclick="showPage('terms')" style="color:var(--accent);">이용약관 제4조 참고</a>)</p>
       <div class="field">
         <label>환불 사유</label>
         <textarea id="refund-reason" rows="3" placeholder="환불을 원하시는 사유를 입력해주세요." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;"></textarea>
@@ -1509,7 +1509,7 @@
         <div style="font-weight:600;color:var(--text);margin-bottom:.4rem;">정기결제(자동결제) 안내</div>
         · 구독을 시작하면 등록하신 카드로 <strong id="sub-notice-first">선택한 요금제</strong>가 <strong>즉시 결제</strong>되고, 이후 <strong>매월 같은 날 자동 결제</strong>됩니다.<br>
         · 구독은 이 화면에서 <strong>언제든 해지</strong>할 수 있으며, 해지하면 이미 결제한 이용기간 종료일까지 이용할 수 있고 그 이후에는 결제되지 않습니다.<br>
-        · 결제 후 환불은 <a href="#" onclick="showPage('terms')" style="color:var(--accent);">이용약관</a>에 따릅니다.<br>
+        · 결제 후 분석을 <strong>1회 이상 이용하면 환불 및 부분환불이 불가</strong>합니다. 자세한 내용은 <a href="#" onclick="showPage('terms')" style="color:var(--accent);">이용약관</a> 제4조를 확인해주세요.<br>
         · 카드는 결제대행사(포트원·KPN)에 등록되며 피나 서버에는 카드번호가 저장되지 않습니다.
         <label style="display:flex;gap:8px;align-items:flex-start;margin-top:.8rem;cursor:pointer;color:var(--text);font-size:13px;">
           <input type="checkbox" id="sub-agree" onchange="updateSubButton()" style="margin-top:3px;" />
@@ -1559,7 +1559,7 @@
       <p><strong>제4조 (해지 및 환불)</strong><br/>
       ① (해지) 이용자는 서비스 내 [구독] 화면에서 언제든지 구독을 해지할 수 있습니다. 해지하면 다음 결제부터 청구되지 않으며, 이미 결제한 이용기간이 끝나는 날까지는 서비스를 계속 이용할 수 있습니다. 해지 후에도 이용기간이 남아 있는 동안에는 [해지 취소]로 구독을 유지할 수 있습니다.<br/><br/>
       ② (청약철회) 이용자는 결제일로부터 <strong>7일 이내</strong>에 청약철회(환불)를 요청할 수 있습니다. 다만 서비스는 결제 즉시 이용할 수 있는 디지털 서비스이므로, 분석 보고서(진단 결과)가 1건이라도 생성된 경우에는 서비스 이용이 개시된 것으로 보아 해당 결제분의 환불이 제한됩니다.<br/><br/>
-      ③ (중도 해지 시 환불) 청약철회 기간이 지난 후 또는 서비스를 이용한 후에 해지하는 경우, 이미 결제된 이용기간에 대한 요금은 일할 계산하여 환불하지 않습니다. 다만 서비스 장애 등 회사의 귀책사유로 정상적인 이용이 불가능했던 경우에는 이용하지 못한 기간에 해당하는 금액을 환불하거나 이용기간을 연장합니다.<br/><br/>
+      ③ (이용 후 환불 불가) 결제 후 분석을 <strong>1회 이상</strong> 진행한 경우, 해당 결제분에 대한 <strong>환불 및 부분환불(남은 기간의 일할 환불 포함)은 불가</strong>합니다. 청약철회 기간이 지난 후 해지하는 경우에도 이미 결제된 이용기간에 대한 요금은 환불하지 않습니다. 다만 서비스 장애 등 회사의 귀책사유로 정상적인 이용이 불가능했던 경우에는 이용하지 못한 기간에 해당하는 금액을 환불하거나 이용기간을 연장합니다.<br/><br/>
       ④ (결제 오류) 이용자가 동의한 금액과 다르게 결제되었거나 해지 후에도 결제된 경우, 회사는 확인 후 해당 금액을 전액 환불합니다.<br/><br/>
       ⑤ (신청 방법 및 처리) 환불은 서비스 내 [내 정보] &gt; [환불 신청] 메뉴 또는 이메일(cngpartners123@gmail.com)로 결제자명·결제일·환불 사유를 기재하여 요청할 수 있습니다. 환불 금액은 이용자가 실제로 결제한 금액을 기준으로 합니다. 회사는 접수일로부터 영업일 기준 3~7일 이내에 처리 결과를 안내하며, 환불이 승인된 경우 결제수단에 따라 실제 환급까지 추가로 3~5영업일이 소요될 수 있습니다.<br/><br/>
       ⑥ (기존 충전 이용권) 구독 도입 전에 충전한 이용권의 잔여 크레딧은 구독이 없는 동안 기존과 같이 분석에 사용할 수 있으며, 그 환불은 충전일로부터 7일 이내이면서 사용하지 않은 금액에 한하여 가능합니다.<br/><br/>
