@@ -189,3 +189,12 @@ class Subscription(Base):
     last_check_at       = Column(DateTime, nullable=True)   # 갱신 확인을 마지막으로 시도한 시각 (과도한 조회 방지)
     cancel_requested_at = Column(DateTime, nullable=True)
     created_at          = Column(DateTime, default=datetime.utcnow)
+
+
+class CertRelay(Base):
+    """공동인증서 PC → 휴대폰 전달용 임시 보관 (브라우저에서 암호화된 채로만 저장, 3분 뒤/수령 즉시 삭제)"""
+    __tablename__ = "cert_relays"
+    rid = Column(String(64), primary_key=True)          # 12자리 번호의 해시 (번호 자체는 서버가 모름)
+    user_id = Column(Integer, index=True, nullable=False)
+    blob = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=False)

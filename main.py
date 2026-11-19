@@ -1446,6 +1446,74 @@ async def codef_hometax_cert(body: CodefCertBody, user: models.User = Depends(ge
     raise HTTPException(status_code=400, detail=f"공동인증서 인증에 실패했습니다: {msg}")
 
 
+# ── 공동인증서 PC → 휴대폰 보내기 ──
+#  휴대폰이 12자리 번호를 만들고 그 해시(rid)만 서버에 등록한다. PC는 같은 번호로 브라우저에서 암호화(AES-GCM)해 올린다.
+#  서버는 번호를 모르므로 내용을 풀 수 없고, 3분이 지나거나 휴대폰이 받으면 바로 지운다. 같은 피나 계정끼리만 주고받는다.
+CERT_RELAY_TTL = 180
+
+
+class CertRelayBody(BaseModel):
+    rid: str
+    blob: str = ""
+
+
+def _relay_rid(v):
+    v = (v or "").strip().lower()
+    if not _re2.fullmatch(r"[0-9a-f]{64}", v):
+        raise HTTPException(status_code=400, detail="인증번호가 올바르지 않습니다.")
+    return v
+
+
+def _relay_purge(db):
+    db.query(models.CertRelay).filter(models.CertRelay.expires_at < datetime.utcnow()).delete()
+    db.commit()
+
+
+@app.post("/codef/cert-relay/open")
+def cert_relay_open(body: CertRelayBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """휴대폰: 받을 준비 (번호 해시 등록)"""
+    rid = _relay_rid(body.rid)
+    _relay_purge(db)
+    db.query(models.CertRelay).filter(models.CertRelay.user_id == user.id).delete()   # 이전 대기 건 정리
+    db.add(models.CertRelay(rid=rid, user_id=user.id, expires_at=datetime.utcnow() + timedelta(seconds=CERT_RELAY_TTL)))
+    db.commit()
+    return {"ok": True, "expires_in": CERT_RELAY_TTL}
+
+
+@app.post("/codef/cert-relay/send")
+def cert_relay_send(body: CertRelayBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """PC: 암호화된 인증서 올리기"""
+    rid = _relay_rid(body.rid)
+    if not body.blob or len(body.blob) > 300_000:
+        raise HTTPException(status_code=400, detail="인증서 파일을 확인해주세요.")
+    row = db.query(models.CertRelay).filter(models.CertRelay.rid == rid).first()
+    if not row or row.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=404, detail="인증번호가 맞지 않거나 시간이 지났어요. 휴대폰에 표시된 번호를 다시 확인해 주세요.")
+    if row.user_id != user.id:
+        raise HTTPException(status_code=403, detail="휴대폰과 같은 피나 계정으로 로그인해 주세요.")
+    if row.blob:
+        raise HTTPException(status_code=409, detail="이미 인증서를 보냈어요. 휴대폰을 확인해 주세요.")
+    row.blob = body.blob
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/codef/cert-relay/take")
+def cert_relay_take(body: CertRelayBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """휴대폰: 도착했는지 확인 → 받으면 즉시 삭제"""
+    rid = _relay_rid(body.rid)
+    row = db.query(models.CertRelay).filter(models.CertRelay.rid == rid, models.CertRelay.user_id == user.id).first()
+    if not row or row.expires_at < datetime.utcnow():
+        if row:
+            db.delete(row); db.commit()
+        return {"status": "expired"}
+    if not row.blob:
+        return {"status": "waiting"}
+    blob = row.blob
+    db.delete(row); db.commit()
+    return {"status": "done", "blob": blob}
+
+
 @app.get("/codef/status")
 def codef_status():
     return {"ready": _codef_ready(), "products": [k for k, v in CODEF_HOMETAX_PRODUCTS.items() if v]}

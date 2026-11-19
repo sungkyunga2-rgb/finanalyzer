@@ -456,6 +456,24 @@
   .ht-cert-ic { font-size: 28px; margin-bottom: 4px; }
   .ht-cert-main { font-size: 12.5px; color: var(--text2); line-height: 1.55; }
   .ht-cert-hint { font-size: 11px; color: var(--text3); line-height: 1.6; margin: 8px 0 4px; word-break: break-all; }
+  .ht-cert-saved { display: flex; align-items: center; gap: 10px; border: 1.5px solid #1D9E75; background: #E1F5EE; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .ht-cert-saved-ic { font-size: 24px; }
+  .ht-cert-saved-name { font-size: 14px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ht-cert-saved-sub { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+  .ht-cert-saved-btns { display: flex; flex-direction: column; gap: 4px; }
+  .ht-cert-saved-btns button { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 7px; font-size: 11.5px; padding: 4px 8px; cursor: pointer; font-family: inherit; color: var(--text2); white-space: nowrap; }
+  .ht-cert-move { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 4px; }
+  .ht-cert-move button { border: 1px solid #b9cfe8; background: #F3F8FD; color: #185FA5; border-radius: 10px; padding: 9px 4px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .ht-relay-flow { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0 14px; font-size: 13px; font-weight: 700; color: var(--text2); }
+  .ht-relay-flow span { border: 1.5px solid #b9cfe8; border-radius: 999px; padding: 8px 14px; background: #F3F8FD; }
+  .ht-relay-flow i { font-style: normal; color: #185FA5; letter-spacing: 1px; }
+  .ht-relay-code { font-size: 30px; font-weight: 800; letter-spacing: 2px; text-align: center; color: var(--text); border: 1.5px solid var(--border-strong); border-radius: 12px; padding: 12px 4px; font-variant-numeric: tabular-nums; }
+  .ht-relay-timer { text-align: center; font-size: 12.5px; color: var(--text2); margin: 8px 0 10px; }
+  .ht-relay-timer b { color: #185FA5; }
+  .ht-relay-steps { font-size: 12.5px; color: var(--text2); line-height: 1.7; padding-left: 20px; margin: 0 0 14px; }
+  .ht-relay-in { display: flex; align-items: center; gap: 6px; }
+  .ht-relay-in input { text-align: center; font-size: 18px; font-weight: 700; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
+  .ht-relay-in span { color: var(--text3); font-weight: 700; }
   .ht-cert-hint code { font-size: 10.5px; background: var(--surface2, #f1f4f8); padding: 1px 4px; border-radius: 4px; }
   .ht-auth .btn-full { margin-top: 10px; }
   .ht-doc-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -3630,12 +3648,18 @@ function htAuthOpen() {
   const rep = document.getElementById("ht-rep");
   if (rep && rep.value && !document.getElementById("htAuthName").value) document.getElementById("htAuthName").value = rep.value;
   htCertDropInit();
-  htAuthTab(htAuthState.tab || "simple");
+  htRelayInputsInit();
+  htCertState.useSaved = true;
+  htCertFiles = { type: "", cert: "", key: "" };
+  htCertRenderSaved();
+  htAuthTab(htAuthState.tab || (htSavedCert() ? "cert" : "simple"));
   htAuthShow(1);
   document.getElementById("htAuthModal").style.display = "flex";
 }
 function htAuthClose() {
   clearInterval(htAuthState.timer);
+  htRelayStop();
+  htRelay.files = null;
   const pw = document.getElementById("htCertPw"); if (pw) pw.value = "";
   htCertFiles = { type: "", cert: "", key: "" };
   const cm = document.getElementById("htCertMain"); if (cm) cm.innerHTML = "signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요";
@@ -3661,30 +3685,218 @@ function htFileB64(file) {
     r.readAsDataURL(file);
   });
 }
-async function htCertPick(files) {
+// 선택한 파일 → { type, cert, key } (der+key 두 파일은 나눠 골라도 이어 붙인다)
+async function htReadCertFiles(files, prev) {
   files = Array.from(files || []);
   const byExt = ext => files.find(f => f.name.toLowerCase().endsWith(ext));
   const pfx = byExt(".pfx") || byExt(".p12"), der = byExt(".der"), key = byExt(".key");
+  if (pfx) return { type: "pfx", cert: await htFileB64(pfx), key: "", label: "✅ " + pfx.name };
+  if (!der && !key) throw new Error("signCert.der·signPri.key 또는 .pfx 파일을 선택해 주세요.");
+  const o = prev && prev.type === "1" ? Object.assign({}, prev) : { type: "1", cert: "", key: "" };
+  if (der) o.cert = await htFileB64(der);
+  if (key) o.key = await htFileB64(key);
+  o.label = (o.cert && o.key) ? "✅ signCert.der + signPri.key"
+    : `${o.cert ? "✅ signCert.der" : "✅ signPri.key"}<br>나머지 ${o.cert ? "signPri.key" : "signCert.der"} 파일도 선택해 주세요`;
+  return o;
+}
+function htCertReady(o) { return !!(o && o.cert && (o.type === "pfx" || o.key)); }
+
+// 인증서(DER)에서 소유자 이름(CN) 꺼내기 — 마지막 CN이 소유자
+function htCertName(b64) {
+  try {
+    const bin = atob(b64), n = bin.length;
+    let name = "";
+    for (let i = 0; i < n - 6; i++) {
+      if (bin.charCodeAt(i) === 0x06 && bin.charCodeAt(i + 1) === 0x03 && bin.charCodeAt(i + 2) === 0x55 && bin.charCodeAt(i + 3) === 0x04 && bin.charCodeAt(i + 4) === 0x03) {
+        const len = bin.charCodeAt(i + 6);
+        if (len < 128) {
+          const bytes = Uint8Array.from(bin.slice(i + 7, i + 7 + len), c => c.charCodeAt(0));
+          name = new TextDecoder().decode(bytes);
+        }
+      }
+    }
+    return name.replace(/\(\)\s*\d*.*$/, "").replace(/\d{10,}$/, "").trim();   // "홍길동()0012…" → "홍길동"
+  } catch (e) { return ""; }
+}
+
+// 이 기기(브라우저)에 보관하는 인증서 — 계정별
+function htCertStoreKey() { return "fa_saved_cert:" + (userEmail || "").toLowerCase(); }
+function htSavedCert() {
+  try { const o = JSON.parse(localStorage.getItem(htCertStoreKey()) || "null"); return htCertReady(o) ? o : null; } catch (e) { return null; }
+}
+function htSaveCert(o) {
+  const name = (o.type === "1" && htCertName(o.cert)) || (o.type === "pfx" ? "PFX 인증서" : "공동인증서");
+  const d = new Date();
+  const saved = { type: o.type, cert: o.cert, key: o.key || "", name, saved_at: `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}` };
+  try { localStorage.setItem(htCertStoreKey(), JSON.stringify(saved)); return true; } catch (e) { return false; }
+}
+function htCertForget() {
+  try { localStorage.removeItem(htCertStoreKey()); } catch (e) {}
+  htCertFiles = { type: "", cert: "", key: "" };
+  htCertRenderSaved();
+  toast("보관된 인증서를 이 기기에서 삭제했어요.");
+}
+function htCertUseOther() {
+  htCertFiles = { type: "", cert: "", key: "" };
+  htCertState.useSaved = false;
+  htCertRenderSaved();
+}
+let htCertState = { useSaved: true };
+function htCertRenderSaved() {
+  const sv = htSavedCert();
+  const use = !!sv && htCertState.useSaved;
+  document.getElementById("htCertSaved").style.display = use ? "flex" : "none";
+  document.getElementById("htCertPickWrap").style.display = use ? "none" : "";
+  if (use) {
+    htCertFiles = { type: sv.type, cert: sv.cert, key: sv.key };
+    document.getElementById("htCertSavedName").textContent = sv.name || "공동인증서";
+    document.getElementById("htCertSavedSub").textContent = `이 기기에 보관된 인증서 · ${sv.saved_at || ""} 저장`;
+  }
+}
+
+async function htCertPick(files) {
   const main = document.getElementById("htCertMain"), drop = document.getElementById("htCertDrop");
   try {
-    if (pfx) {
-      htCertFiles = { type: "pfx", cert: await htFileB64(pfx), key: "" };
-      main.innerHTML = `✅ ${pfx.name}`;
-    } else if (der || key) {
-      if (der) htCertFiles.cert = await htFileB64(der);
-      if (key) htCertFiles.key = await htFileB64(key);
-      htCertFiles.type = "1";
-      const done = htCertFiles.cert && htCertFiles.key;
-      main.innerHTML = done ? "✅ signCert.der + signPri.key" : `${der ? "✅ signCert.der" : "✅ signPri.key"}<br>나머지 ${der ? "signPri.key" : "signCert.der"} 파일도 선택해 주세요`;
-    } else {
-      return toast("signCert.der·signPri.key 또는 .pfx 파일을 선택해 주세요.");
-    }
+    htCertFiles = await htReadCertFiles(files, htCertFiles);
   } catch (e) { return toast(e.message); }
-  drop.classList.toggle("ok", !!(htCertFiles.cert && (htCertFiles.type === "pfx" || htCertFiles.key)));
+  main.innerHTML = htCertFiles.label;
+  drop.classList.toggle("ok", htCertReady(htCertFiles));
 }
+
+// ── PC → 휴대폰 인증서 보내기 (12자리 번호로 브라우저에서 암호화, 서버는 번호의 해시만 앎) ──
+let htRelay = { code: "", rid: "", timer: null, poll: null, files: null };
+async function htRelayKeys(code) {
+  const enc = new TextEncoder();
+  const ridBuf = await crypto.subtle.digest("SHA-256", enc.encode("fina-cert-relay:" + code));
+  const rid = Array.from(new Uint8Array(ridBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  const base = await crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: enc.encode("fina-cert-relay-salt"), iterations: 150000, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  return { rid, key };
+}
+function htB64(buf) { let s = ""; new Uint8Array(buf).forEach(b => s += String.fromCharCode(b)); return btoa(s); }
+function htUnB64(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
+function htRelayStop() { clearInterval(htRelay.timer); clearInterval(htRelay.poll); htRelay.timer = htRelay.poll = null; }
+
+async function htRelayOpen() {   // 휴대폰: 번호 만들고 기다리기
+  if (!window.crypto || !crypto.subtle) return toast("이 브라우저에서는 인증서 가져오기를 쓸 수 없어요. 최신 브라우저로 열어주세요.");
+  htRelayStop();
+  const r = new Uint32Array(3); crypto.getRandomValues(r);
+  const code = Array.from(r, x => String(x % 10000).padStart(4, "0")).join("");
+  const { rid, key } = await htRelayKeys(code);
+  try { await api("POST", "/codef/cert-relay/open", { rid }); } catch (e) { return toast(e.message); }
+  htRelay.code = code; htRelay.rid = rid; htRelay.key = key;
+  document.getElementById("htRelayCode").textContent = code.replace(/(\d{4})(\d{4})(\d{4})/, "$1-$2-$3");
+  document.getElementById("htRelayStatus").textContent = "PC에서 보내기를 기다리는 중…";
+  htAuthShow(4);
+  let left = 180;
+  const tEl = document.getElementById("htRelayTimer");
+  tEl.textContent = "3:00";
+  htRelay.timer = setInterval(() => {
+    left -= 1;
+    tEl.textContent = `${Math.floor(Math.max(left, 0) / 60)}:${String(Math.max(left, 0) % 60).padStart(2, "0")}`;
+    if (left <= 0) { htRelayStop(); document.getElementById("htRelayStatus").textContent = "시간이 지났어요. 인증번호를 다시 만들어 주세요."; }
+  }, 1000);
+  let busy = false;
+  htRelay.poll = setInterval(async () => {
+    if (busy || document.getElementById("htAuthModal").style.display === "none") return;
+    busy = true;
+    try {
+      const res = await api("POST", "/codef/cert-relay/take", { rid });
+      if (res.status === "done") {
+        htRelayStop();
+        const raw = htUnB64(res.blob);
+        const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12) }, key, raw.slice(12));
+        const o = JSON.parse(new TextDecoder().decode(plain));
+        if (!htCertReady(o)) throw new Error("받은 인증서를 읽지 못했어요.");
+        htCertFiles = { type: o.type, cert: o.cert, key: o.key || "" };
+        const ok = htSaveCert(htCertFiles);
+        htCertState.useSaved = true;
+        htCertRenderSaved();
+        if (!ok) {   // 보관이 막힌 환경(사생활 보호 모드 등) — 이번 한 번만 사용
+          htCertFiles = { type: o.type, cert: o.cert, key: o.key || "" };
+          document.getElementById("htCertMain").innerHTML = "✅ PC에서 받은 인증서 (이번만 사용)";
+          document.getElementById("htCertDrop").classList.add("ok");
+        }
+        htAuthTab("cert"); htAuthShow(1);
+        toast(ok ? "인증서를 가져왔어요. 비밀번호를 입력하고 불러오기를 눌러주세요." : "인증서를 가져왔어요. (이 브라우저에서는 보관이 안 돼서 이번만 사용돼요)");
+        document.getElementById("htCertPw").focus();
+      } else if (res.status === "expired") {
+        htRelayStop();
+        document.getElementById("htRelayStatus").textContent = "시간이 지났어요. 인증번호를 다시 만들어 주세요.";
+      }
+    } catch (e) {
+      htRelayStop(); toast(e.message || "인증서를 받지 못했어요. 다시 시도해 주세요.");
+    } finally { busy = false; }
+  }, 2500);
+}
+
+function htRelaySendOpen() {   // PC: 보내기 화면
+  htRelay.files = null;
+  ["htRelayIn1", "htRelayIn2", "htRelayIn3"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("htRelayMain").innerHTML = "signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요";
+  document.getElementById("htRelayDrop").classList.remove("ok");
+  document.getElementById("htRelayFiles").value = "";
+  htAuthShow(5);
+  document.getElementById("htRelayIn1").focus();
+}
+async function htRelayPick(files) {
+  try { htRelay.files = await htReadCertFiles(files, htRelay.files); } catch (e) { return toast(e.message); }
+  document.getElementById("htRelayMain").innerHTML = htRelay.files.label;
+  document.getElementById("htRelayDrop").classList.toggle("ok", htCertReady(htRelay.files));
+}
+async function htRelaySend() {
+  const code = ["htRelayIn1", "htRelayIn2", "htRelayIn3"].map(id => document.getElementById(id).value.replace(/\D/g, "")).join("");
+  if (code.length !== 12) return toast("휴대폰에 표시된 인증번호 12자리를 입력해 주세요.");
+  if (!htCertReady(htRelay.files)) return toast("보낼 인증서 파일을 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
+  if (!window.crypto || !crypto.subtle) return toast("이 브라우저에서는 보내기를 쓸 수 없어요. 최신 브라우저로 열어주세요.");
+  const btn = document.getElementById("htRelaySendBtn");
+  btn.disabled = true; btn.textContent = "보내는 중...";
+  try {
+    const { rid, key } = await htRelayKeys(code);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const data = new TextEncoder().encode(JSON.stringify({ type: htRelay.files.type, cert: htRelay.files.cert, key: htRelay.files.key || "" }));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data));
+    const blob = new Uint8Array(12 + ct.length); blob.set(iv); blob.set(ct, 12);
+    await api("POST", "/codef/cert-relay/send", { rid, blob: htB64(blob) });
+    htRelay.files = null;
+    htAuthShow(1);
+    toast("휴대폰으로 인증서를 보냈어요. 휴대폰 화면을 확인해 주세요.");
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "보내기";
+  }
+}
+function htRelayInputsInit() {
+  const ids = ["htRelayIn1", "htRelayIn2", "htRelayIn3"];
+  ids.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (!el || el.__init) return;
+    el.__init = true;
+    el.addEventListener("input", () => {
+      let v = el.value.replace(/\D/g, "");
+      if (v.length > 4 && i === 0) {   // 12자리를 한 번에 붙여넣은 경우
+        const all = v.slice(0, 12);
+        ids.forEach((x, k) => document.getElementById(x).value = all.slice(k * 4, k * 4 + 4));
+        document.getElementById(ids[Math.min(2, Math.floor((all.length - 1) / 4))]).focus();
+        return;
+      }
+      el.value = v.slice(0, 4);
+      if (el.value.length === 4 && i < 2) document.getElementById(ids[i + 1]).focus();
+    });
+  });
+  const d = document.getElementById("htRelayDrop");
+  if (d && !d.__init) {
+    d.__init = true;
+    ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("drag"); }));
+    ["dragleave", "drop"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove("drag"); }));
+    d.addEventListener("drop", e => htRelayPick(e.dataTransfer.files));
+  }
+}
+
 async function htCertStart() {
-  const ready = htCertFiles.cert && (htCertFiles.type === "pfx" || htCertFiles.key);
-  if (!ready) return toast("인증서 파일을 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
+  if (!htCertReady(htCertFiles)) return toast("인증서 파일을 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
   const pwEl = document.getElementById("htCertPw");
   if (!pwEl.value) return toast("인증서 비밀번호를 입력해주세요.");
   if (!document.getElementById("htCertAgree").checked) return toast("인증서 제공에 동의해 주세요.");
@@ -3697,6 +3909,11 @@ async function htCertStart() {
       business_number: (document.getElementById("ht-biz") || {}).value || "",
     });
     pwEl.value = "";
+    const keep = document.getElementById("htCertKeep");
+    if (!htCertState.useSaved || !htSavedCert()) {
+      if (keep && keep.checked && document.getElementById("htCertPickWrap").style.display !== "none") htSaveCert(htCertFiles);
+    }
+    htCertState.useSaved = true;
     htAuthApply(res);
   } catch (e) {
     toast(e.message);
@@ -3715,7 +3932,7 @@ function htCertDropInit() {
 }
 
 function htAuthShow(n) {
-  [1, 2, 3].forEach(i => document.getElementById("htAuthStep" + i).style.display = i === n ? "" : "none");
+  [1, 2, 3, 4, 5].forEach(i => document.getElementById("htAuthStep" + i).style.display = i === n ? "" : "none");
 }
 function htAuthBack() { clearInterval(htAuthState.timer); htAuthState.pending = null; htAuthShow(1); }
 
@@ -6741,16 +6958,28 @@ window.addEventListener("DOMContentLoaded", () => {
       <button type="button" class="btn btn-primary btn-full" id="htAuthStartBtn" onclick="htAuthStart()">인증 요청하기</button>
       </div>
       <div id="htAuthCertBox" style="display:none;">
-        <p class="ht-auth-desc">대표자(법인은 법인) 명의 공동인증서(구 공인인증서) 파일을 올리면 홈택스 자료로 채워드려요. <b>PC에서 이용하시는 걸 권장해요.</b></p>
-        <div class="ht-auth-label">인증서 파일</div>
-        <label class="ht-cert-drop" id="htCertDrop">
-          <input type="file" id="htCertFiles" multiple accept=".der,.key,.pfx,.p12" onchange="htCertPick(this.files)" />
-          <div class="ht-cert-ic">📁</div>
-          <div class="ht-cert-main" id="htCertMain">signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요</div>
-        </label>
-        <p class="ht-cert-hint">인증서 위치 (Windows): <code>C:\Users\사용자\AppData\LocalLow\NPKI\yessign\USER\…</code><br>Mac: <code>~/Library/Preferences/NPKI/…</code> · 인증서 폴더 안의 두 파일을 함께 선택하세요.</p>
+        <p class="ht-auth-desc">대표자(법인은 법인) 명의 공동인증서(구 공인인증서)로 홈택스 자료를 채워드려요. 인증서가 PC에만 있으면 <b>PC에서 가져오기</b>로 휴대폰에 옮길 수 있어요.</p>
+        <div id="htCertSaved" class="ht-cert-saved" style="display:none;">
+          <div class="ht-cert-saved-ic">🔒</div>
+          <div style="flex:1;min-width:0;"><div class="ht-cert-saved-name" id="htCertSavedName"></div><div class="ht-cert-saved-sub" id="htCertSavedSub">이 기기에 보관된 인증서</div></div>
+          <div class="ht-cert-saved-btns"><button type="button" onclick="htCertUseOther()">다른 인증서</button><button type="button" onclick="htCertForget()">삭제</button></div>
+        </div>
+        <div id="htCertPickWrap">
+          <div class="ht-auth-label">인증서 파일</div>
+          <label class="ht-cert-drop" id="htCertDrop">
+            <input type="file" id="htCertFiles" multiple accept=".der,.key,.pfx,.p12" onchange="htCertPick(this.files)" />
+            <div class="ht-cert-ic">📁</div>
+            <div class="ht-cert-main" id="htCertMain">signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요</div>
+          </label>
+          <p class="ht-cert-hint">인증서 위치 (Windows): <code>C:\Users\사용자\AppData\LocalLow\NPKI\yessign\USER\…</code><br>Mac: <code>~/Library/Preferences/NPKI/…</code> · 인증서 폴더 안의 두 파일을 함께 선택하세요.</p>
+          <label class="ht-auth-check"><input type="checkbox" id="htCertKeep" checked /> 이 기기에 인증서 보관하기 (다음부터 비밀번호만 입력)</label>
+        </div>
+        <div class="ht-cert-move">
+          <button type="button" onclick="htRelayOpen()">📲 PC에서 가져오기</button>
+          <button type="button" onclick="htRelaySendOpen()">📤 휴대폰으로 보내기</button>
+        </div>
         <label class="ht-auth-grid" style="grid-template-columns:1fr;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">인증서 비밀번호</span><input id="htCertPw" type="password" class="ht-auth-input" autocomplete="off" placeholder="인증서 비밀번호" /></label>
-        <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스 자료 조회를 위해 인증서를 인증 대행사(CODEF)에 제공하는 데 동의합니다. 인증서와 비밀번호는 조회에만 쓰고 저장하지 않아요.</label>
+        <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스 자료 조회를 위해 인증서를 인증 대행사(CODEF)에 제공하는 데 동의합니다. 비밀번호는 저장하지 않아요.</label>
         <button type="button" class="btn btn-primary btn-full" id="htCertBtn" onclick="htCertStart()">공동인증서로 불러오기</button>
       </div>
     </div>
@@ -6761,6 +6990,44 @@ window.addEventListener("DOMContentLoaded", () => {
       <div id="htAuthTimer" style="font-size:22px;font-weight:800;color:#185FA5;margin:6px 0 12px;">4:30</div>
       <button type="button" class="btn btn-primary btn-full" id="htAuthDoneBtn" onclick="htAuthComplete()">인증 완료했어요</button>
       <button type="button" class="btn btn-full" style="margin-top:8px;" onclick="htAuthBack()">처음으로</button>
+    </div>
+    <div id="htAuthStep4" style="display:none;">
+      <div class="ht-auth-title">📲 PC에서 인증서 가져오기</div>
+      <div class="ht-relay-flow"><span>💻 PC</span><i>┈┈›</i><span>📱 이 기기</span></div>
+      <div class="ht-auth-label" style="color:#185FA5;">인증번호</div>
+      <div class="ht-relay-code" id="htRelayCode">0000-0000-0000</div>
+      <div class="ht-relay-timer">남은 시간 <b id="htRelayTimer">3:00</b> · <span id="htRelayStatus">PC에서 보내기를 기다리는 중…</span></div>
+      <ol class="ht-relay-steps">
+        <li>PC에서 피나(<b>같은 계정</b>)에 로그인합니다.</li>
+        <li>원클릭 분석 → <b>본인 인증하기</b> → <b>공동인증서</b> 탭을 엽니다.</li>
+        <li><b>📤 휴대폰으로 보내기</b>를 누르고 위 인증번호 12자리를 입력합니다.</li>
+        <li>보낼 인증서 파일을 선택하고 <b>보내기</b>를 누르면 이 기기에 저장돼요.</li>
+      </ol>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn" style="flex:1;" onclick="htRelayStop();htAuthShow(1)">취소</button>
+        <button type="button" class="btn btn-primary" style="flex:2;" onclick="htRelayOpen()">인증번호 재생성</button>
+      </div>
+    </div>
+    <div id="htAuthStep5" style="display:none;">
+      <div class="ht-auth-title">📤 휴대폰으로 인증서 보내기</div>
+      <p class="ht-auth-desc">휴대폰 피나에서 <b>공동인증서 → 📲 PC에서 가져오기</b>를 누르면 나오는 인증번호 12자리를 입력하세요. 휴대폰과 같은 피나 계정으로 로그인되어 있어야 해요.</p>
+      <div class="ht-auth-label">인증번호</div>
+      <div class="ht-relay-in">
+        <input id="htRelayIn1" class="ht-auth-input" inputmode="numeric" maxlength="4" placeholder="0000" />
+        <span>-</span><input id="htRelayIn2" class="ht-auth-input" inputmode="numeric" maxlength="4" placeholder="0000" />
+        <span>-</span><input id="htRelayIn3" class="ht-auth-input" inputmode="numeric" maxlength="4" placeholder="0000" />
+      </div>
+      <div class="ht-auth-label" style="margin-top:12px;">보낼 인증서</div>
+      <label class="ht-cert-drop" id="htRelayDrop">
+        <input type="file" id="htRelayFiles" multiple accept=".der,.key,.pfx,.p12" onchange="htRelayPick(this.files)" />
+        <div class="ht-cert-ic">📁</div>
+        <div class="ht-cert-main" id="htRelayMain">signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요</div>
+      </label>
+      <p class="ht-cert-hint">인증서 위치 (Windows): <code>C:\Users\사용자\AppData\LocalLow\NPKI\yessign\USER\…</code> · Mac: <code>~/Library/Preferences/NPKI/…</code><br>인증서는 이 PC에서 인증번호로 잠근 뒤 보내져요. 서버는 내용을 볼 수 없고, 휴대폰이 받으면 바로 지워져요.</p>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn" style="flex:1;" onclick="htAuthShow(1)">취소</button>
+        <button type="button" class="btn btn-primary" style="flex:2;" id="htRelaySendBtn" onclick="htRelaySend()">보내기</button>
+      </div>
     </div>
     <div id="htAuthStep3" style="display:none;text-align:center;">
       <div style="font-size:36px;margin:8px 0;">⏳</div>
