@@ -503,7 +503,8 @@
   .ht-auth-prog .no { color: var(--text3); }
   .ht-npki-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
   .ht-npki-other { background: none; border: none; color: var(--text3); font-size: 12px; text-decoration: underline; cursor: pointer; font-family: inherit; padding: 8px 0 2px; }
-  .ht-loan-btn { border: 1.5px solid #185FA5; color: #185FA5; font-weight: 700; background: #F3F8FD; }
+  .ht-loan-btn { border: 1.5px solid #185FA5; color: #185FA5; font-weight: 700; background: #F3F8FD; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.25; }
+  .ht-loan-btn small { font-size: 11px; font-weight: 500; color: #4a6f99; margin-top: 2px; }
   .ht-loan-note { font-size: 12.5px; line-height: 1.6; color: #0d3b7c; background: #EBF2FA; border: 1px solid #b9cfe8; border-radius: 10px; padding: 9px 12px; margin: 4px 0 8px; }
   .ht-bank-box.flash { animation: htBankFlash 1.6s ease 2; }
   @keyframes htBankFlash { 0%,100% { box-shadow: 0 0 0 0 rgba(24,95,165,0); } 50% { box-shadow: 0 0 0 4px rgba(24,95,165,.35); border-color: #185FA5; } }
@@ -898,7 +899,7 @@
       </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 본인 인증하기</button>
-        <button type="button" class="btn ht-loan-btn" onclick="htLoanOpen()">🏦 대출현황 불러오기</button>
+        <button type="button" class="btn ht-loan-btn" onclick="htLoanOpen()">🏦 대출현황 불러오기<small>(공동인증서만 가능)</small></button>
         <!-- 크레딧포유 기대출 불러오기(아이디 로그인)는 숨김 — CODEF에 간편인증 상품이 생기면 다시 연결: c4uOpen() -->
       </div>
       <p style="font-size:11px;color:var(--text3);margin-top:8px;">카카오톡·네이버·토스·PASS 등 간편인증 또는 공동인증서로 홈택스 자료를 불러옵니다. 대출현황은 공동인증서로 거래 은행에서 불러와요.</p>
