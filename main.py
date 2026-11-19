@@ -1284,6 +1284,33 @@ def _split_biz(v):
     return [x.strip() for x in _re2.split(r"[,\n|;]+", str(v or "")) if x.strip()]
 
 
+def _split_types(v):
+    """업태 나누기 — '전문, 과학 및 기술서비스업'처럼 이름 안의 쉼표는 '업'으로 끝날 때까지 다시 붙인다"""
+    out, buf = [], ""
+    for part in _split_biz(v):
+        buf = f"{buf}, {part}" if buf else part
+        if buf.endswith("업") or buf.endswith(")"):
+            out.append(buf)
+            buf = ""
+    if buf:
+        out.append(buf)
+    return out
+
+
+def _pair_biz(types_raw, items_raw):
+    """업태·종목 → (업태1, 종목1, 업태2, 종목2). 개수가 안 맞아도 종목을 한 칸에 몰지 않는다"""
+    types, items = _split_types(types_raw), _split_biz(items_raw)
+    if len(types) <= 1:
+        return (types[0] if types else ""), ", ".join(items), "", ""
+    if not items:
+        return types[0], "", ", ".join(types[1:]), ""
+    if len(items) == 1:
+        return types[0], items[0], ", ".join(types[1:]), ""
+    if len(items) == len(types):
+        return types[0], items[0], ", ".join(types[1:]), ", ".join(items[1:])
+    return types[0], items[0], ", ".join(types[1:]), ", ".join(items[1:])
+
+
 def _parse_registration(data, want_biz=""):
     """사업자등록 증명 → 원클릭 입력값"""
     rows = data if isinstance(data, list) else [data]
@@ -1294,19 +1321,17 @@ def _parse_registration(data, want_biz=""):
     row = next((x for x in rows if _re2.sub(r"\D", "", x.get("resCompanyIdentityNo") or "") == digits), rows[0]) if digits else rows[0]
     bn = _re2.sub(r"\D", "", row.get("resCompanyIdentityNo") or "")
     opened = _re2.sub(r"\D", "", row.get("resOpenDate") or "")
-    types, items = _split_biz(row.get("resBusinessTypes")), _split_biz(row.get("resBusinessItems"))
-    if len(items) != len(types) and len(types) > 1:      # 짝이 안 맞으면 종목은 첫 칸에 그대로
-        items = [", ".join(items)] if items else []
+    ind1, item1, ind2, item2 = _pair_biz(row.get("resBusinessTypes"), row.get("resBusinessItems"))
     kind = (row.get("resBusinessmanType") or "") + " " + (row.get("resUserIdentiyNo") or "")
     out = {
         "company_name": (row.get("resCompanyNm") or "").strip() or (row.get("resUserNm") or "").strip(),
         "rep_name": (row.get("resUserNm") or "").strip(),
         "business_number": f"{bn[:3]}-{bn[3:5]}-{bn[5:]}" if len(bn) == 10 else bn,
         "founded": f"{opened[:4]}-{opened[4:6]}" if len(opened) >= 6 else "",
-        "industry": types[0] if types else "",
-        "item": items[0] if items else "",
-        "industry2": ", ".join(types[1:]),
-        "item2": ", ".join(items[1:]),
+        "industry": ind1,
+        "item": item1,
+        "industry2": ind2,
+        "item2": item2,
         "location": _sido(row.get("resUserAddr")),
         "biz_type": "corp" if "법인" in kind else "personal",
     }
@@ -2058,12 +2083,12 @@ async def extract_income_doc(
         for img in body.images
     ]
 
-    prompt = """이 문서는 한국 국세청 홈택스에서 발급한 "부가가치세과세표준증명원" 또는 "소득금액증명원" 중 하나입니다 (여러 장이 첨부된 경우 같은 서류의 여러 페이지이거나, 두 서류가 함께 첨부되었을 수 있습니다). 첨부된 모든 이미지를 함께 확인해 아래 항목을 추출하세요.
+    prompt = """이 문서는 한국 국세청에서 발급한 "사업자등록증", "부가가치세과세표준증명원", "소득금액증명원" 중 하나입니다 (여러 장이 첨부된 경우 같은 서류의 여러 페이지이거나, 여러 서류가 함께 첨부되었을 수 있습니다). 첨부된 모든 이미지를 함께 확인해 아래 항목을 추출하세요.
 
 ━━━ 1단계: 상호 / 대표자명 / 사업자등록번호 (반드시 먼저, 빠뜨리지 말 것) ━━━
 두 서류 모두 문서 상단(제목 바로 아래)에 납세자·사업자 정보가 표 또는 항목 형태로 반드시 인쇄되어 있습니다. 금액을 읽기 전에 이 부분을 먼저 정확히 읽으세요.
 - 라벨 표기는 서류 종류·발급 연도에 따라 다양합니다. 아래 중 어떤 표기든 같은 항목으로 취급하세요.
-  · 상호(company_name): "상호", "상 호", "상호(법인명)", "법인명", "사업장명", "업체명", "상호명"
+  · 상호(company_name): "상호", "상 호", "상호(법인명)", "법인명", "법인명(단체명)", "사업장명", "업체명", "상호명"
   · 대표자명(rep_name): "성명", "성 명", "대표자", "대표자명", "성명(대표자명)", "납세자명", "성명(법인명)"
   · 사업자등록번호(business_number): "사업자등록번호", "사업자 등록번호", "등록번호", "사업자번호"
 - 라벨의 오른쪽 칸 또는 바로 아래 칸에 있는 값을 읽으세요. 라벨과 값이 ":"으로 구분되거나, 표의 머리행/데이터행으로 나뉘어 있을 수 있습니다.
@@ -2082,10 +2107,17 @@ async def extract_income_doc(
 - 상단에 상호 또는 성명(대표자명), 사업자등록번호가 표기됩니다.
 - 표에는 귀속연도별로 "소득금액"이 나열됩니다. 가장 최근 귀속연도의 소득금액을 income_amount로 반환하세요.
 
-두 서류 모두 대출·부채·자산 정보는 포함하지 않으므로 추출 대상이 아닙니다.
+[사업자등록증] (금액 정보는 없음 — revenue·income_amount는 null)
+- 제목 옆 괄호에 "(법인사업자)", "(일반과세자)", "(간이과세자)", "(면세사업자)" 등이 있습니다. 법인사업자면 biz_kind="법인", 그 외 개인이면 "개인".
+- "개업연월일"(예: 2019 년 05 월 10 일) → open_date를 "YYYY-MM-DD"로.
+- "사업장 소재지" 주소 전체 → address (본점 소재지가 따로 있어도 사업장 소재지 우선).
+- "사업의 종류" 아래 "업태"와 "종목" → business_type, business_item. 여러 개면 쉼표(,)로 구분해 문서 순서대로 모두 적으세요 (업태와 종목은 같은 순서로 짝을 맞춤).
+- 법인은 "법인명(단체명)"이 상호, "대표자"가 대표자명입니다. 개인은 "상호"와 "성명"입니다.
+
+부가세·소득금액 서류에는 개업일·주소·업태가 없으면 null로 두세요. 대출·부채·자산 정보는 추출 대상이 아닙니다.
 
 아래 JSON 형식으로만 응답하세요. 문서에서 찾을 수 없는 항목은 null:
-{"doc_type":"부가세과세표준증명원" 또는 "소득금액증명원" 또는 "불명","company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"income_amount":숫자또는null,"comment":"인식 관련 메모 1문장"}"""
+{"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"income_amount":숫자또는null,"open_date":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
 
     GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.7-flash"]
 
@@ -2143,9 +2175,18 @@ async def extract_income_doc(
             if not v or v.lower() in ("null", "none", "n/a", "-", "미상", "불명", "없음"):
                 return None
             return v
-        for key in ("doc_type", "company_name", "rep_name", "business_number", "comment"):
+        for key in ("doc_type", "company_name", "rep_name", "business_number", "comment", "open_date", "address", "business_type", "business_item", "biz_kind"):
             if key in data:
                 data[key] = _clean_text(data[key])
+        # 사업자등록증 → 원클릭 입력값 (창업년월·소재지·업태/종목 2개까지·개인/법인)
+        od = re.sub(r"\D", "", data.get("open_date") or "")
+        if len(od) >= 6 and od[:2] in ("19", "20"):
+            data["founded"] = f"{od[:4]}-{od[4:6]}"
+        if data.get("address"):
+            data["location"] = _sido(data["address"]) or None
+        if data.get("business_type") or data.get("business_item"):
+            i1, t1, i2, t2 = _pair_biz(data.get("business_type"), data.get("business_item"))
+            data["industry"], data["item"], data["industry2"], data["item2"] = i1 or None, t1 or None, i2 or None, t2 or None
         biz = data.get("business_number")
         if biz:
             digits = re.sub(r"\D", "", biz)
@@ -2153,6 +2194,12 @@ async def extract_income_doc(
                 data["business_number"] = f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
             elif not digits:
                 data["business_number"] = None
+        kind = data.get("biz_kind") or ""
+        bd = re.sub(r"\D", "", data.get("business_number") or "")
+        if "법인" in kind or (len(bd) == 10 and bd[3:5] in ("81", "82", "83", "84", "85", "86", "87", "88")):   # 사업자번호 가운데 81~88 = 법인
+            data["biz_type"] = "corp"
+        elif "개인" in kind:
+            data["biz_type"] = "personal"
 
     return {"data": data}
 

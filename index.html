@@ -883,13 +883,13 @@
         <p style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px;">서류를 올리면 AI가 읽어서 아래 칸을 채워드려요. 이미 입력한 칸은 서류 내용으로 바뀝니다.</p>
       <div id="incomeDocBox">
         <input type="file" id="finDocInput" accept="image/*,application/pdf" multiple style="display:none" />
-        <input type="file" id="incomeDocInput" accept="image/*,application/pdf" style="display:none" />
+        <input type="file" id="incomeDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <div class="ht-doc-btns">
           <button type="button" class="btn ht-doc-btn" id="finDocBtn" onclick="document.getElementById('finDocInput').click()">
             <span class="ht-doc-ic">📊</span><b>재무제표</b><span>재무상태표·손익계산서 (최대 10장)<br>→ 회사 정보·매출·재무 수치</span>
             <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
           <button type="button" class="btn ht-doc-btn" id="incomeDocBtn" onclick="document.getElementById('incomeDocInput').click()">
-            <span class="ht-doc-ic">🧾</span><b>부가세과세표준·소득금액증명원</b><span>→ 회사 정보·매출</span>
+            <span class="ht-doc-ic">🧾</span><b>사업자등록증·부가세과세표준·소득금액증명원</b><span>(여러 장 가능, 최대 5장)<br>→ 회사 정보·업태·창업년월·소재지·매출</span>
             <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
         </div>
         <div id="incomeDocFileName" style="font-size:11px;color:var(--text2);margin-top:6px;"></div>
@@ -947,12 +947,12 @@
           <div class="ht-line">
             <label class="ht-f"><span>업태</span><input type="text" id="ht-industry" placeholder="제조업, 건설업" /></label>
             <label class="ht-f"><span>종목</span><input type="text" id="ht-item" placeholder="플라스틱 용기" /></label>
-            <div class="ht-f"><span>창업년월<b class="ht-req">*</b></span>
+            <div class="ht-f"><span>창업년월</span>
               <div style="display:flex;gap:4px;">
                 <select id="ht-founded-y" onchange="htSyncFounded()" style="flex:1.3;"></select>
                 <select id="ht-founded-m" onchange="htSyncFounded()" style="flex:1;"></select>
               </div><input type="hidden" id="ht-founded" /></div>
-            <label class="ht-f"><span>사업장 소재지<b class="ht-req">*</b></span><select id="ht-location"><option value="">지역 선택</option><option value="서울">서울</option><option value="부산">부산</option><option value="대구">대구</option><option value="인천">인천</option><option value="광주">광주</option><option value="대전">대전</option><option value="울산">울산</option><option value="세종">세종</option><option value="경기">경기</option><option value="강원">강원</option><option value="충북">충북</option><option value="충남">충남</option><option value="전북">전북</option><option value="전남">전남</option><option value="경북">경북</option><option value="경남">경남</option><option value="제주">제주</option></select></label>
+            <label class="ht-f"><span>사업장 소재지</span><select id="ht-location"><option value="">지역 선택</option><option value="서울">서울</option><option value="부산">부산</option><option value="대구">대구</option><option value="인천">인천</option><option value="광주">광주</option><option value="대전">대전</option><option value="울산">울산</option><option value="세종">세종</option><option value="경기">경기</option><option value="강원">강원</option><option value="충북">충북</option><option value="충남">충남</option><option value="전북">전북</option><option value="전남">전남</option><option value="경북">경북</option><option value="경남">경남</option><option value="제주">제주</option></select></label>
           </div>
           <button type="button" class="ht-ind-add" id="ht-ind2-add" onclick="htShowInd2(true)">+ 업태·종목 추가</button>
           <div class="ht-line ht-ind2-line" id="ht-ind2-line" style="display:none;">
@@ -1007,7 +1007,7 @@
 
       <!-- 국세 체납 -->
       <div class="ht-row" id="ht-arrears-card">
-        <div class="ht-head">국세 체납<b class="ht-req">*</b></div>
+        <div class="ht-head">국세 체납</div>
         <div class="ht-body">
           <div class="ht-radios">
             <label><input type="radio" name="ht-arrears" value="none" onchange="htToggleArrears()" /> 없음</label>
@@ -1023,7 +1023,7 @@
 
       <!-- 기대출 -->
       <div class="ht-row" id="ht-loans-card">
-        <div class="ht-head">기대출<b class="ht-req">*</b></div>
+        <div class="ht-head">기대출</div>
         <div class="ht-body">
           <label class="ht-chk"><input type="checkbox" id="ht-loans-none" onchange="htToggleLoans()" /> 기대출 없음</label>
           <div id="ht-loans" style="display:flex;flex-direction:column;gap:6px;"></div>
@@ -2444,23 +2444,22 @@ function parseMoneyInput(id) {
 // ── 서류로 자동 채우기 (부가세과세표준증명원 / 소득금액증명원) ──
 let incomeDocImage = null;
 document.getElementById("incomeDocInput").addEventListener("change", e => {
-  const file = e.target.files[0];
+  const files = Array.from(e.target.files || []);
   e.target.value = "";
-  htHandleIncomeFile(file);
+  htHandleIncomeFile(files);
 });
-function htHandleIncomeFile(file) {
-  if (!file) return;
-  if (!(file.type.startsWith("image/") || file.type === "application/pdf")) {
+// 사업자등록증·부가세과세표준증명원·소득금액증명원 (여러 장 함께 가능, 최대 5장)
+async function htHandleIncomeFile(files) {
+  files = (Array.isArray(files) ? files : [files]).filter(Boolean).slice(0, 5);
+  if (!files.length) return;
+  if (files.some(f => !(f.type.startsWith("image/") || f.type === "application/pdf"))) {
     toast("JPG, PNG, PDF 파일만 업로드 가능합니다.");
     return;
   }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    incomeDocImage = { data: ev.target.result.split(",")[1], mime: file.type || "image/jpeg" };
-    document.getElementById("incomeDocFileName").textContent = "📎 " + file.name;
-    extractIncomeDoc();
-  };
-  reader.readAsDataURL(file);
+  const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
+  try { incomeDocImage = await Promise.all(files.map(read)); } catch (e) { return toast("파일을 읽지 못했어요."); }
+  document.getElementById("incomeDocFileName").textContent = "📎 " + files.map(f => f.name).join(", ");
+  extractIncomeDoc();
 }
 
 // ── 서류로 채우기: 재무제표 (재무상태표·손익계산서) ──
@@ -2470,7 +2469,7 @@ document.getElementById("finDocInput").addEventListener("change", e => {
   htHandleFinFiles(files);
 });
 // 드래그해서 놓기
-[["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs[0])]].forEach(([id, fn]) => {
+[["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs)]].forEach(([id, fn]) => {
   const el = document.getElementById(id);
   ["dragenter", "dragover"].forEach(t => el.addEventListener(t, ev => { ev.preventDefault(); el.classList.add("drag"); }));
   ["dragleave", "drop"].forEach(t => el.addEventListener(t, ev => { ev.preventDefault(); el.classList.remove("drag"); }));
@@ -2513,7 +2512,8 @@ function htFillFromFinancial(d) {
   const fin = { "ht-assets": sum(d.current_assets, d.noncurrent_assets), "ht-debt": sum(d.current_liabilities, d.noncurrent_liabilities),
                 "ht-capital": num(d.capital_stock), "ht-opincome": num(d.operating_income), "ht-interest": num(d.interest_expense), "ht-netincome": num(d.net_income) };
   const anyFin = Object.values(fin).some(v => v !== null);
-  if (anyFin) { htToggleFin(true); Object.entries(fin).forEach(([id, v]) => setMoney(id, v)); }
+  htToggleFin(true);
+  if (anyFin) Object.entries(fin).forEach(([id, v]) => setMoney(id, v));
   const got = [d.company_name, d.revenue, anyFin].filter(Boolean).length;
   if (!got) toast("재무제표에서 정보를 읽지 못했어요. 선명한 이미지나 PDF로 다시 올리거나 직접 입력해 주세요.");
   else toast("재무제표에서 정보를 채웠어요. 값을 확인하고 나머지 필수 항목을 입력한 뒤 분석해 주세요.");
@@ -2527,7 +2527,7 @@ async function extractIncomeDoc() {
   const btnHtml = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = "<b>⏳ 서류를 읽는 중...</b><span>잠시만 기다려 주세요</span>";
   try {
-    const result = await api("POST", "/extract/income-doc", { images: [incomeDocImage] });
+    const result = await api("POST", "/extract/income-doc", { images: Array.isArray(incomeDocImage) ? incomeDocImage : [incomeDocImage] });
     const d = result.data || {};
 
     const companyEl = document.getElementById("ht-company");
@@ -2547,19 +2547,27 @@ async function extractIncomeDoc() {
     if (d.revenue) { salesEl.value = Math.round(d.revenue).toLocaleString("ko-KR"); salesEl.dispatchEvent(new Event("input")); }
     [companyEl, repEl, bizEl].forEach(el => el.dispatchEvent(new Event("input")));
 
-    // 인식 결과 안내 — 못 읽은 항목이 있으면 어떤 항목인지 알려줌
-    const notRead = [];
-    if (!d.company_name) notRead.push("회사이름");
-    if (!d.rep_name) notRead.push("대표자명");
-    if (!d.business_number) notRead.push("사업자등록번호");
-    if (!d.revenue) notRead.push("매출");
+    // 사업자등록증: 업태·종목(2개까지)·창업년월·소재지·개인/법인
+    const cur = htReadForm();
+    let bizRegFilled = false;
+    ["industry", "item", "industry2", "item2", "founded", "location"].forEach(k => { if (d[k]) { cur[k] = String(d[k]).trim(); bizRegFilled = true; } });
+    if (d.biz_type === "corp" || d.biz_type === "personal") { cur.biz_type = d.biz_type; bizRegFilled = true; }
+    if (bizRegFilled) {
+      if (!d.industry2 && !d.item2) { cur.industry2 = cur.industry2 || ""; cur.item2 = cur.item2 || ""; }
+      htFillForm(cur);
+    }
+    htToggleFin(true);     // 서류를 넣었으면 재무 칸도 펼쳐서 확인하게
 
-    if (notRead.length === 4) {
+    const filled = [];
+    if (d.company_name || d.rep_name || d.business_number) filled.push("회사 정보");
+    if (d.industry || d.item) filled.push("업태·종목");
+    if (d.founded) filled.push("창업년월");
+    if (d.location) filled.push("소재지");
+    if (d.revenue) filled.push("매출");
+    if (!filled.length) {
       toast("문서에서 정보를 인식하지 못했어요. 서류 전체가 선명하게 보이도록 다시 촬영하거나 직접 입력해주세요.");
-    } else if (notRead.length) {
-      toast((d.doc_type || "서류") + "에서 정보를 채웠어요. " + notRead.join("·") + "은(는) 인식하지 못했으니 직접 입력해주세요.");
     } else {
-      toast((d.doc_type || "서류") + "에서 정보를 자동으로 채웠어요. 나머지 필수 항목을 확인한 뒤 분석해 주세요.");
+      toast(`${d.doc_type || "서류"}에서 ${filled.join("·")}을(를) 채웠어요. 값을 확인한 뒤 분석해 주세요.`);
     }
   } catch (e) {
     toast(e.message);
@@ -3648,10 +3656,7 @@ function htMissing(input) {
   const miss = [];
   const need = (cond, label, id) => { if (cond) miss.push({ label, id }); };
   need(!input.company_name, "회사이름", "ht-company");
-  need(!input.founded, "창업년월", document.getElementById("ht-founded-y").value ? "ht-founded-m" : "ht-founded-y");
-  need(!input.location, "사업장 소재지", "ht-location");
-  need(input.arrears.status === "unknown", "국세 체납 여부", "ht-arrears-card");
-  need(!input.loans_none && !input.loans.some(l => l.amount !== null), "기대출 (없으면 '기대출 없음')", "ht-loans-card");
+  // 창업년월·사업장 소재지·국세 체납·기대출은 선택 (비워 두면 결과에 "미입력"으로 표시)
   return miss;
 }
 
@@ -4341,7 +4346,7 @@ function htAuthApply(res) {
   htFillForm(htMergeForm(inc));
   htAuthState.pending = null;
   htAuthClose();
-  if (inc.fin) htToggleFin(true);
+  htToggleFin(true);     // 서류를 가져왔으면 재무 칸은 펼쳐서 보여줌
   const got = (res.got || []).join(", ");
   const miss = (res.pending || []).join(", ");
   toast(got ? `${got} 자료로 정보를 채웠어요.${miss ? ` (${miss}는 불러오지 못해 직접 확인이 필요해요)` : ""} 나머지 항목을 확인한 뒤 분석해 주세요.` : "불러온 자료가 없어요. 직접 입력해 주세요.");
