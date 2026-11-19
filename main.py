@@ -1220,7 +1220,7 @@ def _cw_body(params, telecom="", corp=None, bizno=""):
                  certPassword=params.get("certPassword", ""), userType="2" if corp else "0")
         if params.get("keyFile"):
             b["keyFile"] = params["keyFile"]
-        if corp and bizno:
+        if bizno:
             b["identity"] = bizno
         return b
     return None
@@ -1628,11 +1628,15 @@ def _hometax_calls(params, now, telecom=""):
     if 8 <= now.hour < 22:                    # 재무제표는 08~22시만. 법인/개인을 아직 모르니 둘 다 요청
         years = [y - 1] + ([y - 2] if now.month < 6 else [])      # 상반기엔 작년 신고 전일 수 있어 재작년도
         fin = dict(base, loginPhoneNo=phone, isIdentityViewYN="0", usePurposes="99", submitTargets="99", originDataYN="0")
+        if params.get("_want_biz"):
+            fin["identity"] = params["_want_biz"]
         for yy in years:
             calls.append(("financial", dict(fin, startDate=f"{yy}12")))                    # 법인: 사업연도 종료연월
             calls.append(("financial", dict(fin, startDate=str(yy), proofType="40")))      # 개인: 과세연도
     cw = _cw_body(params, telecom)
     if cw:
+        if params.get("_want_biz"):
+            cw["identity"] = params["_want_biz"]
         calls.append(("employees", cw))       # 근로복지공단 — 승인이 따로 1번 더
     return calls
 
@@ -1955,7 +1959,16 @@ async def _bank_loans(params, banks, corp):
     finally:      # 인증서 등록은 조회 후 바로 지운다
         await _safe_async(_codef_post("/v1/account/delete", {"connectedId": cid, "accountList": [
             {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "organization": b} for b in ok]}))
-    return loans, ok_banks, bad
+    def friendly(m):
+        m = str(m or "")
+        if "미등록" in m or "등록되지 않은" in m or "등록 되어있지" in m:
+            return "이 인증서가 은행에 등록돼 있지 않음"
+        if "파라미터" in m:
+            return "은행이 추가 정보를 요구함"
+        if "비밀번호" in m:
+            return "인증서 비밀번호 오류"
+        return m.split(".")[0][:40]
+    return loans, ok_banks, [(b, friendly(m)) for b, m in bad]
 
 
 def _job_save(job_id, status=None, result=None):
@@ -2194,6 +2207,7 @@ async def _hometax_collect(params, reg_data, progress=None):
 
     # ③ 재무제표 — 마지막 신고분 (법인: 사업연도 종료연월 / 개인: 과세연도)
     fin = None
+    bizno = _re2.sub(r"\D", "", fill.get("business_number", "") or params.get("_want_biz", ""))
     if 8 <= now.hour < 22:
         step("재무제표")
         tries = [f"{now.year - 1}12", f"{now.year - 2}12"] if corp else [str(now.year - 1), str(now.year - 2)]
@@ -2201,6 +2215,8 @@ async def _hometax_collect(params, reg_data, progress=None):
             extra = {**ph("loginPhoneNo"), "startDate": sd, "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"}
             if not corp:
                 extra["proofType"] = "40"
+            if bizno and params.get("loginType") == "0":
+                extra["identity"] = bizno          # 인증서 로그인은 재무제표에 사업자번호 필수 (CF-12850)
             data, err = await call("financial", extra)
             fin = _safe(_parse_financial, data) if data is not None else None
             if fin:
@@ -2215,11 +2231,15 @@ async def _hometax_collect(params, reg_data, progress=None):
     else:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     # ④ 직원 수 — 근로복지공단 근로자고용정보현황 (인증서는 추가 승인 없음)
-    cw = _cw_body(params, corp=corp, bizno=_re2.sub(r"\D", "", fill.get("business_number", "") or params.get("_want_biz", "")))
+    cw = _cw_body(params, corp=corp, bizno=bizno)
     if cw:
         step("직원 수(고용보험)")
         try:
             res = await _cw_resolve(cw, await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], cw), fill.get("company_name", ""))
+            if _codef_code(res) not in ("CF-00000",) and not _cw_no_data(_codef_code(res), _codef_msg(res)):
+                print(f"[CODEF] employees userType {cw.get('userType')} 실패 {_codef_code(res)}: {_codef_msg(res)} → 다른 구분으로 재시도")
+                cw2 = dict(cw, userType="0" if cw.get("userType") == "2" else "2")
+                res = await _cw_resolve(cw2, await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], cw2), fill.get("company_name", ""))
         except Exception as e:
             print(f"[CODEF] employees 호출 오류: {e!r}")
             res = {}

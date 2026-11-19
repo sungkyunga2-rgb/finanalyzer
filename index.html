@@ -4636,10 +4636,15 @@ function htAuthApply(res) {
   const got = (res.got || []).join(", ");
   const miss = (res.pending || []).join(", ");
   if (!got) alertError("불러온 자료가 없어요. 직접 입력해 주세요.");
-  else if (miss) alertError(`${got} 자료로 정보를 채웠어요.\n\n${miss}는 불러오지 못했어요. 직접 확인해 주세요.`);
+  else if (miss) {
+    const pend = res.pending || [];
+    const zero = pend.some(x => /0명으로 채움/.test(x));
+    const names = pend.map(x => x.replace(/\s*—.*$/, "")).join(", ");
+    alertError(`${got} 자료로 정보를 채웠어요.\n\n${names}은(는) 불러오지 못했어요. 직접 확인해 주세요.${zero ? "\n(직원 수는 0명으로 채워 두었어요)" : ""}`);
+  }
   else toast(`${got} 자료로 정보를 채웠어요. 나머지 항목을 확인한 뒤 분석해 주세요.`);
   if (res.bank_ok) toast(`${res.bank_ok.join("·")}에서 대출 ${(f.loans || []).length}건을 불러왔어요.`);
-  if (res.bank_failed && res.bank_failed.length) alertError(`일부 은행은 대출을 불러오지 못했어요.\n${res.bank_failed.join("\n")}\n\n그 은행 인터넷뱅킹에 인증서가 등록돼 있는지 확인해 주세요.`);
+  if (res.bank_failed && res.bank_failed.length) alertError(`일부 은행은 대출을 불러오지 못했어요.\n${res.bank_failed.join("\n")}\n\n공동인증서는 은행마다 따로 등록해야 조회돼요. 거래하는 은행 인터넷뱅킹에서 '타행/타기관 인증서 등록'을 한 뒤 다시 시도해 주세요.`);
   if (f._business_list && f._business_list.length > 1) alertError(`사업장이 ${f._business_list.length}곳이에요. ${f.company_name || "첫 번째 사업장"} 기준으로 채웠어요.\n다른 사업장으로 하려면 그 사업자번호를 입력한 뒤 다시 인증해 주세요.`);
 }
 
