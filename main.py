@@ -1983,6 +1983,19 @@ def _bank_loan_rows(data):
 BANK_P_UNSUPPORTED = {"0020": "개인 조회는 출금계좌번호·계좌 비밀번호가 추가로 필요해 지원하지 않음"}   # CODEF 은행 로그인 파라미터표(2026.11.10)
 
 
+def friendly_bank_msg(m):
+    m = str(m or "")
+    if "미등록" in m or "등록되지 않은" in m or "등록 되어있지" in m or "등록되어 있지" in m:
+        return "이 인증서가 은행에 등록돼 있지 않음"
+    if "파라미터" in m:
+        return "은행이 추가 정보를 요구함"
+    if "비밀번호" in m:
+        return "인증서 비밀번호 오류"
+    if "인터넷뱅킹" in m and ("미" in m or "가입" in m):
+        return "이 은행 인터넷뱅킹 미가입"
+    return m.split(".")[0][:50] or "인증서 등록 실패"
+
+
 async def _bank_loans(params, banks, corp):
     """고른 은행들의 대출 → ([{org, date, amount}], 성공 은행, [(은행, 사유)])"""
     client = "B" if corp else "P"
@@ -2002,7 +2015,10 @@ async def _bank_loans(params, banks, corp):
     bad = [(x.get("organization"), x.get("message") or "등록 실패") for x in (data.get("errorList") or []) if isinstance(x, dict)] if isinstance(data, dict) else []
     if not cid:
         print(f"[CODEF] 은행 계정 등록 실패 {_codef_code(res)}: {_codef_msg(res)}")
-        return [], [], [(b, "인증서 등록 실패") for b in banks]
+        for b, m in bad:
+            print(f"[CODEF]   └ {CODEF_BANKS.get(b, b)}({b}): {m}")
+        reasons = dict(bad)          # 전부 실패(CF-04000)여도 은행별 이유는 errorList에 있음
+        return [], [], [(b, friendly_bank_msg(reasons.get(b) or "인증서 등록 실패")) for b in banks] + skipped
     loans, ok_banks = [], []
     path = f"/v1/kr/bank/{'b' if corp else 'p'}/account/account-list"
     try:
@@ -2020,16 +2036,7 @@ async def _bank_loans(params, banks, corp):
     finally:      # 인증서 등록은 조회 후 바로 지운다
         await _safe_async(_codef_post("/v1/account/delete", {"connectedId": cid, "accountList": [
             {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "organization": b} for b in ok]}))
-    def friendly(m):
-        m = str(m or "")
-        if "미등록" in m or "등록되지 않은" in m or "등록 되어있지" in m:
-            return "이 인증서가 은행에 등록돼 있지 않음"
-        if "파라미터" in m:
-            return "은행이 추가 정보를 요구함"
-        if "비밀번호" in m:
-            return "인증서 비밀번호 오류"
-        return m.split(".")[0][:40]
-    return loans, ok_banks, [(b, friendly(m)) for b, m in bad] + skipped
+    return loans, ok_banks, [(b, friendly_bank_msg(m)) for b, m in bad] + skipped
 
 
 def _job_save(job_id, status=None, result=None):
