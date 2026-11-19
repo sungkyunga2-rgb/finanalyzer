@@ -1250,6 +1250,11 @@ async def _cw_resolve(body, res, company=""):
     return res
 
 
+def _cw_no_data(code, msg):
+    """'조회 내역 없음'·'가입 사업장 없음' 류 → 직원 0명으로 본다"""
+    return code != "CF-00000" and any(k in (msg or "") for k in ("없습니다", "없음", "존재하지", "내역이 없", "결과가 없"))
+
+
 def _parse_employees(data):
     """근로자고용정보현황 → 지금 고용 중인 근로자 수"""
     seen = set()
@@ -1683,11 +1688,16 @@ def _ht_assemble(st, now, final):
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     if "employees" in st.get("keys", ()):
         n = next((v for v in (_safe(_parse_employees, d) for d in ok("employees")) if v is not None), None)
+        if n is None and any(_cw_no_data(c, m) for c, d, m in R.get("employees", [])):
+            n = 0                      # 고용보험 근로자 내역 없음 → 0명
         if n is not None:
             fill["employees"] = n
             got.append("직원 수(고용보험)")
         elif final:
-            failed.append("직원 수(고용보험)")
+            fill["employees_default"] = 0      # 조회 못 함 → 칸이 비어 있으면 0명으로
+            failed.append("직원 수(고용보험) — 0명으로 채움")
+    elif final:
+        fill["employees_default"] = 0
     return {"fill": fill, "got": got, "failed": failed}
 
 
@@ -2213,14 +2223,17 @@ async def _hometax_collect(params, reg_data, progress=None):
         except Exception as e:
             print(f"[CODEF] employees 호출 오류: {e!r}")
             res = {}
-        n = _safe(_parse_employees, res.get("data")) if _codef_code(res) == "CF-00000" else None
+        n = _safe(_parse_employees, res.get("data")) if _codef_code(res) == "CF-00000" else (0 if _cw_no_data(_codef_code(res), _codef_msg(res)) else None)
         if _codef_code(res) not in ("", "CF-00000"):
             print(f"[CODEF] employees 실패 {_codef_code(res)}: {_codef_msg(res)}")
         if n is not None:
             fill["employees"] = n
             got.append("직원 수(고용보험)")
         else:
-            failed.append("직원 수(고용보험)")
+            fill["employees_default"] = 0
+            failed.append("직원 수(고용보험) — 0명으로 채움")
+    else:
+        fill["employees_default"] = 0
     return {"status": "done", "fill": fill, "got": got, "pending": failed}
 
 

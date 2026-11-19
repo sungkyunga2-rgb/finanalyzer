@@ -4587,10 +4587,11 @@ const HT_DOCS = ["사업자등록증명", "부가세과세표준증명", "납세
 function htAuthProgress(p) {
   const el = document.getElementById("htAuthProg");
   if (!el) return;
-  const got = p.got || [], failed = (p.failed || p.pending || []).map(x => x.replace(/\(.*\)/, ""));
+  const norm = x => String(x).replace(/\s*(—|\().*$/, "");        // "재무제표(08~22시…)", "직원 수(고용보험) — 0명…" → 이름만
+  const got = p.got || [], failed = (p.failed || p.pending || []).map(norm);
   el.innerHTML = HT_DOCS.concat(p.banks ? ["은행 대출"] : []).map(d => {
     if (got.includes(d)) return `<div class="ok">✓ ${d}</div>`;
-    if (failed.includes(d)) return `<div class="no">– ${d}</div>`;
+    if (failed.includes(norm(d))) return `<div class="no">– ${d}</div>`;
     if (p.doing === d) return `<div class="now">⏳ ${d} 조회 중…</div>`;
     return `<div class="no">· ${d}</div>`;
   }).join("");
@@ -4626,6 +4627,7 @@ function htAuthApply(res) {
   if (f.arrears) inc.arrears = f.arrears;
   if (f.loans && f.loans.length) inc.loans = f.loans;
   if (f.employees !== undefined && f.employees !== null) inc.employees = f.employees;
+  else if (f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
   htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
   htAuthState.pending = null;
