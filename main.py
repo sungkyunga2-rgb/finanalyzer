@@ -964,7 +964,7 @@ def _ht_small_biz(inp):
     emp = _ht_num(inp.get("employees"))
     if emp is None:
         return True
-    mfg = bool(_re.search(r"제조|건설|운수|광업", _ht_s(inp.get("industry"))))
+    mfg = bool(_re.search(r"제조|건설|운수|광업", _ht_s(inp.get("industry")) + " " + _ht_s(inp.get("item"))))
     return emp < (10 if mfg else 5)
 
 
@@ -1062,7 +1062,7 @@ def ht_estimate_limit(inp, today=None):
     ctx = ht_limit_context(inp, today)
     lv = ctx["vat_latest"]
     sales = lv if (lv is not None and lv > 0) else (ctx["ytd_annual"] if (ctx["ytd_annual"] or 0) > 0 else None)
-    ind_text = _ht_s(inp.get("industry"))
+    ind_text = (_ht_s(inp.get("industry")) + " " + _ht_s(inp.get("item"))).strip()
     bam = ctx["biz_age_months"]
     startup_kibo = bam is not None and bam < 12 and ("제조" in ind_text or bool(_HT_CONTENT.search(ind_text)) or "특허" in _ht_s(inp.get("certs")))
     ar = (inp.get("arrears") or {}).get("status") or "unknown"
@@ -1192,10 +1192,10 @@ _codef_token_cache = {"token": None, "exp": 0}
 
 # 홈택스 상품 (개발가이드 기준). path가 비어 있으면 아직 연결 전.
 CODEF_HOMETAX_PRODUCTS = {
-    "registration": "/v1/kr/public/nt/proof-issue/corporate-registration",   # 사업자등록 증명
-    # "vat": "",          # 부가세과세표준증명 — 개발가이드 확인 후 추가
-    # "tax_payment": "",  # 납세증명서
-    # "financial": "",    # 재무제표(표준재무제표증명)
+    "registration": "/v1/kr/public/nt/proof-issue/corporate-registration",        # 사업자등록 증명
+    "vat": "/v1/kr/public/nt/proof-issue/additional-tax-standard",                # 부가세과세표준증명
+    "tax_payment": "/v1/kr/public/nt/proof-issue/tax-cert-all",                    # 납세증명서
+    "financial": "/v1/kr/public/nt/proof-issue/standard-financial-statements",     # 재무제표(표준재무제표증명) — 08:00~22:00
 }
 
 
@@ -1290,7 +1290,8 @@ def _parse_registration(data, want_biz=""):
         "rep_name": (row.get("resUserNm") or "").strip(),
         "business_number": f"{bn[:3]}-{bn[3:5]}-{bn[5:]}" if len(bn) == 10 else bn,
         "founded": f"{opened[:4]}-{opened[4:6]}" if len(opened) >= 6 else "",
-        "industry": " / ".join([v for v in (types, items) if v]),
+        "industry": types,
+        "item": items,
         "location": _sido(row.get("resUserAddr")),
         "biz_type": "corp" if "법인" in kind else "personal",
     }
@@ -1388,15 +1389,168 @@ async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = De
 
 
 async def _hometax_collect(params, reg_data):
-    """인증이 끝난 세션으로 서류를 모아 원클릭 입력값으로 정리"""
+    """인증이 끝난 세션(같은 id)으로 나머지 서류를 이어서 조회해 원클릭 입력값으로 정리"""
     fill = _parse_registration(reg_data, params.get("identity", ""))
-    got = ["사업자등록증명"] if fill else []
-    missing = []
-    # 다른 서류(부가세과세표준증명·납세증명서·재무제표)는 개발가이드 확인 후 같은 id로 이어서 조회한다
-    for key, label in (("vat", "부가세과세표준증명"), ("tax_payment", "납세증명서"), ("financial", "재무제표")):
-        if not CODEF_HOMETAX_PRODUCTS.get(key):
-            missing.append(label)
-    return {"status": "done", "fill": fill, "got": got, "pending": missing}
+    got, failed = (["사업자등록증명"] if fill else []), []
+    now = datetime.utcnow() + timedelta(hours=9)
+    corp = fill.get("biz_type") == "corp"
+    base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id") if k in params}
+    if params.get("telecom"):
+        base["telecom"] = params["telecom"]
+    if params.get("identity"):
+        base["identity"] = params["identity"]
+    phone = params.get("phoneNo", "")
+
+    async def call(key, extra):
+        try:
+            res = await _codef_post(CODEF_HOMETAX_PRODUCTS[key], dict(base, **extra))
+        except Exception as e:
+            print(f"[CODEF] {key} 호출 오류: {e}")
+            return None, "connection"
+        code = _codef_code(res)
+        if code == "CF-00000":
+            return res.get("data"), None
+        print(f"[CODEF] {key} 실패 {code}: {_codef_msg(res)}")
+        return None, _codef_msg(res)
+
+    # ① 부가세과세표준증명 — 최근 3개 연도 (회원 간편인증만 지원)
+    if params.get("loginType") == "5":
+        y = now.year
+        data, err = await call("vat", {"phoneNo": phone, "startDate": f"{y - 3}01", "endDate": f"{y - 1}07",
+                                       "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
+        years = _parse_vat(data) if data is not None else []
+        if years:
+            fill["years"] = years
+            got.append("부가세과세표준증명")
+        else:
+            failed.append("부가세과세표준증명")
+    else:
+        failed.append("부가세과세표준증명")
+
+    # ② 납세증명서 — 발급되면 체납 없음
+    data, err = await call("tax_payment", {"phoneNo": phone, "isIdentityViewYN": "0", "isAddrViewYn": "0", "proofType": "B0007",
+                                           "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
+    arrears = _parse_tax_cert(data, err)
+    if arrears:
+        fill["arrears"] = arrears
+        got.append("납세증명서")
+    else:
+        failed.append("납세증명서")
+
+    # ③ 재무제표 — 마지막 신고분 (법인: 사업연도 종료연월 / 개인: 과세연도)
+    fin = None
+    if 8 <= now.hour < 22:
+        tries = [f"{now.year - 1}12", f"{now.year - 2}12"] if corp else [str(now.year - 1), str(now.year - 2)]
+        for sd in tries:
+            extra = {"loginPhoneNo": phone, "startDate": sd, "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"}
+            if not corp:
+                extra["proofType"] = "40"
+            data, err = await call("financial", extra)
+            fin = _parse_financial(data) if data is not None else None
+            if fin:
+                break
+    if fin:
+        rev = fin.pop("_revenue", None)
+        fill["fin"] = fin
+        got.append("재무제표")
+        if rev and not fill.get("years"):
+            fill["years"] = [{"year": int(fin.pop("_year", now.year - 1)), "vat": rev}]
+        fin.pop("_year", None)
+    else:
+        failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
+    return {"status": "done", "fill": fill, "got": got, "pending": failed}
+
+
+def _codef_amt(v):
+    t = str(v or "").replace(",", "").replace(" ", "").strip()
+    neg = t.startswith("-") or t.startswith("△") or t.startswith("(")
+    t = _re2.sub(r"[^\d.]", "", t)
+    if not t:
+        return None
+    try:
+        n = float(t)
+    except ValueError:
+        return None
+    return -n if neg else n
+
+
+def _codef_rows(obj, must):
+    """응답 안에서 must 키를 가진 dict를 모두 찾는다 (단건=객체 / 다건=리스트 모두 처리)"""
+    out = []
+    if isinstance(obj, dict):
+        if all(k in obj for k in must):
+            out.append(obj)
+        for v in obj.values():
+            if isinstance(v, (dict, list)):
+                out.extend(_codef_rows(v, must))
+    elif isinstance(obj, list):
+        for v in obj:
+            out.extend(_codef_rows(v, must))
+    return out
+
+
+def _parse_vat(data):
+    """부가세과세표준증명 → 연도별 매출 (1기+2기 합계)"""
+    by_year = {}
+    for r in _codef_rows(data, ("commStartDate",)):
+        amt = _codef_amt(r.get("resIncomeTotalAmt"))
+        if amt is None:
+            amt = _codef_amt(r.get("resIncomeAmt"))
+        y = str(r.get("commStartDate") or "")[:4]
+        if amt is None or not y.isdigit():
+            continue
+        by_year[int(y)] = by_year.get(int(y), 0) + amt
+    return [{"year": y, "vat": by_year[y]} for y in sorted(by_year)][-3:]
+
+
+def _parse_tax_cert(data, err):
+    """납세증명서 → 국세 체납 여부"""
+    if data is not None:
+        rows = data if isinstance(data, list) else [data]
+        arrears_rows = [a for r in rows if isinstance(r, dict) for a in (r.get("resArrearsList") or [])
+                        if isinstance(a, dict) and (a.get("resTaxItemName") or _codef_amt(a.get("resLocalTaxAmt")))]
+        if arrears_rows:
+            amt = sum((_codef_amt(a.get("resLocalTaxAmt")) or 0) + (_codef_amt(a.get("resAdditionalCharges")) or 0) for a in arrears_rows)
+            return {"status": "has", "amount": amt or None}
+        return {"status": "none"}
+    if err and "체납" in err:
+        return {"status": "has"}
+    return None
+
+
+_FIN_KEYS = {
+    "assets": ("자산총계",), "liabilities": ("부채총계",), "capital_stock": ("자본금",),
+    "operating_income": ("영업이익", "영업손익"), "interest_expense": ("이자비용",),
+    "net_income": ("당기순이익", "당기순손익"), "_revenue": ("매출액", "수입금액"),
+}
+
+
+def _parse_financial(data):
+    """표준재무제표증명 → 원클릭 재무 수치 (총자산·총부채·자본금·영업이익·이자비용·당기순이익)"""
+    if data is None:
+        return None
+    rows = data if isinstance(data, list) else [data]
+    rows = [r for r in rows if isinstance(r, dict)]
+    if not rows:
+        return None
+    row = sorted(rows, key=lambda r: str(r.get("commEndDate") or r.get("resAttrYear") or ""))[-1]   # 가장 최근 연도
+    items = []
+    for key in ("resBalanceSheet", "resIncomeStatement"):
+        for it in (row.get(key) or []):
+            if isinstance(it, dict):
+                items.append((_re2.sub(r"[^가-힣]", "", it.get("_title") or ""), _codef_amt(it.get("_amt"))))
+    out = {}
+    for k, names in _FIN_KEYS.items():
+        for title, amt in items:
+            if amt is not None and any(title.startswith(n) or title.endswith(n) for n in names):   # 예: 영업이익(손실)
+                out[k] = amt
+                break
+    if "assets" not in out and "liabilities" not in out:
+        return None
+    yr = str(row.get("resAttrYear") or row.get("commEndDate") or "")[:4]
+    if yr.isdigit():
+        out["_year"] = int(yr)
+    return out
 
 
 class HometaxLimitBody(BaseModel):
