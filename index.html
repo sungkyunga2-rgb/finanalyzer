@@ -446,6 +446,17 @@
   .ht-auth-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 14px; font-family: inherit; background: var(--surface); color: var(--text); }
   .ht-auth-check { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: var(--text2); line-height: 1.5; margin: 6px 0; }
   .ht-auth-check input { margin-top: 2px; }
+  .ht-auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--surface2, #f1f4f8); border-radius: 10px; padding: 4px; margin: 6px 0 12px; }
+  .ht-auth-tabs button { border: none; background: none; border-radius: 8px; padding: 8px 4px; font-size: 13.5px; font-weight: 700; color: var(--text2); cursor: pointer; font-family: inherit; }
+  .ht-auth-tabs button.on { background: var(--surface); color: #185FA5; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .ht-cert-drop { display: block; position: relative; border: 2px dashed var(--border-strong); border-radius: 12px; padding: 18px 12px; text-align: center; cursor: pointer; background: var(--surface); }
+  .ht-cert-drop.drag, .ht-cert-drop:hover { border-color: #185FA5; background: #EBF2FA; }
+  .ht-cert-drop.ok { border-style: solid; border-color: #1D9E75; background: #E1F5EE; }
+  .ht-cert-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+  .ht-cert-ic { font-size: 28px; margin-bottom: 4px; }
+  .ht-cert-main { font-size: 12.5px; color: var(--text2); line-height: 1.55; }
+  .ht-cert-hint { font-size: 11px; color: var(--text3); line-height: 1.6; margin: 8px 0 4px; word-break: break-all; }
+  .ht-cert-hint code { font-size: 10.5px; background: var(--surface2, #f1f4f8); padding: 1px 4px; border-radius: 4px; }
   .ht-auth .btn-full { margin-top: 10px; }
   .ht-doc-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .ht-doc-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; background: var(--surface); padding: 22px 14px; line-height: 1.45; min-height: 150px; border: 2px dashed #c9d6e6; border-radius: 12px; transition: border-color .15s, background .15s; }
@@ -813,7 +824,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 본인 인증하기</button>
       </div>
-      <p style="font-size:11px;color:var(--text3);margin-top:8px;">카카오톡·네이버·토스·PASS 등 간편인증으로 홈택스 자료를 불러옵니다.</p>
+      <p style="font-size:11px;color:var(--text3);margin-top:8px;">카카오톡·네이버·토스·PASS 등 간편인증 또는 공동인증서로 홈택스 자료를 불러옵니다.</p>
       <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
         <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">📄 서류로 채우기</div>
         <p style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px;">서류를 올리면 AI가 읽어서 아래 칸을 채워드려요. 이미 입력한 칸은 서류 내용으로 바뀝니다.</p>
@@ -842,6 +853,9 @@
       #hometaxSection .ht-row:last-child { border-bottom:none; }
       #hometaxSection .ht-head { background:var(--surface2); font-size:13px; font-weight:600; color:var(--text1, #1a1a18); padding:12px 14px; display:flex; align-items:center; line-height:1.4; }
       #hometaxSection .ht-body { padding:10px 14px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+      #hometaxSection .ht-ind-add { background:none; border:1px dashed var(--border-strong); color:#185FA5; font-size:12.5px; font-weight:600; border-radius:8px; padding:6px 12px; margin:-2px 0 8px; cursor:pointer; font-family:inherit; }
+      #hometaxSection .ht-ind-add:hover { background:#EBF2FA; }
+      #hometaxSection .ht-ind-del { background:none; border:1px solid var(--border-strong); color:var(--text2); font-size:12.5px; border-radius:8px; padding:9px 10px; cursor:pointer; font-family:inherit; width:100%; }
       #hometaxSection .ht-line { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:8px; align-items:end; }
       #hometaxSection .ht-f { display:flex; flex-direction:column; gap:3px; min-width:0; }
       #hometaxSection .ht-f > span { font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -886,6 +900,12 @@
                 <select id="ht-founded-m" onchange="htSyncFounded()" style="flex:1;"></select>
               </div><input type="hidden" id="ht-founded" /></div>
             <label class="ht-f"><span>사업장 소재지<b class="ht-req">*</b></span><select id="ht-location"><option value="">지역 선택</option><option value="서울">서울</option><option value="부산">부산</option><option value="대구">대구</option><option value="인천">인천</option><option value="광주">광주</option><option value="대전">대전</option><option value="울산">울산</option><option value="세종">세종</option><option value="경기">경기</option><option value="강원">강원</option><option value="충북">충북</option><option value="충남">충남</option><option value="전북">전북</option><option value="전남">전남</option><option value="경북">경북</option><option value="경남">경남</option><option value="제주">제주</option></select></label>
+          </div>
+          <button type="button" class="ht-ind-add" id="ht-ind2-add" onclick="htShowInd2(true)">+ 업태·종목 추가</button>
+          <div class="ht-line ht-ind2-line" id="ht-ind2-line" style="display:none;">
+            <label class="ht-f"><span>업태 2</span><input type="text" id="ht-industry2" placeholder="도매 및 소매업" /></label>
+            <label class="ht-f"><span>종목 2</span><input type="text" id="ht-item2" placeholder="전자상거래" /></label>
+            <div class="ht-f"><span>&nbsp;</span><button type="button" class="ht-ind-del" onclick="htShowInd2(false)">✕ 삭제</button></div>
           </div>
           <div class="ht-radios">
             <label><input type="radio" name="ht-biztype" value="personal" checked /> 개인사업자</label>
@@ -3259,7 +3279,7 @@ const HT_LEVEL_ICON  = { safe: "✅", warn: "⚠️", danger: "🚨", info: "ℹ
 // type: text / money(콤마 금액) / signed(마이너스 가능 금액) / int / num / dec(마이너스·소수 가능) / check
 const HT_FIELDS = [
   ["company_name", "ht-company", "text"], ["rep_name", "ht-rep", "text"], ["business_number", "ht-biz", "text"],
-  ["industry", "ht-industry", "text"], ["item", "ht-item", "text"], ["founded", "ht-founded", "text"], ["location", "ht-location", "text"],
+  ["industry", "ht-industry", "text"], ["item", "ht-item", "text"], ["industry2", "ht-industry2", "text"], ["item2", "ht-item2", "text"], ["founded", "ht-founded", "text"], ["location", "ht-location", "text"],
   ["ytd.year", "ht-ytd-year", "int"], ["ytd.month", "ht-ytd-month", "int"], ["ytd.sales", "ht-ytd-sales", "money"], ["export_amount", "ht-export-amount", "money"],
   ["credit.kcb", "ht-kcb", "int"], ["credit.nice", "ht-nice", "int"], ["credit.co_kcb", "ht-co-kcb", "int"], ["credit.co_nice", "ht-co-nice", "int"],
   ["credit.recovery.faithful", "ht-rec-faithful", "text"], ["credit.recovery.type", "ht-rec-type", "text"],
@@ -3507,8 +3527,21 @@ function htFillForm(input) {
   htToggleFin(!!input.fin);
   htSyncYtdLabel();
   htFoundedToSelects();
+  htShowInd2(!!(input.industry2 || input.item2), true);
   if (!document.getElementById("ht-ytd-year").value) document.getElementById("ht-ytd-year").value = new Date().getFullYear();
 }
+
+// 두 번째 업태·종목 칸 보이기/숨기기 (keep: 숨길 때 값 유지)
+function htShowInd2(on, keep) {
+  const line = document.getElementById("ht-ind2-line"), add = document.getElementById("ht-ind2-add");
+  if (!line) return;
+  line.style.display = on ? "" : "none";
+  add.style.display = on ? "none" : "";
+  if (!on && !keep) { document.getElementById("ht-industry2").value = ""; document.getElementById("ht-item2").value = ""; }
+  if (on && !keep) document.getElementById("ht-industry2").focus();
+}
+// 업태·종목 표시 — 두 번째 값이 있으면 " / "로 이어서
+function htIndJoin(a, b) { return [a, b].map(x => (x || "").trim()).filter(Boolean).join(" / "); }
 
 // 창업년월: 연도·월 선택 → 숨은 칸(YYYY-MM)
 function htBuildFoundedSelects() {
@@ -3596,13 +3629,91 @@ function htAuthOpen() {
   document.getElementById("htAuthTelecomRow").style.display = htAuthState.provider === "5" ? "" : "none";
   const rep = document.getElementById("ht-rep");
   if (rep && rep.value && !document.getElementById("htAuthName").value) document.getElementById("htAuthName").value = rep.value;
+  htCertDropInit();
+  htAuthTab(htAuthState.tab || "simple");
   htAuthShow(1);
   document.getElementById("htAuthModal").style.display = "flex";
 }
 function htAuthClose() {
   clearInterval(htAuthState.timer);
+  const pw = document.getElementById("htCertPw"); if (pw) pw.value = "";
+  htCertFiles = { type: "", cert: "", key: "" };
+  const cm = document.getElementById("htCertMain"); if (cm) cm.innerHTML = "signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요";
+  const cd = document.getElementById("htCertDrop"); if (cd) cd.classList.remove("ok");
+  const cf = document.getElementById("htCertFiles"); if (cf) cf.value = "";
   document.getElementById("htAuthModal").style.display = "none";
 }
+function htAuthTab(t) {
+  htAuthState.tab = t;
+  document.getElementById("htAuthTabSimple").classList.toggle("on", t === "simple");
+  document.getElementById("htAuthTabCert").classList.toggle("on", t === "cert");
+  document.getElementById("htAuthSimpleBox").style.display = t === "simple" ? "" : "none";
+  document.getElementById("htAuthCertBox").style.display = t === "cert" ? "" : "none";
+}
+
+// 공동인증서 파일 → base64 (브라우저에서만 읽고 서버로 한 번 보낸다. 저장하지 않음)
+let htCertFiles = { type: "", cert: "", key: "" };
+function htFileB64(file) {
+  return new Promise((ok, no) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(",")[1] || "");
+    r.onerror = () => no(new Error("파일을 읽지 못했어요."));
+    r.readAsDataURL(file);
+  });
+}
+async function htCertPick(files) {
+  files = Array.from(files || []);
+  const byExt = ext => files.find(f => f.name.toLowerCase().endsWith(ext));
+  const pfx = byExt(".pfx") || byExt(".p12"), der = byExt(".der"), key = byExt(".key");
+  const main = document.getElementById("htCertMain"), drop = document.getElementById("htCertDrop");
+  try {
+    if (pfx) {
+      htCertFiles = { type: "pfx", cert: await htFileB64(pfx), key: "" };
+      main.innerHTML = `✅ ${pfx.name}`;
+    } else if (der || key) {
+      if (der) htCertFiles.cert = await htFileB64(der);
+      if (key) htCertFiles.key = await htFileB64(key);
+      htCertFiles.type = "1";
+      const done = htCertFiles.cert && htCertFiles.key;
+      main.innerHTML = done ? "✅ signCert.der + signPri.key" : `${der ? "✅ signCert.der" : "✅ signPri.key"}<br>나머지 ${der ? "signPri.key" : "signCert.der"} 파일도 선택해 주세요`;
+    } else {
+      return toast("signCert.der·signPri.key 또는 .pfx 파일을 선택해 주세요.");
+    }
+  } catch (e) { return toast(e.message); }
+  drop.classList.toggle("ok", !!(htCertFiles.cert && (htCertFiles.type === "pfx" || htCertFiles.key)));
+}
+async function htCertStart() {
+  const ready = htCertFiles.cert && (htCertFiles.type === "pfx" || htCertFiles.key);
+  if (!ready) return toast("인증서 파일을 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
+  const pwEl = document.getElementById("htCertPw");
+  if (!pwEl.value) return toast("인증서 비밀번호를 입력해주세요.");
+  if (!document.getElementById("htCertAgree").checked) return toast("인증서 제공에 동의해 주세요.");
+  const btn = document.getElementById("htCertBtn");
+  btn.disabled = true;
+  htAuthShow(3);
+  try {
+    const res = await api("POST", "/codef/hometax/cert", {
+      cert_type: htCertFiles.type, cert_file: htCertFiles.cert, key_file: htCertFiles.key, password: pwEl.value,
+      business_number: (document.getElementById("ht-biz") || {}).value || "",
+    });
+    pwEl.value = "";
+    htAuthApply(res);
+  } catch (e) {
+    toast(e.message);
+    htAuthShow(1);
+  } finally {
+    btn.disabled = false;
+  }
+}
+function htCertDropInit() {
+  const d = document.getElementById("htCertDrop");
+  if (!d || d.__init) return;
+  d.__init = true;
+  ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove("drag"); }));
+  d.addEventListener("drop", e => htCertPick(e.dataTransfer.files));
+}
+
 function htAuthShow(n) {
   [1, 2, 3].forEach(i => document.getElementById("htAuthStep" + i).style.display = i === n ? "" : "none");
 }
@@ -3665,7 +3776,7 @@ async function htAuthComplete() {
 function htAuthApply(res) {
   const f = res.fill || {};
   const inc = {};
-  ["company_name", "rep_name", "business_number", "industry", "item", "founded", "location", "biz_type"].forEach(k => { if (f[k]) inc[k] = f[k]; });
+  ["company_name", "rep_name", "business_number", "industry", "item", "industry2", "item2", "founded", "location", "biz_type"].forEach(k => { if (f[k]) inc[k] = f[k]; });
   if (f.years) inc.years = f.years;
   if (f.arrears) inc.arrears = f.arrears;
   if (f.fin) inc.fin = f.fin;
@@ -3902,7 +4013,7 @@ function htInfoCard(r, input) {
   const rows = [
     row("업체", [item("회사", e(input.company_name || "")), item("대표", e(input.rep_name || "")), item("사업자번호", e(input.business_number || "")),
                  item("구분", r.biz === "corp" ? "법인" : "개인")]),
-    row("업태 · 업력", [item("업태", e(input.industry || "")),
+    row("업태 · 업력", [item("업태", e(htIndJoin(input.industry, input.industry2))),
                        item("창업", pf.founded ? e(pf.founded) + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""),
                        item("소재지", e(input.location || ""))]),
     row("매출", years.concat([ytd]).concat(r.vat && r.vat.ytd ? [item("연 환산", htKwon(r.vat.ytd.annual))] : [])
@@ -3941,7 +4052,7 @@ function htReportBody(r, input) {
   // 기업 개요
   const ov = [
     ["회사명", input.company_name], ["대표자", input.rep_name], ["사업자번호", input.business_number],
-    ["사업자 구분", r.biz === "corp" ? "법인사업자" : "개인사업자"], ["업태", input.industry], ["종목", input.item],
+    ["사업자 구분", r.biz === "corp" ? "법인사업자" : "개인사업자"], ["업태", htIndJoin(input.industry, input.industry2)], ["종목", htIndJoin(input.item, input.item2)],
     ["창업 · 업력", pf.founded ? pf.founded + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""],
     ["소재지", input.location], ["직원 수", has(input.employees) ? input.employees + "명" : ""],
     ["대표자 정보", [has(rp.age) ? `만 ${rp.age}세` : "", has(rp.career) ? `동종업계 ${rp.career}년` : "", rp.woman ? "여성 대표" : ""].filter(Boolean).join(" · ")],
@@ -4174,7 +4285,7 @@ function htResultCardHTML(r, input, full, opts) {
 
   // ── 1. 기업 개요 ──
   const ov = [
-    ["업태", input.industry], ["종목", input.item], ["구분", r.biz === "corp" ? "법인사업자" : "개인사업자"],
+    ["업태", htIndJoin(input.industry, input.industry2)], ["종목", htIndJoin(input.item, input.item2)], ["구분", r.biz === "corp" ? "법인사업자" : "개인사업자"],
     ["창업 · 업력", pf.founded ? pf.founded + (pf.bizAge ? ` (${pf.bizAge.years}년 ${pf.bizAge.rest}개월)` : "") : ""],
     ["소재지", input.location], ["대표자", input.rep_name], ["사업자번호", input.business_number],
     ["최근 매출", r.vat && r.vat.latest ? `${r.vat.latest.year}년 ${htKwon(r.vat.latest.vat)}` : ""],
@@ -6609,6 +6720,11 @@ window.addEventListener("DOMContentLoaded", () => {
     <button type="button" class="ht-auth-x" onclick="htAuthClose()" aria-label="닫기">×</button>
     <div id="htAuthStep1">
       <div class="ht-auth-title">🔐 본인 인증으로 자동 채우기</div>
+      <div class="ht-auth-tabs">
+        <button type="button" id="htAuthTabSimple" class="on" onclick="htAuthTab('simple')">간편인증</button>
+        <button type="button" id="htAuthTabCert" onclick="htAuthTab('cert')">공동인증서</button>
+      </div>
+      <div id="htAuthSimpleBox">
       <p class="ht-auth-desc">대표자 본인 명의로 간편인증하면 홈택스 자료로 아래 정보를 채워드려요.</p>
       <div class="ht-auth-label">인증 방법</div>
       <div class="ht-auth-providers" id="htAuthProviders"></div>
@@ -6623,6 +6739,20 @@ window.addEventListener("DOMContentLoaded", () => {
       <label class="ht-auth-check"><input type="checkbox" id="htAuthNonMember" /> 홈택스 회원이 아니에요 (비회원 인증)</label>
       <label class="ht-auth-check"><input type="checkbox" id="htAuthAgree" /> 홈택스 자료 조회를 위해 위 정보를 인증 대행사(CODEF)에 제공하는 데 동의합니다.</label>
       <button type="button" class="btn btn-primary btn-full" id="htAuthStartBtn" onclick="htAuthStart()">인증 요청하기</button>
+      </div>
+      <div id="htAuthCertBox" style="display:none;">
+        <p class="ht-auth-desc">대표자(법인은 법인) 명의 공동인증서(구 공인인증서) 파일을 올리면 홈택스 자료로 채워드려요. <b>PC에서 이용하시는 걸 권장해요.</b></p>
+        <div class="ht-auth-label">인증서 파일</div>
+        <label class="ht-cert-drop" id="htCertDrop">
+          <input type="file" id="htCertFiles" multiple accept=".der,.key,.pfx,.p12" onchange="htCertPick(this.files)" />
+          <div class="ht-cert-ic">📁</div>
+          <div class="ht-cert-main" id="htCertMain">signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요</div>
+        </label>
+        <p class="ht-cert-hint">인증서 위치 (Windows): <code>C:\Users\사용자\AppData\LocalLow\NPKI\yessign\USER\…</code><br>Mac: <code>~/Library/Preferences/NPKI/…</code> · 인증서 폴더 안의 두 파일을 함께 선택하세요.</p>
+        <label class="ht-auth-grid" style="grid-template-columns:1fr;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">인증서 비밀번호</span><input id="htCertPw" type="password" class="ht-auth-input" autocomplete="off" placeholder="인증서 비밀번호" /></label>
+        <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스 자료 조회를 위해 인증서를 인증 대행사(CODEF)에 제공하는 데 동의합니다. 인증서와 비밀번호는 조회에만 쓰고 저장하지 않아요.</label>
+        <button type="button" class="btn btn-primary btn-full" id="htCertBtn" onclick="htCertStart()">공동인증서로 불러오기</button>
+      </div>
     </div>
     <div id="htAuthStep2" style="display:none;text-align:center;">
       <div style="font-size:40px;margin:6px 0 4px;">📱</div>

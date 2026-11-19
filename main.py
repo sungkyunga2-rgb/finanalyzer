@@ -960,11 +960,16 @@ def _ht_s(v):
     return "" if v is None else str(v)
 
 
+def _ht_ind_text(inp):
+    """업태·종목 (두 번째 업태·종목까지)"""
+    return " ".join(_ht_s(inp.get(k)) for k in ("industry", "item", "industry2", "item2") if _ht_s(inp.get(k))).strip()
+
+
 def _ht_small_biz(inp):
     emp = _ht_num(inp.get("employees"))
     if emp is None:
         return True
-    mfg = bool(_re.search(r"제조|건설|운수|광업", _ht_s(inp.get("industry")) + " " + _ht_s(inp.get("item"))))
+    mfg = bool(_re.search(r"제조|건설|운수|광업", _ht_ind_text(inp)))
     return emp < (10 if mfg else 5)
 
 
@@ -1062,7 +1067,7 @@ def ht_estimate_limit(inp, today=None):
     ctx = ht_limit_context(inp, today)
     lv = ctx["vat_latest"]
     sales = lv if (lv is not None and lv > 0) else (ctx["ytd_annual"] if (ctx["ytd_annual"] or 0) > 0 else None)
-    ind_text = (_ht_s(inp.get("industry")) + " " + _ht_s(inp.get("item"))).strip()
+    ind_text = _ht_ind_text(inp)
     bam = ctx["biz_age_months"]
     startup_kibo = bam is not None and bam < 12 and ("제조" in ind_text or bool(_HT_CONTENT.search(ind_text)) or "특허" in _ht_s(inp.get("certs")))
     ar = (inp.get("arrears") or {}).get("status") or "unknown"
@@ -1273,6 +1278,11 @@ def _sido(addr):
     return ""
 
 
+def _split_biz(v):
+    """'제조업, 도매업' / 줄바꿈 / '|' 로 나뉜 업태·종목 → 리스트"""
+    return [x.strip() for x in _re2.split(r"[,\n|;]+", str(v or "")) if x.strip()]
+
+
 def _parse_registration(data, want_biz=""):
     """사업자등록 증명 → 원클릭 입력값"""
     rows = data if isinstance(data, list) else [data]
@@ -1283,15 +1293,19 @@ def _parse_registration(data, want_biz=""):
     row = next((x for x in rows if _re2.sub(r"\D", "", x.get("resCompanyIdentityNo") or "") == digits), rows[0]) if digits else rows[0]
     bn = _re2.sub(r"\D", "", row.get("resCompanyIdentityNo") or "")
     opened = _re2.sub(r"\D", "", row.get("resOpenDate") or "")
-    types, items = (row.get("resBusinessTypes") or "").strip(), (row.get("resBusinessItems") or "").strip()
+    types, items = _split_biz(row.get("resBusinessTypes")), _split_biz(row.get("resBusinessItems"))
+    if len(items) != len(types) and len(types) > 1:      # 짝이 안 맞으면 종목은 첫 칸에 그대로
+        items = [", ".join(items)] if items else []
     kind = (row.get("resBusinessmanType") or "") + " " + (row.get("resUserIdentiyNo") or "")
     out = {
         "company_name": (row.get("resCompanyNm") or "").strip() or (row.get("resUserNm") or "").strip(),
         "rep_name": (row.get("resUserNm") or "").strip(),
         "business_number": f"{bn[:3]}-{bn[3:5]}-{bn[5:]}" if len(bn) == 10 else bn,
         "founded": f"{opened[:4]}-{opened[4:6]}" if len(opened) >= 6 else "",
-        "industry": types,
-        "item": items,
+        "industry": types[0] if types else "",
+        "item": items[0] if items else "",
+        "industry2": ", ".join(types[1:]),
+        "item2": ", ".join(items[1:]),
         "location": _sido(row.get("resUserAddr")),
         "biz_type": "corp" if "법인" in kind else "personal",
     }
@@ -1348,6 +1362,90 @@ def _hometax_login_params(b: CodefStartBody, user_id: int):
     return p
 
 
+class CodefCertBody(BaseModel):
+    cert_type: str = "1"          # "1": signCert.der + signPri.key / "pfx": .pfx(.p12) 한 파일
+    cert_file: str                # base64
+    key_file: str = ""            # base64 (cert_type "1" 일 때)
+    password: str
+    business_number: str = ""
+
+
+def _codef_rsa(text):
+    """CODEF 공개키(RSA)로 비밀번호 암호화 — 서버에서만 처리"""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    pub = (os.getenv("CODEF_PUBLIC_KEY") or "").strip()
+    if not pub:
+        raise HTTPException(status_code=503, detail="공동인증서 인증이 아직 설정되지 않았습니다.")
+    try:
+        if "BEGIN" in pub:
+            key = serialization.load_pem_public_key(pub.encode())
+        else:
+            key = serialization.load_der_public_key(_b64.b64decode(pub))
+    except Exception as e:
+        print(f"[CODEF] 공개키 오류: {e}")
+        raise HTTPException(status_code=503, detail="공동인증서 인증 설정에 문제가 있습니다. 관리자에게 문의해주세요.")
+    return _b64.b64encode(key.encrypt(text.encode("utf-8"), padding.PKCS1v15())).decode()
+
+
+def _b64_clean(v):
+    t = str(v or "").strip()
+    if t.startswith("data:") and "," in t:
+        t = t.split(",", 1)[1]
+    t = _re2.sub(r"\s", "", t)
+    try:
+        raw = _b64.b64decode(t, validate=True)
+    except Exception:
+        return ""
+    return t if 0 < len(raw) <= 64 * 1024 else ""
+
+
+def _hometax_cert_params(b: CodefCertBody, user_id: int):
+    ct = "pfx" if str(b.cert_type).lower() in ("pfx", "p12") else "1"
+    cert = _b64_clean(b.cert_file)
+    key = _b64_clean(b.key_file) if ct == "1" else ""
+    if not cert or (ct == "1" and not key):
+        raise HTTPException(status_code=400, detail="인증서 파일을 확인해주세요. (signCert.der + signPri.key 또는 .pfx 파일)")
+    if not b.password:
+        raise HTTPException(status_code=400, detail="인증서 비밀번호를 입력해주세요.")
+    p = {
+        "organization": "0001",
+        "loginType": "0",
+        "certType": ct,
+        "certFile": cert,
+        "certPassword": _codef_rsa(b.password),
+        "id": f"fina-{user_id}-{uuid.uuid4().hex[:12]}",
+        "usePurposes": "99",
+        "submitTargets": "99",
+        "isIdentityViewYN": "0",
+        "originDataYN": "0",
+        "applicationType": "01",
+    }
+    if key:
+        p["keyFile"] = key
+    bn = _re2.sub(r"\D", "", b.business_number or "")
+    if len(bn) == 10:
+        p["identity"] = bn
+    return p
+
+
+@app.post("/codef/hometax/cert")
+async def codef_hometax_cert(body: CodefCertBody, user: models.User = Depends(get_current_user)):
+    """공동인증서(구 공인인증서)로 홈택스 로그인 → 서류 4종 조회. 인증서·비밀번호는 저장하지 않고 화면에 돌려주지도 않는다."""
+    if not _codef_ready():
+        raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
+    params = _hometax_cert_params(body, user.id)
+    res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], params)
+    code = _codef_code(res)
+    if code == "CF-00000":
+        return await _hometax_collect(params, res.get("data"))
+    print(f"[CODEF] cert 실패 {code}: {(res.get('result') or {}).get('message')}")
+    msg = _codef_msg(res)
+    if "비밀번호" in msg or "password" in msg.lower():
+        raise HTTPException(status_code=400, detail="인증서 비밀번호가 맞지 않습니다. 다시 확인해주세요.")
+    raise HTTPException(status_code=400, detail=f"공동인증서 인증에 실패했습니다: {msg}")
+
+
 @app.get("/codef/status")
 def codef_status():
     return {"ready": _codef_ready(), "products": [k for k, v in CODEF_HOMETAX_PRODUCTS.items() if v]}
@@ -1394,12 +1492,14 @@ async def _hometax_collect(params, reg_data):
     got, failed = (["사업자등록증명"] if fill else []), []
     now = datetime.utcnow() + timedelta(hours=9)
     corp = fill.get("biz_type") == "corp"
-    base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id") if k in params}
+    base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id",
+                                   "certType", "certFile", "keyFile", "certPassword") if k in params}
     if params.get("telecom"):
         base["telecom"] = params["telecom"]
     if params.get("identity"):
         base["identity"] = params["identity"]
     phone = params.get("phoneNo", "")
+    ph = (lambda key: {key: phone} if phone else {})    # 간편인증만 휴대폰 번호를 보낸다
 
     async def call(key, extra):
         try:
@@ -1413,10 +1513,10 @@ async def _hometax_collect(params, reg_data):
         print(f"[CODEF] {key} 실패 {code}: {_codef_msg(res)}")
         return None, _codef_msg(res)
 
-    # ① 부가세과세표준증명 — 최근 3개 연도 (회원 간편인증만 지원)
-    if params.get("loginType") == "5":
+    # ① 부가세과세표준증명 — 최근 3개 연도 (회원 인증서·회원 간편인증만 지원)
+    if params.get("loginType") in ("0", "5"):
         y = now.year
-        data, err = await call("vat", {"phoneNo": phone, "startDate": f"{y - 3}01", "endDate": f"{y - 1}07",
+        data, err = await call("vat", {**ph("phoneNo"), "startDate": f"{y - 3}01", "endDate": f"{y - 1}07",
                                        "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
         years = _parse_vat(data) if data is not None else []
         if years:
@@ -1428,7 +1528,7 @@ async def _hometax_collect(params, reg_data):
         failed.append("부가세과세표준증명")
 
     # ② 납세증명서 — 발급되면 체납 없음
-    data, err = await call("tax_payment", {"phoneNo": phone, "isIdentityViewYN": "0", "isAddrViewYn": "0", "proofType": "B0007",
+    data, err = await call("tax_payment", {**ph("phoneNo"), "isIdentityViewYN": "0", "isAddrViewYn": "0", "proofType": "B0007",
                                            "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
     arrears = _parse_tax_cert(data, err)
     if arrears:
@@ -1442,7 +1542,7 @@ async def _hometax_collect(params, reg_data):
     if 8 <= now.hour < 22:
         tries = [f"{now.year - 1}12", f"{now.year - 2}12"] if corp else [str(now.year - 1), str(now.year - 2)]
         for sd in tries:
-            extra = {"loginPhoneNo": phone, "startDate": sd, "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"}
+            extra = {**ph("loginPhoneNo"), "startDate": sd, "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"}
             if not corp:
                 extra["proofType"] = "40"
             data, err = await call("financial", extra)
