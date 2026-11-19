@@ -456,6 +456,29 @@
   .ht-cert-ic { font-size: 28px; margin-bottom: 4px; }
   .ht-cert-main { font-size: 12.5px; color: var(--text2); line-height: 1.55; }
   .ht-cert-hint { font-size: 11px; color: var(--text3); line-height: 1.6; margin: 8px 0 4px; word-break: break-all; }
+  .ht-npki-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .ht-npki-link { background: none; border: none; color: #185FA5; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 2px 4px; }
+  .ht-npki-list { border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .ht-npki-list:empty { display: none; }
+  .ht-npki-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+  .ht-npki-table th { background: var(--surface2, #f1f4f8); color: var(--text2); font-weight: 600; padding: 7px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+  .ht-npki-table td { padding: 8px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .ht-npki-table tr:last-child td { border-bottom: none; }
+  .ht-npki-table tbody tr { cursor: pointer; }
+  .ht-npki-table tbody tr:hover td { background: #F3F8FD; }
+  .ht-npki-table tbody tr.on td { background: #E6F0FB; font-weight: 700; }
+  .ht-npki-table tbody tr.on td:first-child { box-shadow: inset 3px 0 0 #185FA5; }
+  .ht-npki-table tbody tr.expired td { color: var(--text3); text-decoration: line-through; }
+  .ht-npki-scroll { max-height: 190px; overflow-y: auto; }
+  .ht-npki-empty { padding: 16px 12px; text-align: center; font-size: 12.5px; color: var(--text2); line-height: 1.6; }
+  .ht-npki-btn { display: block; width: 100%; border: 1.5px solid #185FA5; background: #F3F8FD; color: #185FA5; border-radius: 10px; padding: 12px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .ht-npki-guide { font-size: 12px; color: var(--text2); line-height: 1.6; background: var(--surface2, #f6f8fb); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+  .ht-npki-guide ol { padding-left: 18px; margin: 4px 0 8px; }
+  .ht-npki-path { display: flex; gap: 6px; align-items: center; }
+  .ht-npki-path code { flex: 1; min-width: 0; font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ht-npki-path button { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+  .ht-npki-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
+  .ht-npki-other { background: none; border: none; color: var(--text3); font-size: 12px; text-decoration: underline; cursor: pointer; font-family: inherit; padding: 8px 0 2px; }
   .ht-cert-saved { display: flex; align-items: center; gap: 10px; border: 1.5px solid #1D9E75; background: #E1F5EE; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
   .ht-cert-saved-ic { font-size: 24px; }
   .ht-cert-saved-name { font-size: 14px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3652,6 +3675,7 @@ function htAuthOpen() {
   htCertState.useSaved = true;
   htCertFiles = { type: "", cert: "", key: "" };
   htCertRenderSaved();
+  if (!htSavedCert()) htNpkiInit();
   htAuthTab(htAuthState.tab || (htSavedCert() ? "cert" : "simple"));
   htAuthShow(1);
   document.getElementById("htAuthModal").style.display = "flex";
@@ -3659,6 +3683,7 @@ function htAuthOpen() {
 function htAuthClose() {
   clearInterval(htAuthState.timer);
   htRelayStop();
+  htNpki.sel = -1;
   htRelay.files = null;
   const pw = document.getElementById("htCertPw"); if (pw) pw.value = "";
   htCertFiles = { type: "", cert: "", key: "" };
@@ -3701,8 +3726,79 @@ async function htReadCertFiles(files, prev) {
 }
 function htCertReady(o) { return !!(o && o.cert && (o.type === "pfx" || o.key)); }
 
-// 인증서(DER)에서 소유자 이름(CN) 꺼내기 — 마지막 CN이 소유자
+// ── 인증서(DER) 읽기: 소유자·발급기관·만료일·용도 ──
+const HT_CERT_POLICY = {   // 공동인증서 정책 OID → 용도
+  "1.2.410.200005.1.1.1": "범용(개인)", "1.2.410.200005.1.1.5": "범용(법인)", "1.2.410.200005.1.1.4": "은행/신용카드/보험용",
+  "1.2.410.200005.1.1.2": "은행/보험용(법인)", "1.2.410.200005.1.1.6.2": "전자세금계산서용",
+  "1.2.410.200004.5.2.1.2": "범용(개인)", "1.2.410.200004.5.2.1.1": "범용(법인)",
+  "1.2.410.200004.5.1.1.5": "범용(개인)", "1.2.410.200004.5.1.1.7": "범용(법인)",
+  "1.2.410.200004.5.4.1.1": "범용(개인)", "1.2.410.200004.5.4.1.2": "범용(법인)",
+  "1.2.410.200012.1.1.1": "범용(개인)", "1.2.410.200012.1.1.3": "범용(법인)",
+};
+const HT_CERT_CA = { yessign: "yessign", kica: "KICA(정보인증)", signkorea: "SignKorea(코스콤)", crosscert: "CrossCert(전자인증)", tradesign: "TradeSign(무역정보)", ktnet: "TradeSign(무역정보)" };
+function htDerInfo(b64) {
+  const buf = typeof b64 === "string" ? htUnB64(b64) : new Uint8Array(b64);
+  const node = p => {
+    let len = buf[p + 1], hl = 2;
+    if (len & 0x80) { const n = len & 0x7f; len = 0; for (let i = 0; i < n; i++) len = len * 256 + buf[p + 2 + i]; hl = 2 + n; }
+    return { tag: buf[p], start: p + hl, end: p + hl + len };
+  };
+  const kids = nd => { const out = []; let p = nd.start; while (p < nd.end) { const c = node(p); out.push(c); p = c.end; } return out; };
+  const hex = nd => Array.from(buf.slice(nd.start, nd.end), b => b.toString(16).padStart(2, "0")).join("");
+  const oid = nd => {
+    const b = buf.slice(nd.start, nd.end), out = [Math.floor(b[0] / 40), b[0] % 40];
+    let v = 0;
+    for (let i = 1; i < b.length; i++) { v = v * 128 + (b[i] & 0x7f); if (!(b[i] & 0x80)) { out.push(v); v = 0; } }
+    return out.join(".");
+  };
+  const str = nd => {
+    const b = buf.slice(nd.start, nd.end);
+    if (nd.tag === 0x1e) { let t = ""; for (let i = 0; i + 1 < b.length; i += 2) t += String.fromCharCode(b[i] * 256 + b[i + 1]); return t; }
+    try { return new TextDecoder().decode(b); } catch (e) { return ""; }
+  };
+  const name = nd => {   // Name → { CN, O }
+    const o = {};
+    kids(nd).forEach(set => kids(set).forEach(atv => {
+      const [k, v] = kids(atv);
+      const h = hex(k);
+      if (h === "550403") o.CN = str(v);
+      else if (h === "55040a") o.O = str(v);
+    }));
+    return o;
+  };
+  const time = nd => {
+    const t = str(nd);
+    const y = nd.tag === 0x17 ? (Number(t.slice(0, 2)) < 50 ? 2000 : 1900) + Number(t.slice(0, 2)) : Number(t.slice(0, 4));
+    const r = nd.tag === 0x17 ? t.slice(2) : t.slice(4);
+    return new Date(Date.UTC(y, Number(r.slice(0, 2)) - 1, Number(r.slice(2, 4)), Number(r.slice(4, 6)), Number(r.slice(6, 8))));
+  };
+  const cert = node(0), tbs = kids(cert)[0], f = kids(tbs);
+  const i = f[0].tag === 0xa0 ? 1 : 0;
+  const issuer = name(f[i + 2]), validity = kids(f[i + 3]), subject = name(f[i + 4]);
+  let policy = "";
+  const ext = f.find(x => x.tag === 0xa3);
+  if (ext) kids(kids(ext)[0]).forEach(e => {
+    const parts = kids(e);
+    if (hex(parts[0]) === "551d20") {
+      const oct = parts[parts.length - 1];
+      const pols = kids(node(oct.start));
+      if (pols.length) policy = oid(kids(pols[0])[0]);
+    }
+  });
+  const rawName = subject.CN || "";
+  const caKey = ((issuer.O || "") + " " + (issuer.CN || "")).toLowerCase();
+  const ca = Object.keys(HT_CERT_CA).find(k => caKey.includes(k));
+  return {
+    name: rawName.replace(/\(\)\s*\d*.*$/, "").replace(/\d{10,}$/, "").trim() || rawName,
+    issuer: ca ? HT_CERT_CA[ca] : (issuer.O || issuer.CN || ""),
+    notAfter: time(validity[1]),
+    policy, usage: HT_CERT_POLICY[policy] || "",
+  };
+}
+
+// 인증서(DER)에서 소유자 이름(CN) 꺼내기
 function htCertName(b64) {
+  try { const n = htDerInfo(b64).name; if (n) return n; } catch (e) {}
   try {
     const bin = atob(b64), n = bin.length;
     let name = "";
@@ -3734,12 +3830,15 @@ function htCertForget() {
   try { localStorage.removeItem(htCertStoreKey()); } catch (e) {}
   htCertFiles = { type: "", cert: "", key: "" };
   htCertRenderSaved();
+  htNpkiInit();
   toast("보관된 인증서를 이 기기에서 삭제했어요.");
 }
 function htCertUseOther() {
   htCertFiles = { type: "", cert: "", key: "" };
   htCertState.useSaved = false;
+  htNpki.sel = -1;
   htCertRenderSaved();
+  htNpkiInit();
 }
 let htCertState = { useSaved: true };
 function htCertRenderSaved() {
@@ -3754,6 +3853,137 @@ function htCertRenderSaved() {
   }
 }
 
+// ── 내 PC 인증서 목록 (크롬·엣지 PC: 인증서 폴더를 한 번 연결하면 다음부터 목록이 바로 나옴) ──
+let htNpki = { certs: [], sel: -1 };
+function htNpkiSupported() {
+  const mac = /Mac/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "");
+  return typeof window.showDirectoryPicker === "function" && !isMobileDevice() && !mac;   // Mac 크롬은 인증서 폴더(Library)를 막아 둠
+}
+function htIdb(mode, fn) {
+  return new Promise((ok, no) => {
+    let req;
+    try { req = indexedDB.open("fina", 1); } catch (e) { return no(e); }
+    req.onupgradeneeded = () => req.result.createObjectStore("kv");
+    req.onerror = () => no(req.error);
+    req.onsuccess = () => {
+      try {
+        const tx = req.result.transaction("kv", mode), r = fn(tx.objectStore("kv"));
+        tx.oncomplete = () => ok(r && r.result);
+        tx.onerror = () => no(tx.error);
+      } catch (e) { no(e); }
+    };
+  });
+}
+const htNpkiGetDir = () => htIdb("readonly", st => st.get("npki_dir")).catch(() => null);
+const htNpkiSetDir = h => htIdb("readwrite", st => st.put(h, "npki_dir")).catch(() => null);
+
+function htNpkiShowFiles() {
+  document.getElementById("htNpkiBox").style.display = "none";
+  document.getElementById("htCertFileBox").style.display = "";
+}
+async function htNpkiCopyPath() {
+  const t = document.getElementById("htNpkiPath").textContent;
+  try { await navigator.clipboard.writeText(t); toast("경로를 복사했어요. 폴더 선택 창 주소창에 붙여넣으세요."); }
+  catch (e) { toast("경로를 직접 입력해 주세요: " + t); }
+}
+async function htNpkiInit() {   // 공동인증서 탭 열 때
+  const box = document.getElementById("htNpkiBox"), fileBox = document.getElementById("htCertFileBox");
+  if (!htNpkiSupported()) { box.style.display = "none"; fileBox.style.display = ""; return; }
+  box.style.display = ""; fileBox.style.display = "none";
+  document.getElementById("htCertKeep").checked = false;   // PC는 폴더에서 바로 읽으니 따로 보관할 필요 없음
+  if (htNpki.certs.length) return htNpkiRender();
+  const dir = await htNpkiGetDir();
+  if (dir && typeof dir.queryPermission === "function") {
+    let perm = "prompt";
+    try { perm = await dir.queryPermission({ mode: "read" }); } catch (e) {}
+    if (perm === "granted") return htNpkiScan(dir);
+    return htNpkiRenderMsg(`<button type="button" class="ht-npki-btn" onclick="htNpkiReopen()">🔄 내 PC 인증서 불러오기</button>`, false);
+  }
+  htNpkiRenderMsg(`<button type="button" class="ht-npki-btn" onclick="htNpkiConnect()">📂 인증서 폴더 연결</button>`, true);
+}
+function htNpkiRenderMsg(html, guide) {
+  document.getElementById("htNpkiList").innerHTML = `<div class="ht-npki-empty" style="padding:10px;">${html}</div>`;
+  document.getElementById("htNpkiGuide").style.display = guide ? "" : "none";
+  document.getElementById("htNpkiChange").style.display = guide ? "none" : "";
+}
+async function htNpkiReopen() {
+  const dir = await htNpkiGetDir();
+  if (!dir) return htNpkiConnect();
+  try {
+    if ((await dir.requestPermission({ mode: "read" })) === "granted") return htNpkiScan(dir);
+  } catch (e) {}
+  toast("인증서 폴더를 열 수 없어요. 폴더를 다시 연결해 주세요.");
+  htNpkiRenderMsg(`<button type="button" class="ht-npki-btn" onclick="htNpkiConnect()">📂 인증서 폴더 연결</button>`, true);
+}
+async function htNpkiConnect() {
+  let dir;
+  try { dir = await window.showDirectoryPicker({ id: "fina-npki", mode: "read" }); }
+  catch (e) { if (e && e.name !== "AbortError") toast("이 폴더는 열 수 없어요. 안내된 경로의 NPKI 폴더를 선택해 주세요."); return; }
+  await htNpkiScan(dir, true);
+}
+async function htNpkiScan(dir, fresh) {
+  document.getElementById("htNpkiList").innerHTML = `<div class="ht-npki-empty">인증서를 찾는 중…</div>`;
+  const found = [];
+  let seen = 0;
+  async function walk(d, depth) {
+    if (depth > 6 || seen > 4000 || found.length >= 50) return;
+    const files = {}, subs = [];
+    for await (const [nm, h] of d.entries()) {
+      seen++;
+      if (h.kind === "file") files[nm.toLowerCase()] = h;
+      else subs.push(h);
+    }
+    if (files["signcert.der"] && files["signpri.key"]) {
+      try {
+        const [c, k] = await Promise.all([files["signcert.der"].getFile(), files["signpri.key"].getFile()]);
+        const cb = await c.arrayBuffer(), kb = await k.arrayBuffer();
+        const info = htDerInfo(cb);
+        found.push(Object.assign(info, { cert: htB64(cb), key: htB64(kb) }));
+      } catch (e) { console.warn("cert read", e); }
+    }
+    for (const sd of subs) await walk(sd, depth + 1);
+  }
+  try { await walk(dir, 0); }
+  catch (e) { console.warn(e); }
+  if (!found.length) {
+    htNpki.certs = [];
+    htNpkiRenderMsg(`이 폴더에서 인증서를 찾지 못했어요.<br>안내된 경로의 <b>NPKI</b> 폴더(또는 USB의 NPKI 폴더)를 선택해 주세요.<br><br><button type="button" class="ht-npki-btn" onclick="htNpkiConnect()">📂 다른 폴더 선택</button>`, true);
+    return;
+  }
+  if (fresh) await htNpkiSetDir(dir);
+  const now = Date.now();
+  found.forEach(c => c.expired = c.notAfter && c.notAfter.getTime() < now);
+  found.sort((a, b) => (a.expired - b.expired) || (b.notAfter - a.notAfter));
+  htNpki.certs = found;
+  htNpki.sel = found.length === 1 && !found[0].expired ? 0 : -1;
+  if (htNpki.sel === 0) htNpkiPick(0);
+  htNpkiRender();
+}
+function htNpkiRender() {
+  const fmt = d => d && !isNaN(d) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "-";
+  const rows = htNpki.certs.map((c, i) => `
+    <tr class="${i === htNpki.sel ? "on" : ""}${c.expired ? " expired" : ""}" onclick="htNpkiPick(${i})" title="${escapeHtml(c.name)}">
+      <td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.usage || "-")}</td><td>${escapeHtml(c.issuer || "-")}</td><td>${fmt(c.notAfter)}${c.expired ? " (만료)" : ""}</td>
+    </tr>`).join("");
+  document.getElementById("htNpkiList").innerHTML = `
+    <div class="ht-npki-scroll"><table class="ht-npki-table">
+      <colgroup><col style="width:34%"><col style="width:26%"><col style="width:18%"><col style="width:22%"></colgroup>
+      <thead><tr><th>사용자</th><th>용도</th><th>발급기관</th><th>만료일</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  document.getElementById("htNpkiGuide").style.display = "none";
+  document.getElementById("htNpkiChange").style.display = "";
+}
+function htNpkiPick(i) {
+  const c = htNpki.certs[i];
+  if (!c) return;
+  if (c.expired) toast("만료된 인증서예요. 갱신한 인증서를 선택해 주세요.");
+  htNpki.sel = i;
+  htCertFiles = { type: "1", cert: c.cert, key: c.key };
+  htNpkiRender();
+  const pw = document.getElementById("htCertPw");
+  if (pw) pw.focus();
+}
+
 async function htCertPick(files) {
   const main = document.getElementById("htCertMain"), drop = document.getElementById("htCertDrop");
   try {
@@ -3761,6 +3991,7 @@ async function htCertPick(files) {
   } catch (e) { return toast(e.message); }
   main.innerHTML = htCertFiles.label;
   drop.classList.toggle("ok", htCertReady(htCertFiles));
+  htNpki.sel = -1;
 }
 
 // ── PC → 휴대폰 인증서 보내기 (12자리 번호로 브라우저에서 암호화, 서버는 번호의 해시만 앎) ──
@@ -6965,13 +7196,33 @@ window.addEventListener("DOMContentLoaded", () => {
           <div class="ht-cert-saved-btns"><button type="button" onclick="htCertUseOther()">다른 인증서</button><button type="button" onclick="htCertForget()">삭제</button></div>
         </div>
         <div id="htCertPickWrap">
+          <div id="htNpkiBox" style="display:none;">
+            <div class="ht-npki-head">
+              <div class="ht-auth-label" style="margin:0;">내 PC 인증서</div>
+              <button type="button" class="ht-npki-link" id="htNpkiChange" style="display:none;" onclick="htNpkiConnect()">폴더 바꾸기</button>
+            </div>
+            <div id="htNpkiList" class="ht-npki-list"></div>
+            <div id="htNpkiGuide" class="ht-npki-guide" style="display:none;">
+              <b>처음 한 번만 인증서 폴더를 연결해 주세요.</b>
+              <ol>
+                <li>아래 <b>경로 복사</b>를 누릅니다.</li>
+                <li><b>📂 인증서 폴더 연결</b> → 폴더 선택 창 위쪽 주소창에 붙여넣고 <b>Enter</b></li>
+                <li><b>폴더 선택</b> → <b>파일 보기 허용</b>을 누르면 목록이 나와요.</li>
+              </ol>
+              <div class="ht-npki-path"><code id="htNpkiPath">%USERPROFILE%\AppData\LocalLow\NPKI</code><button type="button" onclick="htNpkiCopyPath()">경로 복사</button></div>
+              <div class="ht-npki-sub">USB에 인증서가 있으면 USB 안의 <b>NPKI</b> 폴더를 선택하세요.</div>
+            </div>
+            <button type="button" class="ht-npki-other" onclick="htNpkiShowFiles()">파일로 직접 선택하기</button>
+          </div>
+          <div id="htCertFileBox">
           <div class="ht-auth-label">인증서 파일</div>
           <label class="ht-cert-drop" id="htCertDrop">
             <input type="file" id="htCertFiles" multiple accept=".der,.key,.pfx,.p12" onchange="htCertPick(this.files)" />
             <div class="ht-cert-ic">📁</div>
             <div class="ht-cert-main" id="htCertMain">signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요</div>
           </label>
-          <p class="ht-cert-hint">인증서 위치 (Windows): <code>C:\Users\사용자\AppData\LocalLow\NPKI\yessign\USER\…</code><br>Mac: <code>~/Library/Preferences/NPKI/…</code> · 인증서 폴더 안의 두 파일을 함께 선택하세요.</p>
+          <p class="ht-cert-hint">인증서 위치 (Windows): <code>C:\Users\사용자\AppData\LocalLow\NPKI\yessign\USER\…</code><br>Mac: <code>~/Library/Preferences/NPKI/…</code> (파일 선택 창에서 <b>⌘ Cmd + Shift + G</b> 후 붙여넣기) · 인증서 폴더 안의 두 파일을 함께 선택하세요.</p>
+          </div>
           <label class="ht-auth-check"><input type="checkbox" id="htCertKeep" checked /> 이 기기에 인증서 보관하기 (다음부터 비밀번호만 입력)</label>
         </div>
         <div class="ht-cert-move">
