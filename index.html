@@ -3707,6 +3707,7 @@ function htAuthOpen() {
 }
 function htAuthClose() {
   clearInterval(htAuthState.timer);
+  htAuthStopAuto();
   htRelayStop();
   htNpki.sel = -1;
   htRelay.files = null;
@@ -4244,7 +4245,7 @@ function htAuthShow(n) {
   [1, 2, 3, 4, 5].forEach(i => document.getElementById("htAuthStep" + i).style.display = i === n ? "" : "none");
   if (n === 3) htAuthProgress({ got: [], doing: "사업자등록증명" });
 }
-function htAuthBack() { clearInterval(htAuthState.timer); htAuthState.pending = null; htAuthShow(1); }
+function htAuthBack() { clearInterval(htAuthState.timer); htAuthStopAuto(); htAuthState.pending = null; htAuthShow(1); }
 
 async function htAuthStart() {
   const name = document.getElementById("htAuthName").value.trim();
@@ -4267,6 +4268,7 @@ async function htAuthStart() {
     if (res.status === "done" || res.status === "collecting") return await htAuthFinish(res);
     htAuthState.pending = { job: res.job };     // 서류 요청은 서버가 이미 한꺼번에 보내 둠 — 승인 1번이면 4종 모두
     htAuthShow(2);
+    htAuthStartAuto();
     let left = 270;
     const tEl = document.getElementById("htAuthTimer");
     clearInterval(htAuthState.timer);
@@ -4283,23 +4285,51 @@ async function htAuthStart() {
   }
 }
 
-async function htAuthComplete() {
-  if (!htAuthState.pending) return htAuthBack();
+async function htAuthComplete(auto) {
+  if (!htAuthState.pending) return auto ? null : htAuthBack();
+  const step2 = document.getElementById("htAuthStep2");
+  if (auto && (htAuthState.checking || step2.style.display === "none")) return;
+  htAuthState.checking = true;
   const btn = document.getElementById("htAuthDoneBtn");
   btn.disabled = true;
-  htAuthShow(3);
+  if (!auto) htAuthShow(3);
   try {
-    const res = await api("POST", "/codef/hometax/complete", htAuthState.pending);
+    const res = await api("POST", "/codef/hometax/complete", Object.assign({}, htAuthState.pending, { auto: !!auto }));
+    if (res.status === "waiting") return;          // 자동 확인 — 아직 승인 전이면 조용히 기다림
     clearInterval(htAuthState.timer);
+    htAuthStopAuto();
     htAuthState.pending = null;
     await htAuthFinish(res);
   } catch (e) {
     toast(e.message);
-    htAuthShow(e.message.includes("아직 휴대폰 인증") && htAuthState.pending ? 2 : 1);
+    const again = e.message.includes("아직 휴대폰 인증") && htAuthState.pending;
+    if (!again) { htAuthStopAuto(); htAuthState.pending = null; }
+    htAuthShow(again ? 2 : 1);
   } finally {
     btn.disabled = false;
+    htAuthState.checking = false;
   }
 }
+
+// 승인 자동 감지 — CODEF는 승인 전 확인을 3번까지만 받아서(3번째 미승인 시 종료) 확실한 순간에만 확인
+//  ① 휴대폰: 인증 앱에서 승인하고 피나로 돌아온 순간  ② PC: 40초·110초 후  (서버가 자동 확인은 2번까지로 제한)
+function htAuthStartAuto() {
+  htAuthStopAuto();
+  htAuthState.hiddenAt = 0;
+  htAuthState.autoTimers = [40000, 110000].map(ms => setTimeout(() => htAuthComplete(true), ms));
+}
+function htAuthStopAuto() {
+  (htAuthState.autoTimers || []).forEach(clearTimeout);
+  htAuthState.autoTimers = [];
+}
+document.addEventListener("visibilitychange", () => {
+  if (!htAuthState.pending) return;
+  if (document.hidden) { htAuthState.hiddenAt = Date.now(); return; }
+  if (htAuthState.hiddenAt && Date.now() - htAuthState.hiddenAt > 4000) {   // 다른 앱에 갔다가 돌아옴
+    htAuthState.hiddenAt = 0;
+    setTimeout(() => htAuthComplete(true), 1500);
+  }
+});
 
 // 인증 성공 후 서버가 나머지 서류를 조회 → 진행 상황을 보다가 끝나면 채우기
 const HT_DOCS = ["사업자등록증명", "부가세과세표준증명", "납세증명서", "재무제표"];
@@ -7356,7 +7386,7 @@ window.addEventListener("DOMContentLoaded", () => {
     <div id="htAuthStep2" style="display:none;text-align:center;">
       <div style="font-size:40px;margin:6px 0 4px;">📱</div>
       <div class="ht-auth-title">휴대폰에서 인증을 완료해 주세요</div>
-      <p class="ht-auth-desc" id="htAuthStep2Desc">인증 요청을 보냈어요. 휴대폰 앱에서 인증을 마친 뒤 아래 버튼을 눌러주세요.<br>4분 30초 안에 완료해야 해요.</p>
+      <p class="ht-auth-desc" id="htAuthStep2Desc">인증 요청을 보냈어요. 휴대폰 앱에서 인증을 마치면 <b>자동으로 넘어가요.</b><br>바로 넘어가지 않으면 아래 버튼을 눌러주세요. (4분 30초 안에 완료)</p>
       <div id="htAuthTimer" style="font-size:22px;font-weight:800;color:#185FA5;margin:6px 0 12px;">4:30</div>
       <button type="button" class="btn btn-primary btn-full" id="htAuthDoneBtn" onclick="htAuthComplete()">인증 완료했어요</button>
       <button type="button" class="btn btn-full" style="margin-top:8px;" onclick="htAuthBack()">처음으로</button>

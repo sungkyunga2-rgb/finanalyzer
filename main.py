@@ -1679,10 +1679,19 @@ async def _ht_launch(job_id, calls):
     for key, body in calls:
         _spawn(_ht_fire(job_id, key, body))
         await asyncio.sleep(0.3)
+    await asyncio.sleep(0.5)
+    st = _ht_live.get(job_id)
+    if st:
+        st["launched"].set()      # 모든 서류 요청이 나간 뒤에만 승인 확인(2차 요청)을 보낸다
 
 
 class CodefCompleteBody(BaseModel):
     job: str
+    auto: bool = False        # 화면이 자동으로 확인 (앱에서 돌아왔을 때·일정 시간 후)
+
+
+HT_CONFIRM_MAX = 3            # CODEF: 승인 전 2차 확인이 3번째도 미승인이면 CF-12872로 거래 종료
+HT_AUTO_MAX = 2               # 자동 확인은 2번까지 — 마지막 1번은 사용자가 누르는 '인증 완료'용
 
 
 @app.post("/codef/hometax/start")
@@ -1700,7 +1709,7 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
     keys = [k for k, _ in calls]
     _ht_live[job_id] = {"user_id": user.id, "leads": [], "pending": len(calls), "res": {}, "t": _time.time(),
                         "keys": set(keys), "done_keys": set(), "left": {k: keys.count(k) for k in set(keys)},
-                        "identity": params.get("identity", ""), "approval": asyncio.Event()}
+                        "identity": params.get("identity", ""), "approval": asyncio.Event(), "launched": asyncio.Event()}
     db = SessionLocal()
     try:
         db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
@@ -1736,6 +1745,16 @@ async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = De
     leads = list(st["leads"])
     if not leads:
         return {"status": "collecting", "job": body.job}
+    try:
+        await asyncio.wait_for(st["launched"].wait(), timeout=10)
+    except asyncio.TimeoutError:
+        pass
+    tries = st.get("tries", 0)
+    if body.auto and tries >= HT_AUTO_MAX:
+        return {"status": "waiting", "job": body.job}
+    if tries >= HT_CONFIRM_MAX:
+        raise HTTPException(status_code=400, detail="인증 확인 횟수를 넘었어요. 처음부터 다시 인증을 요청해 주세요.")
+    st["tries"] = tries + 1
 
     async def confirm(lead):
         req = dict(lead["body"], simpleAuth="1", is2Way=True, twoWayInfo=lead["two_way"])
@@ -1749,15 +1768,23 @@ async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = De
     results = await asyncio.gather(*(confirm(l) for l in leads))
     waiting = False
     for lead, res in results:
-        if _codef_code(res) == "CF-03002":
+        code = _codef_code(res)
+        if code == "CF-03002":
             waiting = True
             continue
+        if code == "CF-12872":       # 확인 횟수 초과로 거래 종료
+            _ht_live.pop(body.job, None)
+            _job_save(body.job, "error", {"detail": "인증 확인 횟수를 넘어 종료됐어요. 다시 요청해 주세요."})
+            raise HTTPException(status_code=400, detail="휴대폰 인증이 확인되지 않아 종료됐어요. 처음부터 다시 인증을 요청해 주세요.")
         if lead in st["leads"]:
             st["leads"].remove(lead)
             st["pending"] += 1
             _ht_settle(body.job, lead["key"], res)
     if waiting:
-        raise HTTPException(status_code=409, detail="아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요.")
+        if body.auto:
+            return {"status": "waiting", "job": body.job}
+        left = HT_CONFIRM_MAX - st["tries"]
+        raise HTTPException(status_code=409, detail="아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요." + (" (마지막 확인이에요 — 꼭 인증을 마친 뒤 눌러주세요)" if left == 1 else ""))
     reg = (_ht_live.get(body.job) or {}).get("res", {}).get("registration") or []
     if reg and all(c != "CF-00000" for c, _, _ in reg) and any(l["key"] == "registration" for l, _ in results):
         print(f"[CODEF] complete 실패: {reg[0][2]}")
