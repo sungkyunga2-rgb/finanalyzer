@@ -1202,7 +1202,63 @@ CODEF_HOMETAX_PRODUCTS = {
     "vat": "/v1/kr/public/nt/proof-issue/additional-tax-standard",                # 부가세과세표준증명
     "tax_payment": "/v1/kr/public/nt/proof-issue/tax-cert-all",                    # 납세증명서
     "financial": "/v1/kr/public/nt/proof-issue/standard-financial-statements",     # 재무제표(표준재무제표증명) — 08:00~22:00
+    "employees": "/v1/kr/public/cw/kcomwel-employment/detail",                     # 근로복지공단 근로자고용정보현황 → 직원 수 (기관이 달라 간편인증 승인 1번 더)
 }
+CW_LEVELS = {"1", "3", "4", "5", "6", "7", "8", "10"}       # 근로복지공단이 지원하는 간편인증 수단
+
+
+def _cw_body(params, telecom="", corp=None, bizno=""):
+    """근로자고용정보현황 요청 — 지금 일하는 일반 근로자(고용보험·산재 전체)"""
+    common = {"organization": "0001", "insuranceType": "0", "state": "1", "type": "1", "id": f"{params.get('id', 'fina')}-cw"}
+    if params.get("loginType") in ("5", "6"):
+        if params.get("loginTypeLevel") not in CW_LEVELS or not telecom or not params.get("phoneNo"):
+            return None
+        return dict(common, loginType="5", loginTypeLevel=params["loginTypeLevel"], loginUserName=params.get("userName", ""),
+                    telecom=telecom, phoneNo=params["phoneNo"], userType="0")
+    if params.get("loginType") == "0":
+        b = dict(common, loginType="0", certType=params.get("certType", "1"), certFile=params.get("certFile", ""),
+                 certPassword=params.get("certPassword", ""), userType="2" if corp else "0")
+        if params.get("keyFile"):
+            b["keyFile"] = params["keyFile"]
+        if corp and bizno:
+            b["identity"] = bizno
+        return b
+    return None
+
+
+def _cw_manage_list(res):
+    d = res.get("data") if isinstance(res, dict) else None
+    ex = (d or {}).get("extraInfo") or {} if isinstance(d, dict) else {}
+    lst = ex.get("reqManageNoList") or []
+    return lst if isinstance(lst, list) and lst else None
+
+
+async def _cw_resolve(body, res, company=""):
+    """사업장이 여러 개라 관리번호를 고르라는 추가 요청이면 → 상호가 맞는(없으면 첫) 사업장으로 자동 선택"""
+    for _ in range(2):
+        lst = _cw_manage_list(res)
+        if not (_codef_code(res) == "CF-03002" and lst):
+            return res
+        comp = (company or "").replace("(주)", "").replace("주식회사", "").strip()
+        ceo = (body.get("loginUserName") or "").strip()
+        active = [x for x in lst if "소멸" not in str(x.get("reqStatus") or "") + str(x.get("reqStatus1") or "")] or lst
+        pick = (next((x for x in active if comp and comp in str(x.get("reqCompanyNm") or "")), None)
+                or next((x for x in active if ceo and ceo == str(x.get("reqCeoName") or "").strip()), None) or active[0])
+        d = res["data"]
+        res = await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], dict(body, reqManageNo=pick.get("reqManageNo", ""), is2Way=True,
+                                twoWayInfo={k: d.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}))
+    return res
+
+
+def _parse_employees(data):
+    """근로자고용정보현황 → 지금 고용 중인 근로자 수"""
+    seen = set()
+    for r in _codef_rows(data, ("resUserNm",)):
+        st = f"{r.get('resEmploymentStatus1') or ''} {r.get('resEmploymentStatus') or ''}"
+        if "종료" in st and "고용" not in st.replace("고용종료", ""):
+            continue
+        seen.add((r.get("resUserNm"), r.get("resUserIdentiyNo"), r.get("resOriginalNumber")))
+    return len(seen)
 
 
 def _codef_host():
@@ -1549,10 +1605,10 @@ def codef_status():
 #  진행 중인 요청·2차 인증 정보는 이 프로세스 메모리에만 둔다. 결과는 codef_jobs(DB)에 저장해 화면이 확인한다.
 _ht_live = {}     # job_id -> {"user_id", "leads": [...], "pending": n, "res": {key: [(code, data, msg)]}, "t": time}
 
-HT_DOC_LABEL = {"registration": "사업자등록증명", "vat": "부가세과세표준증명", "tax_payment": "납세증명서", "financial": "재무제표"}
+HT_DOC_LABEL = {"registration": "사업자등록증명", "vat": "부가세과세표준증명", "tax_payment": "납세증명서", "financial": "재무제표", "employees": "직원 수(고용보험)"}
 
 
-def _hometax_calls(params, now):
+def _hometax_calls(params, now, telecom=""):
     """간편인증 세션 하나로 보낼 서류 요청 목록 [(key, body)]"""
     base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id", "telecom", "identity") if params.get(k)}
     phone = params.get("phoneNo", "")
@@ -1569,6 +1625,9 @@ def _hometax_calls(params, now):
         for yy in years:
             calls.append(("financial", dict(fin, startDate=f"{yy}12")))                    # 법인: 사업연도 종료연월
             calls.append(("financial", dict(fin, startDate=str(yy), proofType="40")))      # 개인: 과세연도
+    cw = _cw_body(params, telecom)
+    if cw:
+        calls.append(("employees", cw))       # 근로복지공단 — 승인이 따로 1번 더
     return calls
 
 
@@ -1621,6 +1680,13 @@ def _ht_assemble(st, now, final):
             fill["years"] = [{"year": int(yr), "vat": rev}]
     elif final:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
+    if "employees" in st.get("keys", ()):
+        n = next((v for v in (_safe(_parse_employees, d) for d in ok("employees")) if v is not None), None)
+        if n is not None:
+            fill["employees"] = n
+            got.append("직원 수(고용보험)")
+        elif final:
+            failed.append("직원 수(고용보험)")
     return {"fill": fill, "got": got, "failed": failed}
 
 
@@ -1656,6 +1722,8 @@ def _ht_settle(job_id, key, res):
 async def _ht_fire(job_id, key, body):
     try:
         res = await _codef_post(CODEF_HOMETAX_PRODUCTS[key], body)
+        if key == "employees":
+            res = await _cw_resolve(body, res)
     except Exception as e:
         print(f"[CODEF] {key} 호출 오류: {e!r}")
         res = {"result": {"code": "NETWORK", "message": "연결 오류"}, "data": None}
@@ -1706,7 +1774,7 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
         raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
     params = _hometax_login_params(body, user.id)
     now = datetime.utcnow() + timedelta(hours=9)
-    calls = _hometax_calls(params, now)
+    calls = _hometax_calls(params, now, body.telecom)
     # 오래된 진행 정보 정리 (15분)
     for k in [k for k, v in _ht_live.items() if _time.time() - v["t"] > 900]:
         _ht_live.pop(k, None)
@@ -1765,6 +1833,10 @@ async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = De
         req = dict(lead["body"], simpleAuth="1", is2Way=True, twoWayInfo=lead["two_way"])
         try:
             res = await _codef_post(CODEF_HOMETAX_PRODUCTS[lead["key"]], req)
+            if lead["key"] == "employees":
+                regs = [d for c, d, m in st["res"].get("registration", []) if c == "CF-00000"]
+                comp = (_safe(_parse_registration, regs[0], default={}) or {}).get("company_name", "") if regs else ""
+                res = await _cw_resolve(lead["body"], res, comp)
         except Exception as e:
             print(f"[CODEF] 2차 요청 오류: {e!r}")
             res = {"result": {"code": "NETWORK", "message": "연결 오류"}, "data": None}
@@ -2133,6 +2205,23 @@ async def _hometax_collect(params, reg_data, progress=None):
         fin.pop("_year", None)
     else:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
+    # ④ 직원 수 — 근로복지공단 근로자고용정보현황 (인증서는 추가 승인 없음)
+    cw = _cw_body(params, corp=corp, bizno=_re2.sub(r"\D", "", fill.get("business_number", "") or params.get("identity", "")))
+    if cw:
+        step("직원 수(고용보험)")
+        try:
+            res = await _cw_resolve(cw, await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], cw), fill.get("company_name", ""))
+        except Exception as e:
+            print(f"[CODEF] employees 호출 오류: {e!r}")
+            res = {}
+        n = _safe(_parse_employees, res.get("data")) if _codef_code(res) == "CF-00000" else None
+        if _codef_code(res) not in ("", "CF-00000"):
+            print(f"[CODEF] employees 실패 {_codef_code(res)}: {_codef_msg(res)}")
+        if n is not None:
+            fill["employees"] = n
+            got.append("직원 수(고용보험)")
+        else:
+            failed.append("직원 수(고용보험)")
     return {"status": "done", "fill": fill, "got": got, "pending": failed}
 
 

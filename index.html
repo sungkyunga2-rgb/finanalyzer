@@ -1056,18 +1056,6 @@
         </div>
       </div>
 
-      <!-- 필요자금 -->
-      <div class="ht-row">
-        <div class="ht-head">필요자금</div>
-        <div class="ht-body">
-          <div class="ht-line">
-            <label class="ht-f"><span>최대 (원)</span><input type="text" inputmode="numeric" id="ht-need-max" placeholder="100,000,000" oninput="formatMoneyInput(this)" /></label>
-            <label class="ht-f"><span>최소 (원)</span><input type="text" inputmode="numeric" id="ht-need-min" placeholder="50,000,000" oninput="formatMoneyInput(this)" /></label>
-            <label class="ht-f" style="grid-column:span 2;"><span>용도</span><input type="text" id="ht-need-purpose" placeholder="원자재 구입, 설비 투자" /></label>
-          </div>
-        </div>
-      </div>
-
       <!-- 대표자 -->
       <div class="ht-row">
         <div class="ht-head">대표자</div>
@@ -3503,7 +3491,7 @@ function analyzeHometax(input, opts) {
   };
   // 예상 한도: 서버가 계산한 값(opts.limit)을 사용. 없으면(무료 분석) 비공개
   const limit = opts.limit ? Object.assign({}, opts.limit) : { available: false, status: "locked", low: 0, high: 0, orgs: [], text: "" };
-  limit.need = opts.limit ? htNeedFit(input.need, limit) : null;
+  limit.need = null;      // 필요자금 입력은 없앰
   if (limit.need && limit.need.level === "danger") {
     flags.push({ level: "warn", title: "필요자금이 예상 한도 초과", text: limit.need.text });
     flags.sort((a, b) => htLevelRank(b.level) - htLevelRank(a.level));
@@ -3530,7 +3518,7 @@ const HT_FIELDS = [
   ["credit.recovery.faithful", "ht-rec-faithful", "text"], ["credit.recovery.type", "ht-rec-type", "text"],
   ["arrears.amount", "ht-arrears-amount", "money"], ["arrears.note", "ht-arrears-note", "text"], ["arrears.other", "ht-ar-other", "text"],
   ["loans_none", "ht-loans-none", "check"],
-  ["need.max", "ht-need-max", "money"], ["need.min", "ht-need-min", "money"], ["need.purpose", "ht-need-purpose", "text"],
+
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"],
   ["employees", "ht-employees", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
@@ -4509,7 +4497,7 @@ async function htAuthStart() {
   if (!name) return alertError("이름을 입력해주세요.");
   if (birth.length !== 8) return alertError("생년월일 8자리를 입력해주세요. (예: 19800101)");
   if (phone.length < 10) return alertError("휴대폰 번호를 확인해주세요.");
-  if (htAuthState.provider === "5" && !telecom) return alertError("통신사를 선택해주세요.");
+  if (!telecom) return alertError("통신사를 선택해주세요.");
   if (!document.getElementById("htAuthAgree").checked) return alertError("정보 제공에 동의해 주세요.");
   const btn = document.getElementById("htAuthStartBtn");
   btn.disabled = true; btn.textContent = "인증 요청 중...";
@@ -4521,6 +4509,10 @@ async function htAuthStart() {
     });
     if (res.status === "done" || res.status === "collecting") return await htAuthFinish(res);
     htAuthState.pending = { job: res.job };     // 서류 요청은 서버가 이미 한꺼번에 보내 둠 — 승인 1번이면 4종 모두
+    const two = ["1", "3", "4", "5", "6", "7", "8", "10"].includes(htAuthState.provider);
+    document.getElementById("htAuthStep2Desc").innerHTML = two
+      ? "인증 요청을 보냈어요. <b>홈택스</b>와 <b>근로복지공단(직원 수)</b> 인증이 각각 1번씩 와요. 둘 다 승인하면 <b>자동으로 넘어가요.</b><br>바로 넘어가지 않으면 아래 버튼을 눌러주세요. (4분 30초 안에 완료)"
+      : "인증 요청을 보냈어요. 휴대폰 앱에서 인증을 마치면 <b>자동으로 넘어가요.</b><br>바로 넘어가지 않으면 아래 버튼을 눌러주세요. (4분 30초 안에 완료)";
     htAuthShow(2);
     htAuthStartAuto();
     let left = 270;
@@ -4587,7 +4579,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // 인증 성공 후 서버가 나머지 서류를 조회 → 진행 상황을 보다가 끝나면 채우기
-const HT_DOCS = ["사업자등록증명", "부가세과세표준증명", "납세증명서", "재무제표"];
+const HT_DOCS = ["사업자등록증명", "부가세과세표준증명", "납세증명서", "재무제표", "직원 수(고용보험)"];
 function htAuthProgress(p) {
   const el = document.getElementById("htAuthProg");
   if (!el) return;
@@ -4629,6 +4621,7 @@ function htAuthApply(res) {
   if (f.ytd) inc.ytd = f.ytd;
   if (f.arrears) inc.arrears = f.arrears;
   if (f.loans && f.loans.length) inc.loans = f.loans;
+  if (f.employees !== undefined && f.employees !== null) inc.employees = f.employees;
   if (f.fin) inc.fin = f.fin;
   htFillForm(htMergeForm(inc));
   htAuthState.pending = null;
@@ -4705,9 +4698,6 @@ async function doHometaxAnalyze() {
     if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
     alertError(`필수 항목 ${miss.length}개를 확인해 주세요: ${miss.slice(0, 3).map(m => m.label).join(", ")}${miss.length > 3 ? " 외" : ""}`);
     return;
-  }
-  if (input.need.min !== null && input.need.max !== null && input.need.min > input.need.max) {
-    toast("필요자금 최소가 최대보다 큽니다."); return;
   }
 
   const btn = document.getElementById("ht-analyze-btn");
@@ -4892,7 +4882,6 @@ function htInfoCard(r, input) {
                      rec ? item("신용회복", (rec.faithful === "no" ? '<span style="color:#A32D2D;">연체 있음</span>' : rec.faithful === "yes" ? "성실 납부" : "진행") + (rec.type ? " · " + e(rec.type) : "")) : ""]),
     row("국세 체납", [item("체납", arLabel), item("세목·기간", e(ar.note || "")), item("기타 연체·가압류", e(ar.other || ""))]),
     row("기대출", [loanTxt]),
-    row("필요자금", [item("최대", has(need.max) ? htKwon(need.max) : ""), item("최소", has(need.min) ? htKwon(need.min) : ""), item("용도", e(need.purpose || ""))]),
     row("대표자", [item("나이", has(rp.age) ? `만 ${rp.age}세` : ""), item("동종업계 경력", has(rp.career) ? `${rp.career}년` : ""),
                   item("보유 자산", e(rp.assets_note || "")), item("혼인", rp.marital === "married" ? "기혼" : rp.marital === "single" ? "미혼" : ""),
                   rp.woman ? item("여성 대표", "예") : ""]),
@@ -7627,13 +7616,12 @@ window.addEventListener("DOMContentLoaded", () => {
       <p class="ht-auth-desc">대표자 본인 명의로 간편인증하면 홈택스 자료로 아래 정보를 채워드려요.</p>
       <div class="ht-auth-label">인증 방법</div>
       <div class="ht-auth-providers" id="htAuthProviders"></div>
-      <div id="htAuthTelecomRow" style="display:none;margin-top:8px;">
-        <select id="htAuthTelecom" class="ht-auth-input"><option value="">통신사 선택</option><option value="0">SKT (알뜰폰 포함)</option><option value="1">KT (알뜰폰 포함)</option><option value="2">LG U+ (알뜰폰 포함)</option></select>
-      </div>
+      <div id="htAuthTelecomRow" style="display:none;"></div>
       <div class="ht-auth-grid">
         <label><span>이름</span><input id="htAuthName" class="ht-auth-input" placeholder="홍길동" autocomplete="name" /></label>
         <label><span>생년월일 8자리</span><input id="htAuthBirth" class="ht-auth-input" placeholder="19800101" inputmode="numeric" maxlength="8" /></label>
-        <label style="grid-column:1/-1;"><span>휴대폰 번호</span><input id="htAuthPhone" class="ht-auth-input" placeholder="01012345678" inputmode="numeric" maxlength="13" autocomplete="tel" /></label>
+        <label><span>통신사</span><select id="htAuthTelecom" class="ht-auth-input"><option value="">선택</option><option value="0">SKT (알뜰폰 포함)</option><option value="1">KT (알뜰폰 포함)</option><option value="2">LG U+ (알뜰폰 포함)</option></select></label>
+        <label><span>휴대폰 번호</span><input id="htAuthPhone" class="ht-auth-input" placeholder="01012345678" inputmode="numeric" maxlength="13" autocomplete="tel" /></label>
       </div>
       <label class="ht-auth-check"><input type="checkbox" id="htAuthNonMember" /> 홈택스 회원이 아니에요 (비회원 인증)</label>
       <label class="ht-auth-check"><input type="checkbox" id="htAuthAgree" /> 홈택스 자료 조회를 위해 위 정보를 인증 대행사(CODEF)에 제공하는 데 동의합니다.</label>
