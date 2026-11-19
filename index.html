@@ -523,7 +523,8 @@
   .ht-relay-in span { color: var(--text3); font-weight: 700; }
   .ht-cert-hint code { font-size: 10.5px; background: var(--surface2, #f1f4f8); padding: 1px 4px; border-radius: 4px; }
   .ht-auth .btn-full { margin-top: 10px; }
-  .ht-doc-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ht-doc-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  @media (max-width: 900px) { .ht-doc-btns { grid-template-columns: 1fr 1fr; } }
   .ht-doc-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; background: var(--surface); padding: 22px 14px; line-height: 1.45; min-height: 150px; border: 2px dashed #c9d6e6; border-radius: 12px; transition: border-color .15s, background .15s; }
   .ht-doc-btn:hover, .ht-doc-btn.drag { border-color: #185FA5; background: #EBF2FA; }
   .ht-doc-btn .ht-doc-ic { font-size: 28px; line-height: 1; margin-bottom: 2px; }
@@ -895,6 +896,7 @@
         <p style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px;">서류를 올리면 AI가 읽어서 아래 칸을 채워드려요. 이미 입력한 칸은 서류 내용으로 바뀝니다.</p>
       <div id="incomeDocBox">
         <input type="file" id="finDocInput" accept="image/*,application/pdf" multiple style="display:none" />
+        <input type="file" id="creditDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <input type="file" id="incomeDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <div class="ht-doc-btns">
           <button type="button" class="btn ht-doc-btn" id="finDocBtn" onclick="document.getElementById('finDocInput').click()">
@@ -902,6 +904,9 @@
             <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
           <button type="button" class="btn ht-doc-btn" id="incomeDocBtn" onclick="document.getElementById('incomeDocInput').click()">
             <span class="ht-doc-ic">🧾</span><b>사업자등록증·부가세과세표준·소득금액증명원</b><span>(여러 장 가능, 최대 5장)<br>→ 회사 정보·업태·창업년월·소재지·매출</span>
+            <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
+          <button type="button" class="btn ht-doc-btn" id="creditDocBtn" onclick="document.getElementById('creditDocInput').click()">
+            <span class="ht-doc-ic">💳</span><b>신용정보조회서</b><span>올크레딧·나이스지키미·크레딧포유<br>또는 신용점수 앱 화면 캡처<br>→ 신용점수·기대출</span>
             <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
         </div>
         <div id="incomeDocFileName" style="font-size:11px;color:var(--text2);margin-top:6px;"></div>
@@ -2503,12 +2508,61 @@ document.getElementById("finDocInput").addEventListener("change", e => {
   htHandleFinFiles(files);
 });
 // 드래그해서 놓기
-[["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs)]].forEach(([id, fn]) => {
+[["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs)], ["creditDocBtn", fs => htHandleCreditFiles(fs)]].forEach(([id, fn]) => {
   const el = document.getElementById(id);
   ["dragenter", "dragover"].forEach(t => el.addEventListener(t, ev => { ev.preventDefault(); el.classList.add("drag"); }));
   ["dragleave", "drop"].forEach(t => el.addEventListener(t, ev => { ev.preventDefault(); el.classList.remove("drag"); }));
   el.addEventListener("drop", ev => { const fs = Array.from((ev.dataTransfer && ev.dataTransfer.files) || []); if (fs.length) fn(fs); });
 });
+// ── 서류로 채우기: 신용정보조회서 → 신용점수(KCB·NICE)·기대출 ──
+document.getElementById("creditDocInput").addEventListener("change", e => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = "";
+  htHandleCreditFiles(files);
+});
+async function htHandleCreditFiles(all) {
+  const files = (all || []).slice(0, 8);
+  if (!files.length) return;
+  if (!token) { showPage("login"); return; }
+  if (files.some(f => !(f.type.startsWith("image/") || f.type === "application/pdf"))) return alertError("JPG, PNG, PDF 파일만 업로드 가능합니다.");
+  const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
+  const btn = document.getElementById("creditDocBtn");
+  const btnHtml = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = "<b>⏳ 신용정보를 읽는 중...</b><span>잠시만 기다려 주세요</span>";
+  document.getElementById("incomeDocFileName").textContent = "📎 " + files.map(f => f.name).join(", ");
+  try {
+    const images = await Promise.all(files.map(read));
+    const res = await api("POST", "/extract/credit-doc", { images });
+    htFillFromCredit(res.data || {});
+  } catch (err) {
+    alertError(err.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = btnHtml;
+  }
+}
+function htFillFromCredit(d) {
+  const cur = htReadForm();
+  const filled = [];
+  cur.credit = cur.credit || {};
+  if (d.kcb) { cur.credit.kcb = d.kcb; }
+  if (d.nice) { cur.credit.nice = d.nice; }
+  if (d.kcb || d.nice) filled.push(`신용점수(${[d.kcb ? "KCB " + d.kcb : "", d.nice ? "NICE " + d.nice : ""].filter(Boolean).join(" · ")})`);
+  if (Array.isArray(d.loans)) {
+    if (d.loans.length) {
+      cur.loans = d.loans.map(l => ({ org: l.org || "", date: l.date || "", amount: l.amount ?? null }));
+      cur.loans_none = false;
+      filled.push(`기대출 ${d.loans.length}건`);
+    } else {
+      cur.loans = []; cur.loans_none = true;
+      filled.push("기대출 없음");
+    }
+  }
+  if (d.has_delinquency === true && !cur.arrears.other) { cur.arrears.other = "신용정보조회서상 연체 있음"; filled.push("연체 정보"); }
+  if (!filled.length) return alertError("신용정보를 인식하지 못했어요. 점수와 대출 내역이 보이도록 선명한 PDF나 캡처를 올려주세요.");
+  htFillForm(cur);
+  toast(`${d.doc_type || "신용정보"}에서 ${filled.join(", ")}을(를) 채웠어요. 값을 확인해 주세요.${d.name && cur.rep_name && d.name !== cur.rep_name ? ` (조회 대상: ${d.name})` : ""}`);
+}
+
 async function htHandleFinFiles(all) {
   const files = (all || []).slice(0, 10);
   if (!files.length) return;

@@ -2127,6 +2127,99 @@ def _consume_analysis(db: Session, user, subscribed: bool):
 class IncomeDocExtractRequest(BaseModel):
     images: list[ImageItem] = []
 
+async def _gemini_json(image_parts, prompt, max_tokens=3000):
+    """이미지 + 지시문 → Gemini JSON 응답 (모델 여러 개 순서대로 시도)"""
+    import json, re
+    models_ = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.7-flash"]
+    last_err = None
+    async with httpx.AsyncClient(timeout=90) as client:
+        for model in models_:
+            for attempt in range(2):
+                try:
+                    resp = await client.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}",
+                        headers={"Content-Type": "application/json"},
+                        json={"contents": [{"parts": [*image_parts, {"text": prompt}]}],
+                              "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens}})
+                    if resp.status_code in (503, 429):
+                        last_err = resp.text
+                        if attempt == 0:
+                            await asyncio.sleep(0.8)
+                            continue
+                        break
+                    if resp.status_code != 200:
+                        last_err = resp.text
+                        break
+                    txt = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    txt = re.sub(r"```json|```", "", txt).strip()
+                    a, b = txt.find("{"), txt.rfind("}")
+                    if a == -1 or b == -1:
+                        raise ValueError("JSON 객체를 찾을 수 없음")
+                    return json.loads(txt[a:b + 1]), None
+                except Exception as e:
+                    last_err = str(e)
+                    break
+    return None, last_err
+
+
+CREDIT_DOC_PROMPT = """이 문서는 한국의 개인 신용정보 조회 결과입니다 (올크레딧(KCB)·나이스지키미(NICE)의 "신용정보조회서"/"신용평점(점수) 조회", 신용정보원 크레딧포유 "신용정보 조회 결과", 토스·카카오뱅크 등 앱의 신용점수 화면 캡처 중 하나이거나 여러 장).
+첨부된 모든 이미지를 함께 보고 아래 항목을 추출하세요.
+
+1) 신용점수 (1000점 만점)
+- KCB(올크레딧, 코리아크레딧뷰로) 점수 → kcb, NICE(나이스지키미, 나이스평가정보) 점수 → nice.
+- 화면·문서에 어느 회사 점수인지 표시가 있습니다. 회사 표시가 없는 점수 하나만 있으면 문서 발급처(올크레딧=KCB, 지키미=NICE) 기준으로 넣으세요. 등급(1~10등급)만 있고 점수가 없으면 null.
+2) 조회 대상자 이름 → name
+3) 대출 현황 (대출·카드론·할부 등 "대출" 표) → loans 배열. 각 항목:
+   {"org": 대출 기관명, "date": 대출(개설)일 "YYYY.MM", "amount": 현재 잔액(원 단위 숫자), "guarantor": 보증서 담보 대출이면 보증기관(신용보증기금·기술보증기금·○○신용보증재단 등) 아니면 null, "kind": 대출 종류(신용대출·담보대출·운전자금 등)}
+   - 금액 단위가 "천원"이면 1000을 곱해 원으로 바꾸세요. "만원"이면 10000을 곱하세요.
+   - 신용카드 일시불·카드 사용액은 넣지 마세요. 카드론·현금서비스는 넣으세요.
+   - 표에 대출이 하나도 없으면(대출 없음) loans는 빈 배열 [], 대출 표 자체가 문서에 없으면 null.
+4) 보증 현황 표가 따로 있으면 → guarantees 배열 [{"org": 보증기관, "date": "YYYY.MM", "amount": 원}] (없으면 null)
+5) 연체 정보가 있으면 has_delinquency true, 없다고 나오면 false, 알 수 없으면 null.
+
+아래 JSON 형식으로만 응답하세요:
+{"doc_type":문서 종류,"name":문자열또는null,"kcb":숫자또는null,"nice":숫자또는null,"loans":[...] 또는 null,"guarantees":[...] 또는 null,"has_delinquency":true/false/null,"comment":"인식 관련 메모 1문장"}"""
+
+
+@app.post("/extract/credit-doc")
+async def extract_credit_doc(body: IncomeDocExtractRequest, user: models.User = Depends(get_current_user)):
+    """신용정보조회서·신용점수 화면 → 신용점수(KCB·NICE)·기대출 목록. 문서·결과는 저장하지 않는다."""
+    if not body.images:
+        raise HTTPException(status_code=400, detail="분석할 서류 이미지가 없습니다.")
+    if len(body.images) > 8:
+        raise HTTPException(status_code=400, detail="서류는 최대 8장까지 첨부할 수 있습니다.")
+    parts = [{"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}} for img in body.images]
+    data, err = await _gemini_json(parts, CREDIT_DOC_PROMPT)
+    if data is None:
+        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+    num = lambda v: _codef_amt(v)
+
+    def score(v):
+        n = num(v)
+        return int(n) if n is not None and 0 < n <= 1000 else None
+    out = {"doc_type": data.get("doc_type"), "name": data.get("name"), "kcb": score(data.get("kcb")), "nice": score(data.get("nice")),
+           "has_delinquency": data.get("has_delinquency") if isinstance(data.get("has_delinquency"), bool) else None, "loans": None}
+    if isinstance(data.get("loans"), list):
+        loans = []
+        for l in data["loans"]:
+            if not isinstance(l, dict):
+                continue
+            amt = num(l.get("amount"))
+            raw = str(l.get("amount") or "")
+            if amt is not None and "천원" in raw:
+                amt *= 1000
+            elif amt is not None and "만원" in raw:
+                amt *= 10000
+            org = str(l.get("org") or "").strip()
+            g = str(l.get("guarantor") or "").strip()
+            if g and g.lower() not in ("null", "none") and g not in org:
+                org = f"{org} ({g} 보증)" if org else g
+            d = _re2.sub(r"[^\d]", "", str(l.get("date") or ""))
+            loans.append({"org": org, "date": f"{d[:4]}.{d[4:6]}" if len(d) >= 6 else (d[:4] if len(d) >= 4 else ""), "amount": amt})
+        out["loans"] = [l for l in loans if l["org"] or l["amount"]]
+    return {"data": out}
+
+
 @app.post("/extract/income-doc")
 async def extract_income_doc(
     body: IncomeDocExtractRequest,
