@@ -481,6 +481,14 @@
   .ht-npki-path { display: flex; gap: 6px; align-items: center; }
   .ht-npki-path code { flex: 1; min-width: 0; font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ht-npki-path button { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+  .ht-saved-table td.nm { white-space: normal; line-height: 1.35; }
+  .ht-saved-table td.nm small { display: block; font-size: 10.5px; color: var(--text3); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ht-saved-del { border: none; background: none; color: var(--text3); font-size: 15px; cursor: pointer; padding: 2px 6px; font-family: inherit; }
+  .ht-saved-del:hover { color: #c0392b; }
+  .ht-auth-prog { text-align: left; max-width: 260px; margin: 6px auto 0; font-size: 13px; line-height: 2; color: var(--text2); }
+  .ht-auth-prog .ok { color: #1D9E75; font-weight: 700; }
+  .ht-auth-prog .now { color: #185FA5; font-weight: 700; }
+  .ht-auth-prog .no { color: var(--text3); }
   .ht-npki-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
   .ht-npki-other { background: none; border: none; color: var(--text3); font-size: 12px; text-decoration: underline; cursor: pointer; font-family: inherit; padding: 8px 0 2px; }
   .ht-cert-saved { display: flex; align-items: center; gap: 10px; border: 1.5px solid #1D9E75; background: #E1F5EE; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
@@ -1892,7 +1900,9 @@ async function api(method, path, body) {
   };
   if (token) opts.headers["Authorization"] = "Bearer " + token;
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(API_BASE + path, opts);
+  let res;
+  try { res = await fetch(API_BASE + path, opts); }
+  catch (e) { throw new Error("서버와 연결이 잠시 끊겼어요. 인터넷 연결을 확인하고 다시 시도해 주세요."); }   // Safari "Load failed" / "Failed to fetch"
   let data;
   try { data = await res.json(); } catch { data = {}; }
   if (!res.ok) {
@@ -3682,6 +3692,7 @@ function htAuthOpen() {
   document.getElementById("htAuthCertBox").classList.toggle("is-mob", mob);
   document.getElementById("htAuthCertBox").classList.toggle("is-pc", !mob);
   htCertState.useSaved = true;
+  htCertState.savedSel = "";
   htCertFiles = { type: "", cert: "", key: "" };
   htCertRenderSaved();
   if (!htSavedCert()) htNpkiInit();
@@ -3824,42 +3835,95 @@ function htCertName(b64) {
   } catch (e) { return ""; }
 }
 
-// 이 기기(브라우저)에 보관하는 인증서 — 계정별
-function htCertStoreKey() { return "fa_saved_cert:" + (userEmail || "").toLowerCase(); }
-function htSavedCert() {
-  try { const o = JSON.parse(localStorage.getItem(htCertStoreKey()) || "null"); return htCertReady(o) ? o : null; } catch (e) { return null; }
+// 이 기기(브라우저)에 보관하는 인증서 — 계정별, 여러 개
+function htCertStoreKey() { return "fa_saved_certs:" + (userEmail || "").toLowerCase(); }
+function htSavedCerts() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(htCertStoreKey()) || "[]"); } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  try {   // 예전(1개 보관) 형식 옮기기
+    const oldKey = "fa_saved_cert:" + (userEmail || "").toLowerCase();
+    const old = JSON.parse(localStorage.getItem(oldKey) || "null");
+    if (old && htCertReady(old)) {
+      localStorage.removeItem(oldKey);
+      if (!list.some(x => x.cert === old.cert)) { list.push(htCertMeta(old)); localStorage.setItem(htCertStoreKey(), JSON.stringify(list)); }
+    }
+  } catch (e) {}
+  return list.filter(htCertReady);
 }
-function htSaveCert(o) {
-  const name = (o.type === "1" && htCertName(o.cert)) || (o.type === "pfx" ? "PFX 인증서" : "공동인증서");
+function htSavedCert() { return htSavedCerts()[0] || null; }
+function htCertMeta(o) {
+  let info = {};
+  if (o.type === "1") { try { info = htDerInfo(o.cert); } catch (e) {} }
   const d = new Date();
-  const saved = { type: o.type, cert: o.cert, key: o.key || "", name, saved_at: `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}` };
-  try { localStorage.setItem(htCertStoreKey(), JSON.stringify(saved)); return true; } catch (e) { return false; }
+  return {
+    id: o.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    type: o.type, cert: o.cert, key: o.key || "",
+    name: info.name || o.name || (o.type === "pfx" ? "PFX 인증서" : "공동인증서"),
+    usage: info.usage || "", issuer: info.issuer || "",
+    not_after: info.notAfter && !isNaN(info.notAfter) ? info.notAfter.toISOString() : "",
+    saved_at: o.saved_at || `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`,
+  };
 }
-function htCertForget() {
-  try { localStorage.removeItem(htCertStoreKey()); } catch (e) {}
-  htCertFiles = { type: "", cert: "", key: "" };
+function htSaveCert(o) {   // 저장된 항목 id 반환, 실패 시 ""
+  const list = htSavedCerts();
+  const dup = list.find(x => x.cert === o.cert);
+  const item = htCertMeta(Object.assign({}, o, dup ? { id: dup.id } : {}));
+  const next = list.filter(x => x.cert !== o.cert).concat([item]);
+  try { localStorage.setItem(htCertStoreKey(), JSON.stringify(next)); return item.id; } catch (e) { return ""; }
+}
+function htCertForget(id) {
+  const next = htSavedCerts().filter(x => x.id !== id);
+  try { localStorage.setItem(htCertStoreKey(), JSON.stringify(next)); } catch (e) {}
+  if (htCertState.savedSel === id) { htCertState.savedSel = ""; htCertFiles = { type: "", cert: "", key: "" }; }
   htCertRenderSaved();
-  htNpkiInit();
-  toast("보관된 인증서를 이 기기에서 삭제했어요.");
+  if (!next.length) htNpkiInit();
+  toast("인증서를 이 기기에서 삭제했어요.");
 }
 function htCertUseOther() {
   htCertFiles = { type: "", cert: "", key: "" };
   htCertState.useSaved = false;
+  htCertState.savedSel = "";
   htNpki.sel = -1;
   htCertRenderSaved();
   htNpkiInit();
 }
-let htCertState = { useSaved: true };
+let htCertState = { useSaved: true, savedSel: "" };
+function htCertPickSaved(id) {
+  const c = htSavedCerts().find(x => x.id === id);
+  if (!c) return;
+  if (c.not_after && new Date(c.not_after).getTime() < Date.now()) toast("만료된 인증서예요. 갱신한 인증서를 가져와 주세요.");
+  htCertState.savedSel = id;
+  htCertFiles = { type: c.type, cert: c.cert, key: c.key };
+  htCertRenderSaved();
+  const pw = document.getElementById("htCertPw"); if (pw) pw.focus();
+}
 function htCertRenderSaved() {
-  const sv = htSavedCert();
-  const use = !!sv && htCertState.useSaved;
-  document.getElementById("htCertSaved").style.display = use ? "flex" : "none";
+  const list = htSavedCerts();
+  const use = list.length > 0 && htCertState.useSaved;
+  document.getElementById("htCertSaved").style.display = use ? "" : "none";
   document.getElementById("htCertPickWrap").style.display = use ? "none" : "";
-  if (use) {
-    htCertFiles = { type: sv.type, cert: sv.cert, key: sv.key };
-    document.getElementById("htCertSavedName").textContent = sv.name || "공동인증서";
-    document.getElementById("htCertSavedSub").textContent = `이 기기에 보관된 인증서 · ${sv.saved_at || ""} 저장`;
+  if (!use) return;
+  const now = Date.now();
+  const rows = list.map(c => Object.assign({}, c, { expired: c.not_after && new Date(c.not_after).getTime() < now }))
+    .sort((a, b) => (a.expired - b.expired) || String(b.not_after).localeCompare(String(a.not_after)));
+  if (!htCertState.savedSel) {   // 쓸 수 있는 인증서가 하나면 자동 선택
+    const ok = rows.filter(c => !c.expired);
+    if (ok.length === 1) { htCertState.savedSel = ok[0].id; }
   }
+  const sel = rows.find(c => c.id === htCertState.savedSel);
+  htCertFiles = sel ? { type: sel.type, cert: sel.cert, key: sel.key } : { type: "", cert: "", key: "" };
+  const day = v => v ? v.slice(2, 10).replace(/-/g, ".") : "-";   // 27.03.07
+  document.getElementById("htCertSavedList").innerHTML = `
+    <div class="ht-npki-scroll"><table class="ht-npki-table ht-saved-table">
+      <colgroup><col style="width:38%"><col style="width:29%"><col style="width:23%"><col style="width:10%"></colgroup>
+      <thead><tr><th>사용자</th><th>용도</th><th>만료일</th><th></th></tr></thead>
+      <tbody>${rows.map(c => `
+        <tr class="${c.id === htCertState.savedSel ? "on" : ""}${c.expired ? " expired" : ""}" onclick="htCertPickSaved('${c.id}')">
+          <td class="nm">${escapeHtml(c.name)}<small>${escapeHtml(c.issuer || "")}</small></td>
+          <td>${escapeHtml(c.usage || "-")}</td><td>${day(c.not_after)}${c.expired ? "<br>만료" : ""}</td>
+          <td><button type="button" class="ht-saved-del" title="삭제" onclick="event.stopPropagation();htCertForget('${c.id}')">✕</button></td>
+        </tr>`).join("")}</tbody></table></div>`;
 }
 
 // ── 내 PC 인증서 목록 (크롬·엣지 PC: 인증서 폴더를 한 번 연결하면 다음부터 목록이 바로 나옴) ──
@@ -4053,6 +4117,7 @@ async function htRelayOpen() {   // 휴대폰: 번호 만들고 기다리기
         htCertFiles = { type: o.type, cert: o.cert, key: o.key || "" };
         const ok = htSaveCert(htCertFiles);
         htCertState.useSaved = true;
+        if (ok) htCertState.savedSel = ok;
         htCertRenderSaved();
         if (!ok) {   // 보관이 막힌 환경(사생활 보호 모드 등) — 이번 한 번만 사용
           htCertFiles = { type: o.type, cert: o.cert, key: o.key || "" };
@@ -4137,7 +4202,7 @@ function htRelayInputsInit() {
 }
 
 async function htCertStart() {
-  if (!htCertReady(htCertFiles)) return toast("인증서 파일을 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
+  if (!htCertReady(htCertFiles)) return toast(document.getElementById("htCertSaved").style.display !== "none" ? "사용할 인증서를 목록에서 선택해 주세요." : "인증서를 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
   const pwEl = document.getElementById("htCertPw");
   if (!pwEl.value) return toast("인증서 비밀번호를 입력해주세요.");
   if (!document.getElementById("htCertAgree").checked) return toast("인증서 제공에 동의해 주세요.");
@@ -4151,11 +4216,9 @@ async function htCertStart() {
     });
     pwEl.value = "";
     const keep = document.getElementById("htCertKeep");
-    if (!htCertState.useSaved || !htSavedCert()) {
-      if (keep && keep.checked && document.getElementById("htCertPickWrap").style.display !== "none") htSaveCert(htCertFiles);
-    }
+    if (keep && keep.checked && document.getElementById("htCertPickWrap").style.display !== "none") htSaveCert(htCertFiles);
     htCertState.useSaved = true;
-    htAuthApply(res);
+    await htAuthFinish(res);
   } catch (e) {
     toast(e.message);
     htAuthShow(1);
@@ -4174,6 +4237,7 @@ function htCertDropInit() {
 
 function htAuthShow(n) {
   [1, 2, 3, 4, 5].forEach(i => document.getElementById("htAuthStep" + i).style.display = i === n ? "" : "none");
+  if (n === 3) htAuthProgress({ got: [], doing: "사업자등록증명" });
 }
 function htAuthBack() { clearInterval(htAuthState.timer); htAuthState.pending = null; htAuthShow(1); }
 
@@ -4195,7 +4259,7 @@ async function htAuthStart() {
       business_number: (document.getElementById("ht-biz") || {}).value || "",
       member: !document.getElementById("htAuthNonMember").checked,
     });
-    if (res.status === "done") return htAuthApply(res);
+    if (res.status === "done" || res.status === "collecting") return await htAuthFinish(res);
     htAuthState.pending = { params: res.params, two_way: res.two_way };
     htAuthShow(2);
     let left = 270;
@@ -4222,13 +4286,49 @@ async function htAuthComplete() {
   try {
     const res = await api("POST", "/codef/hometax/complete", htAuthState.pending);
     clearInterval(htAuthState.timer);
-    htAuthApply(res);
+    htAuthState.pending = null;
+    await htAuthFinish(res);
   } catch (e) {
     toast(e.message);
-    htAuthShow(e.message.includes("아직 휴대폰 인증") ? 2 : 1);
+    htAuthShow(e.message.includes("아직 휴대폰 인증") && htAuthState.pending ? 2 : 1);
   } finally {
     btn.disabled = false;
   }
+}
+
+// 인증 성공 후 서버가 나머지 서류를 조회 → 진행 상황을 보다가 끝나면 채우기
+const HT_DOCS = ["사업자등록증명", "부가세과세표준증명", "납세증명서", "재무제표"];
+function htAuthProgress(p) {
+  const el = document.getElementById("htAuthProg");
+  if (!el) return;
+  const got = p.got || [], failed = (p.failed || p.pending || []).map(x => x.replace(/\(.*\)/, ""));
+  el.innerHTML = HT_DOCS.map(d => {
+    if (got.includes(d)) return `<div class="ok">✓ ${d}</div>`;
+    if (failed.includes(d)) return `<div class="no">– ${d}</div>`;
+    if (p.doing === d) return `<div class="now">⏳ ${d} 조회 중…</div>`;
+    return `<div class="no">· ${d}</div>`;
+  }).join("");
+}
+async function htAuthFinish(res) {
+  if (!res || res.status !== "collecting") return htAuthApply(res);
+  htAuthShow(3);
+  htAuthProgress(res);
+  const started = Date.now();
+  let misses = 0;
+  while (Date.now() - started < 9 * 60 * 1000) {
+    await new Promise(r => setTimeout(r, 2500));
+    if (document.getElementById("htAuthModal").style.display === "none") return;   // 사용자가 닫음
+    let p;
+    try { p = await api("GET", "/codef/hometax/job/" + res.job); misses = 0; }
+    catch (e) {
+      if (++misses >= 6) throw e;     // 잠깐 끊긴 건 다시 시도
+      continue;
+    }
+    htAuthProgress(p);
+    if (p.status === "done") return htAuthApply(p);
+    if (p.status === "error") throw new Error(p.detail || "홈택스 자료를 불러오지 못했어요.");
+  }
+  throw new Error("자료 조회가 너무 오래 걸려요. 잠시 후 다시 시도해 주세요.");
 }
 
 function htAuthApply(res) {
@@ -7200,10 +7300,12 @@ window.addEventListener("DOMContentLoaded", () => {
       </div>
       <div id="htAuthCertBox" style="display:none;">
         <p class="ht-auth-desc">대표자(법인은 법인) 명의 공동인증서(구 공인인증서)로 홈택스 자료를 채워드려요. <span class="ht-only-mob">인증서가 PC에만 있으면 <b>PC에 있는 인증서 가져오기</b>로 이 휴대폰에 옮길 수 있어요.</span><span class="ht-only-pc">휴대폰에서도 쓰려면 <b>휴대폰으로 인증서 보내기</b>로 옮길 수 있어요.</span></p>
-        <div id="htCertSaved" class="ht-cert-saved" style="display:none;">
-          <div class="ht-cert-saved-ic">🔒</div>
-          <div style="flex:1;min-width:0;"><div class="ht-cert-saved-name" id="htCertSavedName"></div><div class="ht-cert-saved-sub" id="htCertSavedSub">이 기기에 보관된 인증서</div></div>
-          <div class="ht-cert-saved-btns"><button type="button" onclick="htCertUseOther()">다른 인증서</button><button type="button" onclick="htCertForget()">삭제</button></div>
+        <div id="htCertSaved" style="display:none;margin-bottom:6px;">
+          <div class="ht-npki-head">
+            <div class="ht-auth-label" style="margin:0;">🔒 이 기기에 보관된 인증서</div>
+            <button type="button" class="ht-npki-link" onclick="htCertUseOther()">파일로 선택</button>
+          </div>
+          <div id="htCertSavedList" class="ht-npki-list"></div>
         </div>
         <div id="htCertPickWrap">
           <div id="htNpkiBox" style="display:none;">
@@ -7296,6 +7398,7 @@ window.addEventListener("DOMContentLoaded", () => {
       <div style="font-size:36px;margin:8px 0;">⏳</div>
       <div class="ht-auth-title">홈택스 자료를 불러오는 중이에요</div>
       <p class="ht-auth-desc">잠시만 기다려 주세요. 최대 1~2분 걸릴 수 있어요.</p>
+      <div id="htAuthProg" class="ht-auth-prog"></div>
     </div>
   </div>
 </div>

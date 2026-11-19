@@ -198,3 +198,13 @@ class CertRelay(Base):
     user_id = Column(Integer, index=True, nullable=False)
     blob = Column(Text, nullable=True)
     expires_at = Column(DateTime, nullable=False)
+
+
+class CodefJob(Base):
+    """홈택스 서류 조회 작업 (인증 후 서버에서 이어서 조회, 화면은 진행 상황만 확인)"""
+    __tablename__ = "codef_jobs"
+    id = Column(String(32), primary_key=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    status = Column(String(16), default="running")      # running / done / error
+    result = Column(Text, nullable=True)                # JSON
+    created_at = Column(DateTime, default=datetime.utcnow)

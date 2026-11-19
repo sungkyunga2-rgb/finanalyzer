@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,7 +8,7 @@ import httpx
 import os
 import uuid
 from datetime import datetime, timedelta
-from database import get_db, engine
+from database import get_db, engine, SessionLocal
 import models
 from sqlalchemy.orm import Session
 
@@ -1438,7 +1439,7 @@ async def codef_hometax_cert(body: CodefCertBody, user: models.User = Depends(ge
     res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], params)
     code = _codef_code(res)
     if code == "CF-00000":
-        return await _hometax_collect(params, res.get("data"))
+        return _hometax_start_job(params, res.get("data"), user.id)
     print(f"[CODEF] cert 실패 {code}: {(res.get('result') or {}).get('message')}")
     msg = _codef_msg(res)
     if "비밀번호" in msg or "password" in msg.lower():
@@ -1532,7 +1533,7 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
         two_way = {k: data.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}
         return {"status": "need_approval", "params": params, "two_way": two_way, "method": data.get("method")}
     if code == "CF-00000":
-        return await _hometax_collect(params, data)
+        return _hometax_start_job(params, data, user.id)
     print(f"[CODEF] start 실패 {code}: {_codef_msg(res)}")
     raise HTTPException(status_code=400, detail=f"본인 인증 요청에 실패했습니다: {_codef_msg(res)}")
 
@@ -1547,17 +1548,89 @@ async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = De
     res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], req)
     code = _codef_code(res)
     if code == "CF-00000":
-        return await _hometax_collect(params, res.get("data"))
+        return _hometax_start_job(params, res.get("data"), user.id)
     if code == "CF-03002":
         raise HTTPException(status_code=409, detail="아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요.")
     print(f"[CODEF] complete 실패 {code}: {_codef_msg(res)}")
     raise HTTPException(status_code=400, detail=f"홈택스 자료를 불러오지 못했습니다: {_codef_msg(res)}")
 
 
-async def _hometax_collect(params, reg_data):
+_codef_tasks = set()      # 백그라운드 작업이 중간에 정리되지 않도록 참조 보관
+
+
+def _job_save(job_id, status=None, result=None):
+    db = SessionLocal()
+    try:
+        row = db.query(models.CodefJob).filter(models.CodefJob.id == job_id).first()
+        if row:
+            if status:
+                row.status = status
+            if result is not None:
+                row.result = _json.dumps(result, ensure_ascii=False, default=str)
+            db.commit()
+    except Exception as e:
+        print(f"[CODEF] 작업 저장 오류: {e!r}")
+    finally:
+        db.close()
+
+
+async def _hometax_job(job_id, params, reg_data):
+    try:
+        res = await _hometax_collect(params, reg_data, progress=lambda p: _job_save(job_id, result=p))
+        _job_save(job_id, "done", res)
+    except Exception as e:
+        print(f"[CODEF] 작업 오류 {job_id}: {e!r}")
+        _job_save(job_id, "error", {"detail": "홈택스 자료를 불러오는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요."})
+
+
+def _hometax_start_job(params, reg_data, user_id):
+    """인증 성공 → 나머지 서류는 서버에서 이어서 조회 (요청 하나가 너무 길어 연결이 끊기는 문제 방지)"""
+    job_id = uuid.uuid4().hex
+    fill = _safe(_parse_registration, reg_data, params.get("identity", ""), default={}) or {}
+    db = SessionLocal()
+    try:
+        db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
+        db.add(models.CodefJob(id=job_id, user_id=user_id, status="running",
+                               result=_json.dumps({"got": ["사업자등록증명"] if fill else [], "doing": "", "fill": fill}, ensure_ascii=False)))
+        db.commit()
+    finally:
+        db.close()
+    t = asyncio.create_task(_hometax_job(job_id, params, reg_data))
+    _codef_tasks.add(t)
+    t.add_done_callback(_codef_tasks.discard)
+    return {"status": "collecting", "job": job_id, "fill": fill}
+
+
+@app.get("/codef/hometax/job/{job_id}")
+def codef_hometax_job(job_id: str, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    row = db.query(models.CodefJob).filter(models.CodefJob.id == job_id, models.CodefJob.user_id == user.id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="조회 작업을 찾을 수 없어요. 처음부터 다시 시도해 주세요.")
+    data = {}
+    try:
+        data = _json.loads(row.result or "{}")
+    except Exception:
+        pass
+    status = row.status
+    if status == "running" and row.created_at and row.created_at < datetime.utcnow() - timedelta(minutes=8):
+        status = "error"
+        data = {"detail": "자료 조회가 너무 오래 걸려 중단됐어요. 다시 시도해 주세요."}
+    return dict(data, status=status)      # 오래된 작업은 새 작업을 만들 때 1시간 지나면 정리
+
+
+def _safe(fn, *a, default=None):
+    try:
+        return fn(*a)
+    except Exception as e:
+        print(f"[CODEF] 해석 오류 {getattr(fn, '__name__', fn)}: {e!r}")
+        return default
+
+
+async def _hometax_collect(params, reg_data, progress=None):
     """인증이 끝난 세션(같은 id)으로 나머지 서류를 이어서 조회해 원클릭 입력값으로 정리"""
-    fill = _parse_registration(reg_data, params.get("identity", ""))
+    fill = _safe(_parse_registration, reg_data, params.get("identity", ""), default={}) or {}
     got, failed = (["사업자등록증명"] if fill else []), []
+    step = (lambda doing: progress and progress({"got": list(got), "failed": list(failed), "doing": doing, "fill": fill}))
     now = datetime.utcnow() + timedelta(hours=9)
     corp = fill.get("biz_type") == "corp"
     base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id",
@@ -1583,10 +1656,11 @@ async def _hometax_collect(params, reg_data):
 
     # ① 부가세과세표준증명 — 최근 3개 연도 (회원 인증서·회원 간편인증만 지원)
     if params.get("loginType") in ("0", "5"):
+        step("부가세과세표준증명")
         y = now.year
         data, err = await call("vat", {**ph("phoneNo"), "startDate": f"{y - 3}01", "endDate": f"{y - 1}07",
                                        "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
-        years = _parse_vat(data) if data is not None else []
+        years = _safe(_parse_vat, data, default=[]) if data is not None else []
         if years:
             fill["years"] = years
             got.append("부가세과세표준증명")
@@ -1596,9 +1670,10 @@ async def _hometax_collect(params, reg_data):
         failed.append("부가세과세표준증명")
 
     # ② 납세증명서 — 발급되면 체납 없음
+    step("납세증명서")
     data, err = await call("tax_payment", {**ph("phoneNo"), "isIdentityViewYN": "0", "isAddrViewYn": "0", "proofType": "B0007",
                                            "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
-    arrears = _parse_tax_cert(data, err)
+    arrears = _safe(_parse_tax_cert, data, err)
     if arrears:
         fill["arrears"] = arrears
         got.append("납세증명서")
@@ -1608,13 +1683,14 @@ async def _hometax_collect(params, reg_data):
     # ③ 재무제표 — 마지막 신고분 (법인: 사업연도 종료연월 / 개인: 과세연도)
     fin = None
     if 8 <= now.hour < 22:
+        step("재무제표")
         tries = [f"{now.year - 1}12", f"{now.year - 2}12"] if corp else [str(now.year - 1), str(now.year - 2)]
         for sd in tries:
             extra = {**ph("loginPhoneNo"), "startDate": sd, "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"}
             if not corp:
                 extra["proofType"] = "40"
             data, err = await call("financial", extra)
-            fin = _parse_financial(data) if data is not None else None
+            fin = _safe(_parse_financial, data) if data is not None else None
             if fin:
                 break
     if fin:
