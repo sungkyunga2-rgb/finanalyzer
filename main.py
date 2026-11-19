@@ -1226,6 +1226,17 @@ def _cw_body(params, telecom="", corp=None, bizno=""):
     return None
 
 
+def _reg_rrn(reg_data, want_biz=""):
+    """사업자등록증명(주민번호 공개)에서 대표자 주민등록번호 13자리 — 서버 안에서 근로복지공단 조회에만 쓰고 저장·반환하지 않는다"""
+    rows = reg_data if isinstance(reg_data, list) else [reg_data]
+    rows = [r for r in rows if isinstance(r, dict)]
+    digits = _re2.sub(r"\D", "", want_biz or "")
+    row = next((r for r in rows if digits and _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "") == digits), rows[0] if rows else {})
+    raw = str(row.get("resUserIdentiyNo") or "")
+    n = _re2.sub(r"\D", "", raw)
+    return n if len(n) == 13 and "*" not in raw else ""
+
+
 def _cw_manage_list(res):
     d = res.get("data") if isinstance(res, dict) else None
     ex = (d or {}).get("extraInfo") or {} if isinstance(d, dict) else {}
@@ -1519,7 +1530,7 @@ async def codef_hometax_cert(body: CodefCertBody, user: models.User = Depends(ge
     if not _codef_ready():
         raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
     params = _hometax_cert_params(body, user.id)
-    res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], params)
+    res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], dict(params, isIdentityViewYN="1"))   # 대표자 주민번호 공개 → 직원 수 조회에만 사용
     code = _codef_code(res)
     if code == "CF-00000":
         banks = [b for b in dict.fromkeys(body.banks or []) if b in CODEF_BANKS][:6]
@@ -1618,7 +1629,7 @@ def _hometax_calls(params, now, telecom=""):
     """간편인증 세션 하나로 보낼 서류 요청 목록 [(key, body)]"""
     base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id", "telecom", "identity") if params.get(k)}
     phone = params.get("phoneNo", "")
-    calls = [("registration", dict(params))]
+    calls = [("registration", dict(params, isIdentityViewYN="1"))]
     y = now.year
     if params.get("loginType") == "5":        # 부가세과세표준증명은 회원만
         calls.append(("vat", dict(base, phoneNo=phone, startDate=f"{y - 3}01", endDate=_vat_end(now), isIdentityViewYN="0",
@@ -2241,12 +2252,18 @@ async def _hometax_collect(params, reg_data, progress=None):
     cw = _cw_body(params, corp=corp, bizno=bizno)
     if cw:
         step("직원 수(고용보험)")
+        rrn = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
+        # 대표자 개인명의(0)는 주민번호, 사업자명의 인증서(2)는 사업자번호 — 맞는 조합을 차례로 시도
+        tries = ([("0", rrn)] if rrn else []) + [("2", bizno)] if corp else ([("0", rrn)] if rrn else []) + [("0", bizno), ("2", bizno)]
+        tries = [t for i, t in enumerate(tries) if t[1] and t not in tries[:i]]
+        res = {}
         try:
-            res = await _cw_resolve(cw, await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], cw), fill.get("company_name", ""))
-            if _codef_code(res) not in ("CF-00000",) and not _cw_no_data(_codef_code(res), _codef_msg(res)):
-                print(f"[CODEF] employees userType {cw.get('userType')} 실패 {_codef_code(res)}: {_codef_msg(res)} → 다른 구분으로 재시도")
-                cw2 = dict(cw, userType="0" if cw.get("userType") == "2" else "2")
-                res = await _cw_resolve(cw2, await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], cw2), fill.get("company_name", ""))
+            for i, (ut, ident) in enumerate(tries):
+                body = dict(cw, userType=ut, identity=ident)
+                res = await _cw_resolve(body, await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], body), fill.get("company_name", ""))
+                if _codef_code(res) == "CF-00000" or _cw_no_data(_codef_code(res), _codef_msg(res)):
+                    break
+                print(f"[CODEF] employees 시도{i + 1}(구분 {ut}, {'주민번호' if ident == rrn else '사업자번호'}) 실패 {_codef_code(res)}: {_codef_msg(res)}")
         except Exception as e:
             print(f"[CODEF] employees 호출 오류: {e!r}")
             res = {}
