@@ -1926,9 +1926,16 @@ def _bank_loan_rows(data):
     return out
 
 
+BANK_P_UNSUPPORTED = {"0020": "개인 조회는 출금계좌번호·계좌 비밀번호가 추가로 필요해 지원하지 않음"}   # CODEF 은행 로그인 파라미터표(2026.11.10)
+
+
 async def _bank_loans(params, banks, corp):
     """고른 은행들의 대출 → ([{org, date, amount}], 성공 은행, [(은행, 사유)])"""
     client = "B" if corp else "P"
+    skipped = [] if corp else [(b, BANK_P_UNSUPPORTED[b]) for b in banks if b in BANK_P_UNSUPPORTED]
+    banks = [b for b in banks if corp or b not in BANK_P_UNSUPPORTED]
+    if not banks:
+        return [], [], skipped
     acc = {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "password": params.get("certPassword", "")}
     if params.get("certType") == "pfx":
         acc.update(certType="pfx", certFile=params.get("certFile", ""))
@@ -1968,7 +1975,7 @@ async def _bank_loans(params, banks, corp):
         if "비밀번호" in m:
             return "인증서 비밀번호 오류"
         return m.split(".")[0][:40]
-    return loans, ok_banks, [(b, friendly(m)) for b, m in bad]
+    return loans, ok_banks, [(b, friendly(m)) for b, m in bad] + skipped
 
 
 def _job_save(job_id, status=None, result=None):
