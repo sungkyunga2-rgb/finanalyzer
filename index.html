@@ -446,6 +446,10 @@
   .ht-auth-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 14px; font-family: inherit; background: var(--surface); color: var(--text); }
   .ht-auth-check { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: var(--text2); line-height: 1.5; margin: 6px 0; }
   .ht-auth-check input { margin-top: 2px; }
+  .fa-alert-bg { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: none; align-items: center; justify-content: center; z-index: 100000; padding: 16px; }
+  .fa-alert { background: var(--surface, #fff); border-radius: 16px; padding: 22px 20px 16px; width: 100%; max-width: 360px; box-shadow: 0 12px 40px rgba(0,0,0,.25); text-align: center; }
+  .fa-alert-ic { font-size: 30px; margin-bottom: 6px; }
+  .fa-alert-msg { font-size: 15px; line-height: 1.6; color: var(--text, #1b2430); white-space: pre-line; word-break: keep-all; margin-bottom: 16px; }
   .ht-auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--surface2, #f1f4f8); border-radius: 10px; padding: 4px; margin: 6px 0 12px; }
   .ht-auth-tabs button { border: none; background: none; border-radius: 8px; padding: 8px 4px; font-size: 13.5px; font-weight: 700; color: var(--text2); cursor: pointer; font-family: inherit; }
   .ht-auth-tabs button.on { background: var(--surface); color: #185FA5; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
@@ -908,6 +912,7 @@
     </div>
 
     <style>
+      #hometaxSection .ht-ytd-m { font-style: normal; color: var(--text3); font-weight: 400; margin-left: 4px; }
       #hometaxSection .ht-req { color:#A32D2D; font-weight:700; margin-left:1px; }
       #hometaxSection .ht-sheet { padding:0; overflow:hidden; }
       #hometaxSection .ht-row { display:grid; grid-template-columns:116px 1fr; border-bottom:1px solid var(--border); }
@@ -981,12 +986,8 @@
         <div class="ht-body">
           <div class="ht-line" id="ht-years"></div>
           <div class="ht-line">
-            <label class="ht-f"><span>올해 기준 월</span>
-              <select id="ht-ytd-month"><option value="">월 선택</option>
-                <option value="1">1월까지</option><option value="2">2월까지</option><option value="3">3월까지</option><option value="4">4월까지</option>
-                <option value="5">5월까지</option><option value="6">6월까지</option><option value="7">7월까지</option><option value="8">8월까지</option>
-                <option value="9">9월까지</option><option value="10">10월까지</option><option value="11">11월까지</option><option value="12">12월까지</option></select></label>
-            <label class="ht-f" style="grid-column:span 2;"><span><b id="ht-ytd-label"></b>년 누적 매출 (원)</span><input type="text" inputmode="numeric" id="ht-ytd-sales" placeholder="150,000,000" oninput="formatMoneyInput(this)" /></label>
+<input type="hidden" id="ht-ytd-month" />
+            <label class="ht-f" style="grid-column:span 2;"><span><b id="ht-ytd-label"></b>년 현재까지 매출 (원)<em id="ht-ytd-mlabel" class="ht-ytd-m"></em></span><input type="text" inputmode="numeric" id="ht-ytd-sales" placeholder="150,000,000" oninput="formatMoneyInput(this);document.getElementById('ht-ytd-month').value='';htSyncYtdLabel()" /></label>
             <input type="hidden" id="ht-ytd-year" />
           </div>
           <div class="ht-line">
@@ -1874,6 +1875,31 @@ function showPage(name) {
   }
 }
 
+// 오류·확인이 필요한 안내 — 화면 가운데에 띄우고 [확인]을 눌러야 닫힘
+function alertError(msg) {
+  let bg = document.getElementById("faAlert");
+  if (!bg) {
+    bg = document.createElement("div");
+    bg.id = "faAlert";
+    bg.className = "fa-alert-bg";
+    bg.innerHTML = `<div class="fa-alert" role="alertdialog" aria-modal="true" aria-labelledby="faAlertMsg">
+      <div class="fa-alert-ic">⚠️</div><div class="fa-alert-msg" id="faAlertMsg"></div>
+      <button type="button" class="btn btn-primary btn-full" id="faAlertOk">확인</button></div>`;
+    document.body.appendChild(bg);
+    const close = () => { bg.style.display = "none"; document.removeEventListener("keydown", bg.__key); };
+    bg.querySelector("#faAlertOk").onclick = close;
+    bg.__close = close;
+  }
+  const box = bg.querySelector("#faAlertMsg");
+  const text = String(msg || "오류가 발생했습니다.");
+  if (bg.style.display === "flex" && box.textContent && box.textContent !== text) box.textContent += "\n\n" + text;   // 이미 떠 있으면 이어서
+  else box.textContent = text;
+  bg.style.display = "flex";
+  bg.__key = ev => { if (ev.key === "Enter" || ev.key === "Escape") { ev.preventDefault(); bg.__close(); } };
+  document.addEventListener("keydown", bg.__key);
+  setTimeout(() => { const b = document.getElementById("faAlertOk"); if (b) b.focus(); }, 30);
+}
+
 function toast(msg) {
   const wrap = document.getElementById("toastWrap");
   // 토스트가 계속 쌓이지 않도록 오래된 것부터 정리 (최대 2개 유지)
@@ -2320,7 +2346,7 @@ function addFiles(fileList) {
   if (remainingSlots <= 0) { toast(`이미지는 최대 ${MAX_IMAGES}장까지 첨부할 수 있습니다.`); return; }
 
   const validFiles = files.filter(f => f.type.startsWith("image/") || f.type === "application/pdf");
-  if (validFiles.length < files.length) toast("JPG, PNG, PDF 파일만 업로드 가능합니다.");
+  if (validFiles.length < files.length) alertError("JPG, PNG, PDF 파일만 업로드 가능합니다.");
 
   const toProcess = validFiles.slice(0, remainingSlots);
   if (validFiles.length > toProcess.length) toast(`최대 ${MAX_IMAGES}장까지만 첨부 가능해 ${toProcess.length}장만 추가되었습니다.`);
@@ -2418,7 +2444,7 @@ async function doAnalyze() {
     saveAnalysisHistory(d.data, "image");
     toast("분석 완료");
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
     if (e.message.includes("부족") || e.message.includes("구독이 필요")) openPaymentModal();
   } finally {
     document.getElementById("statusBar").classList.add("hidden");
@@ -2461,11 +2487,11 @@ async function htHandleIncomeFile(files) {
   files = (Array.isArray(files) ? files : [files]).filter(Boolean).slice(0, 5);
   if (!files.length) return;
   if (files.some(f => !(f.type.startsWith("image/") || f.type === "application/pdf"))) {
-    toast("JPG, PNG, PDF 파일만 업로드 가능합니다.");
+    alertError("JPG, PNG, PDF 파일만 업로드 가능합니다.");
     return;
   }
   const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
-  try { incomeDocImage = await Promise.all(files.map(read)); } catch (e) { return toast("파일을 읽지 못했어요."); }
+  try { incomeDocImage = await Promise.all(files.map(read)); } catch (e) { return alertError("파일을 읽지 못했어요."); }
   document.getElementById("incomeDocFileName").textContent = "📎 " + files.map(f => f.name).join(", ");
   extractIncomeDoc();
 }
@@ -2488,7 +2514,7 @@ async function htHandleFinFiles(all) {
   if (!files.length) return;
   if (!token) { showPage("login"); return; }
   const bad = files.find(f => !(f.type.startsWith("image/") || f.type === "application/pdf"));
-  if (bad) { toast("JPG, PNG, PDF 파일만 업로드 가능합니다."); return; }
+  if (bad) { alertError("JPG, PNG, PDF 파일만 업로드 가능합니다."); return; }
   const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
   const btn = document.getElementById("finDocBtn");
   const btnHtml = btn.innerHTML;
@@ -2499,7 +2525,7 @@ async function htHandleFinFiles(all) {
     const res = await api("POST", "/extract/financial", { images });
     htFillFromFinancial(res.data || {});
   } catch (err) {
-    toast(err.message);
+    alertError(err.message);
   } finally {
     btn.disabled = false; btn.innerHTML = btnHtml;
   }
@@ -2523,7 +2549,7 @@ function htFillFromFinancial(d) {
   htToggleFin(true);
   if (anyFin) Object.entries(fin).forEach(([id, v]) => setMoney(id, v));
   const got = [d.company_name, d.revenue, anyFin].filter(Boolean).length;
-  if (!got) toast("재무제표에서 정보를 읽지 못했어요. 선명한 이미지나 PDF로 다시 올리거나 직접 입력해 주세요.");
+  if (!got) alertError("재무제표에서 정보를 읽지 못했어요. 선명한 이미지나 PDF로 다시 올리거나 직접 입력해 주세요.");
   else toast("재무제표에서 정보를 채웠어요. 값을 확인하고 나머지 필수 항목을 입력한 뒤 분석해 주세요.");
 }
 
@@ -2552,7 +2578,8 @@ async function extractIncomeDoc() {
         ? bizDigits.slice(0, 3) + "-" + bizDigits.slice(3, 5) + "-" + bizDigits.slice(5)
         : String(d.business_number).trim();
     }
-    if (d.revenue) { salesEl.value = Math.round(d.revenue).toLocaleString("ko-KR"); salesEl.dispatchEvent(new Event("input")); }
+    const hasPeriods = (d.years && d.years.length) || d.ytd;
+    if (d.revenue && !hasPeriods) { salesEl.value = Math.round(d.revenue).toLocaleString("ko-KR"); salesEl.dispatchEvent(new Event("input")); }
     [companyEl, repEl, bizEl].forEach(el => el.dispatchEvent(new Event("input")));
 
     // 사업자등록증: 업태·종목(2개까지)·창업년월·소재지·개인/법인
@@ -2560,6 +2587,14 @@ async function extractIncomeDoc() {
     let bizRegFilled = false;
     ["industry", "item", "industry2", "item2", "founded", "location"].forEach(k => { if (d[k]) { cur[k] = String(d[k]).trim(); bizRegFilled = true; } });
     if (d.biz_type === "corp" || d.biz_type === "personal") { cur.biz_type = d.biz_type; bizRegFilled = true; }
+    if (hasPeriods) {     // 부가세과세표준증명: 지난 연도별 + 올해 현재까지
+      const byYear = {};
+      (cur.years || []).forEach(y => { if (y.year) byYear[y.year] = y; });
+      (d.years || []).forEach(y => { byYear[y.year] = Object.assign(byYear[y.year] || { purchase: null, income: null }, { year: y.year, vat: y.vat }); });
+      cur.years = Object.values(byYear).sort((a, b) => a.year - b.year).slice(-3);
+      if (d.ytd) cur.ytd = { year: d.ytd.year, month: d.ytd.month, sales: d.ytd.sales };
+      bizRegFilled = true;
+    }
     if (bizRegFilled) {
       if (!d.industry2 && !d.item2) { cur.industry2 = cur.industry2 || ""; cur.item2 = cur.item2 || ""; }
       htFillForm(cur);
@@ -2571,14 +2606,14 @@ async function extractIncomeDoc() {
     if (d.industry || d.item) filled.push("업태·종목");
     if (d.founded) filled.push("창업년월");
     if (d.location) filled.push("소재지");
-    if (d.revenue) filled.push("매출");
+    if (d.revenue || hasPeriods) filled.push(d.ytd ? `매출(${d.ytd.year}년 ${d.ytd.month}월까지 포함)` : "매출");
     if (!filled.length) {
-      toast("문서에서 정보를 인식하지 못했어요. 서류 전체가 선명하게 보이도록 다시 촬영하거나 직접 입력해주세요.");
+      alertError("문서에서 정보를 인식하지 못했어요. 서류 전체가 선명하게 보이도록 다시 촬영하거나 직접 입력해주세요.");
     } else {
       toast(`${d.doc_type || "서류"}에서 ${filled.join("·")}을(를) 채웠어요. 값을 확인한 뒤 분석해 주세요.`);
     }
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
   }
   btn.disabled = false; btn.innerHTML = btnHtml;
 }
@@ -2627,7 +2662,7 @@ async function doManualAnalyze() {
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
     if (e.message.includes("부족") || e.message.includes("구독이 필요")) openPaymentModal();
     btn.disabled = false; btn.textContent = "입력 정보로 분석하기";
     return;
@@ -3573,6 +3608,7 @@ function htReadForm() {
   input.certs = htCertText(input.cert_list);
   input.lab = input.cert_list.some(c => c.type === "기업부설연구소") ? "lab" : input.cert_list.some(c => c.type === "연구개발전담부서") ? "dept" : "";
   if (!Object.values(input.fin || {}).some(v => v !== null)) input.fin = null;
+  htAutoYtdMonth(input);
   return input;
 }
 
@@ -3657,6 +3693,13 @@ function htSyncYtdLabel() {
   const yy = document.getElementById("ht-ytd-year"), lb = document.getElementById("ht-ytd-label");
   if (yy && !yy.value) yy.value = new Date().getFullYear();
   if (yy && lb) lb.textContent = yy.value;
+  const m = (document.getElementById("ht-ytd-month") || {}).value, ml = document.getElementById("ht-ytd-mlabel");
+  if (ml) ml.textContent = m ? `· ${m}월까지 (서류 기준)` : "";
+}
+// 올해 매출의 기준 월 — 서류에서 온 값이 없으면 지난달까지로 본다 (연 환산용)
+function htAutoYtdMonth(input) {
+  if (input.ytd && input.ytd.sales !== null && input.ytd.sales !== undefined && !input.ytd.month)
+    input.ytd.month = Math.max(1, new Date().getMonth());
 }
 
 // 필수 항목(인콜일지 노란색) 확인 → [{ label, id }]
@@ -3906,7 +3949,7 @@ let htCertState = { useSaved: true, savedSel: "" };
 function htCertPickSaved(id) {
   const c = htSavedCerts().find(x => x.id === id);
   if (!c) return;
-  if (c.not_after && new Date(c.not_after).getTime() < Date.now()) toast("만료된 인증서예요. 갱신한 인증서를 가져와 주세요.");
+  if (c.not_after && new Date(c.not_after).getTime() < Date.now()) alertError("만료된 인증서예요. 갱신한 인증서를 가져와 주세요.");
   htCertState.savedSel = id;
   htCertFiles = { type: c.type, cert: c.cert, key: c.key };
   htCertRenderSaved();
@@ -3971,7 +4014,7 @@ function htNpkiShowFiles() {
 async function htNpkiCopyPath() {
   const t = document.getElementById("htNpkiPath").textContent;
   try { await navigator.clipboard.writeText(t); toast("경로를 복사했어요. 폴더 선택 창 주소창에 붙여넣으세요."); }
-  catch (e) { toast("경로를 직접 입력해 주세요: " + t); }
+  catch (e) { alertError("경로를 직접 입력해 주세요: " + t); }
 }
 async function htNpkiInit() {   // 공동인증서 탭 열 때
   const box = document.getElementById("htNpkiBox"), fileBox = document.getElementById("htCertFileBox");
@@ -3999,14 +4042,14 @@ async function htNpkiReopen() {
   try {
     if ((await dir.requestPermission({ mode: "read" })) === "granted") return htNpkiScan(dir);
   } catch (e) {}
-  toast("인증서 폴더를 열 수 없어요. 폴더를 다시 연결해 주세요.");
+  alertError("인증서 폴더를 열 수 없어요. 폴더를 다시 연결해 주세요.");
   htNpkiRenderMsg(`<button type="button" class="ht-npki-btn" onclick="htNpkiConnect()">📂 인증서 폴더 연결</button>`, true);
 }
 async function htNpkiConnect() {
   let dir;
   try { navigator.clipboard.writeText(document.getElementById("htNpkiPath").textContent); } catch (e) {}   // 경로 자동 복사 → 주소창에 붙여넣기만
   try { dir = await window.showDirectoryPicker({ id: "fina-npki", mode: "read" }); }
-  catch (e) { if (e && e.name !== "AbortError") toast("이 폴더는 열 수 없어요. 안내된 경로의 NPKI 폴더를 선택해 주세요."); return; }
+  catch (e) { if (e && e.name !== "AbortError") alertError("이 폴더는 열 수 없어요. 안내된 경로의 NPKI 폴더를 선택해 주세요."); return; }
   await htNpkiScan(dir, true);
 }
 async function htNpkiScan(dir, fresh) {
@@ -4109,7 +4152,7 @@ function htNpkiRows() {
 function htNpkiPick(i) {
   const c = (htNpki.view || [])[i];
   if (!c) return;
-  if (c.expired) toast("만료된 인증서예요. 갱신한 인증서를 선택해 주세요.");
+  if (c.expired) alertError("만료된 인증서예요. 갱신한 인증서를 선택해 주세요.");
   htNpki.sel = c;
   htCertFiles = { type: c.type || "1", cert: c.cert, key: c.key };
   htNpkiRows();
@@ -4121,7 +4164,7 @@ async function htCertPick(files) {
   const main = document.getElementById("htCertMain"), drop = document.getElementById("htCertDrop");
   try {
     htCertFiles = await htReadCertFiles(files, htCertFiles);
-  } catch (e) { return toast(e.message); }
+  } catch (e) { return alertError(e.message); }
   main.innerHTML = htCertFiles.label;
   drop.classList.toggle("ok", htCertReady(htCertFiles));
   htNpki.sel = null;
@@ -4143,12 +4186,12 @@ function htUnB64(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
 function htRelayStop() { clearInterval(htRelay.timer); clearInterval(htRelay.poll); htRelay.timer = htRelay.poll = null; }
 
 async function htRelayOpen() {   // 휴대폰: 번호 만들고 기다리기
-  if (!window.crypto || !crypto.subtle) return toast("이 브라우저에서는 인증서 가져오기를 쓸 수 없어요. 최신 브라우저로 열어주세요.");
+  if (!window.crypto || !crypto.subtle) return alertError("이 브라우저에서는 인증서 가져오기를 쓸 수 없어요. 최신 브라우저로 열어주세요.");
   htRelayStop();
   const r = new Uint32Array(3); crypto.getRandomValues(r);
   const code = Array.from(r, x => String(x % 10000).padStart(4, "0")).join("");
   const { rid, key } = await htRelayKeys(code);
-  try { await api("POST", "/codef/cert-relay/open", { rid }); } catch (e) { return toast(e.message); }
+  try { await api("POST", "/codef/cert-relay/open", { rid }); } catch (e) { return alertError(e.message); }
   htRelay.code = code; htRelay.rid = rid; htRelay.key = key;
   document.getElementById("htRelayCode").textContent = code.replace(/(\d{4})(\d{4})(\d{4})/, "$1-$2-$3");
   document.getElementById("htRelayStatus").textContent = "PC에서 보내기를 기다리는 중…";
@@ -4191,7 +4234,7 @@ async function htRelayOpen() {   // 휴대폰: 번호 만들고 기다리기
         document.getElementById("htRelayStatus").textContent = "시간이 지났어요. 인증번호를 다시 만들어 주세요.";
       }
     } catch (e) {
-      htRelayStop(); toast(e.message || "인증서를 받지 못했어요. 다시 시도해 주세요.");
+      htRelayStop(); alertError(e.message || "인증서를 받지 못했어요. 다시 시도해 주세요.");
     } finally { busy = false; }
   }, 2500);
 }
@@ -4206,15 +4249,15 @@ function htRelaySendOpen() {   // PC: 보내기 화면
   document.getElementById("htRelayIn1").focus();
 }
 async function htRelayPick(files) {
-  try { htRelay.files = await htReadCertFiles(files, htRelay.files); } catch (e) { return toast(e.message); }
+  try { htRelay.files = await htReadCertFiles(files, htRelay.files); } catch (e) { return alertError(e.message); }
   document.getElementById("htRelayMain").innerHTML = htRelay.files.label;
   document.getElementById("htRelayDrop").classList.toggle("ok", htCertReady(htRelay.files));
 }
 async function htRelaySend() {
   const code = ["htRelayIn1", "htRelayIn2", "htRelayIn3"].map(id => document.getElementById(id).value.replace(/\D/g, "")).join("");
-  if (code.length !== 12) return toast("휴대폰에 표시된 인증번호 12자리를 입력해 주세요.");
-  if (!htCertReady(htRelay.files)) return toast("보낼 인증서 파일을 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
-  if (!window.crypto || !crypto.subtle) return toast("이 브라우저에서는 보내기를 쓸 수 없어요. 최신 브라우저로 열어주세요.");
+  if (code.length !== 12) return alertError("휴대폰에 표시된 인증번호 12자리를 입력해 주세요.");
+  if (!htCertReady(htRelay.files)) return alertError("보낼 인증서 파일을 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
+  if (!window.crypto || !crypto.subtle) return alertError("이 브라우저에서는 보내기를 쓸 수 없어요. 최신 브라우저로 열어주세요.");
   const btn = document.getElementById("htRelaySendBtn");
   btn.disabled = true; btn.textContent = "보내는 중...";
   try {
@@ -4228,7 +4271,7 @@ async function htRelaySend() {
     htAuthShow(1);
     toast("휴대폰으로 인증서를 보냈어요. 휴대폰 화면을 확인해 주세요.");
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
   } finally {
     btn.disabled = false; btn.textContent = "보내기";
   }
@@ -4261,10 +4304,10 @@ function htRelayInputsInit() {
 }
 
 async function htCertStart() {
-  if (!htCertReady(htCertFiles)) return toast(document.getElementById("htCertSaved").style.display !== "none" ? "사용할 인증서를 목록에서 선택해 주세요." : "인증서를 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
+  if (!htCertReady(htCertFiles)) return alertError(document.getElementById("htCertSaved").style.display !== "none" ? "사용할 인증서를 목록에서 선택해 주세요." : "인증서를 선택해 주세요. (signCert.der + signPri.key 또는 .pfx)");
   const pwEl = document.getElementById("htCertPw");
-  if (!pwEl.value) return toast("인증서 비밀번호를 입력해주세요.");
-  if (!document.getElementById("htCertAgree").checked) return toast("인증서 제공에 동의해 주세요.");
+  if (!pwEl.value) return alertError("인증서 비밀번호를 입력해주세요.");
+  if (!document.getElementById("htCertAgree").checked) return alertError("인증서 제공에 동의해 주세요.");
   const btn = document.getElementById("htCertBtn");
   btn.disabled = true;
   htAuthShow(3);
@@ -4279,7 +4322,7 @@ async function htCertStart() {
     htCertState.useSaved = true;
     await htAuthFinish(res);
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
     htAuthShow(1);
   } finally {
     btn.disabled = false;
@@ -4305,11 +4348,11 @@ async function htAuthStart() {
   const birth = document.getElementById("htAuthBirth").value.replace(/\D/g, "");
   const phone = document.getElementById("htAuthPhone").value.replace(/\D/g, "");
   const telecom = document.getElementById("htAuthTelecom").value;
-  if (!name) return toast("이름을 입력해주세요.");
-  if (birth.length !== 8) return toast("생년월일 8자리를 입력해주세요. (예: 19800101)");
-  if (phone.length < 10) return toast("휴대폰 번호를 확인해주세요.");
-  if (htAuthState.provider === "5" && !telecom) return toast("통신사를 선택해주세요.");
-  if (!document.getElementById("htAuthAgree").checked) return toast("정보 제공에 동의해 주세요.");
+  if (!name) return alertError("이름을 입력해주세요.");
+  if (birth.length !== 8) return alertError("생년월일 8자리를 입력해주세요. (예: 19800101)");
+  if (phone.length < 10) return alertError("휴대폰 번호를 확인해주세요.");
+  if (htAuthState.provider === "5" && !telecom) return alertError("통신사를 선택해주세요.");
+  if (!document.getElementById("htAuthAgree").checked) return alertError("정보 제공에 동의해 주세요.");
   const btn = document.getElementById("htAuthStartBtn");
   btn.disabled = true; btn.textContent = "인증 요청 중...";
   try {
@@ -4329,10 +4372,10 @@ async function htAuthStart() {
     htAuthState.timer = setInterval(() => {
       left -= 1;
       tEl.textContent = `${Math.floor(Math.max(left, 0) / 60)}:${String(Math.max(left, 0) % 60).padStart(2, "0")}`;
-      if (left <= 0) { clearInterval(htAuthState.timer); toast("인증 시간이 지났어요. 다시 요청해 주세요."); htAuthBack(); }
+      if (left <= 0) { clearInterval(htAuthState.timer); alertError("인증 시간이 지났어요. 다시 요청해 주세요."); htAuthBack(); }
     }, 1000);
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
   } finally {
     btn.disabled = false; btn.textContent = "인증 요청하기";
   }
@@ -4354,7 +4397,8 @@ async function htAuthComplete(auto) {
     htAuthState.pending = null;
     await htAuthFinish(res);
   } catch (e) {
-    toast(e.message);
+    if (auto && e.message.includes("연결이 잠시 끊겼")) return;     // 자동 확인 중 잠깐 끊긴 건 무시 (다음 확인/버튼으로)
+    alertError(e.message);
     const again = e.message.includes("아직 휴대폰 인증") && htAuthState.pending;
     if (!again) { htAuthStopAuto(); htAuthState.pending = null; }
     htAuthShow(again ? 2 : 1);
@@ -4424,6 +4468,7 @@ function htAuthApply(res) {
   const inc = {};
   ["company_name", "rep_name", "business_number", "industry", "item", "industry2", "item2", "founded", "location", "biz_type"].forEach(k => { if (f[k]) inc[k] = f[k]; });
   if (f.years) inc.years = f.years;
+  if (f.ytd) inc.ytd = f.ytd;
   if (f.arrears) inc.arrears = f.arrears;
   if (f.fin) inc.fin = f.fin;
   htFillForm(htMergeForm(inc));
@@ -4474,13 +4519,13 @@ async function doHometaxAnalyze() {
   const input = htReadForm();
 
   const yrs = input.years.map(y => y.year).filter(Boolean);
-  if (new Set(yrs).size !== yrs.length) { toast("연도가 중복되었습니다. 연도를 확인해 주세요."); return; }
+  if (new Set(yrs).size !== yrs.length) { alertError("연도가 중복되었습니다. 연도를 확인해 주세요."); return; }
   const miss = htMissing(input);
   htMarkMissing(miss);
   if (miss.length) {
     const first = document.getElementById(miss[0].id);
     if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
-    toast(`필수 항목 ${miss.length}개를 확인해 주세요: ${miss.slice(0, 3).map(m => m.label).join(", ")}${miss.length > 3 ? " 외" : ""}`);
+    alertError(`필수 항목 ${miss.length}개를 확인해 주세요: ${miss.slice(0, 3).map(m => m.label).join(", ")}${miss.length > 3 ? " 외" : ""}`);
     return;
   }
   if (input.need.min !== null && input.need.max !== null && input.need.min > input.need.max) {
@@ -4498,7 +4543,7 @@ async function doHometaxAnalyze() {
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
     if (e.message.includes("부족") || e.message.includes("구독이 필요")) openPaymentModal();
     btn.disabled = false; btn.textContent = "입력 정보로 분석하기";
     return;
@@ -4535,7 +4580,7 @@ async function htRenderSaved(input, adminPw) {
     lim = res.limit;
   } catch (e) {
     input.__full = false;
-    toast("예상 한도를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+    alertError("예상 한도를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
   }
   renderHometaxResults(analyzeHometax(input, { limit: lim }), input);
 }
@@ -5077,7 +5122,7 @@ async function loadTeam() {
   try {
     const d = await api("GET", "/team/me");
     renderTeam(d);
-  } catch (e) { toast(e.message); }
+  } catch (e) { alertError(e.message); }
 }
 
 function teamShow(id, on) {
@@ -5187,30 +5232,30 @@ async function teamInvite() {
 async function teamCancelInvite(id) {
   if (!confirm("이 초대를 취소할까요?")) return;
   try { await api("DELETE", "/team/invites/" + id); toast("초대를 취소했습니다."); loadTeam(); }
-  catch (e) { toast(e.message); }
+  catch (e) { alertError(e.message); }
 }
 
 async function teamRemove(userId) {
   if (!confirm("이 팀원을 팀에서 내보낼까요?")) return;
   try { await api("DELETE", "/team/members/" + userId); toast("팀원을 내보냈습니다."); loadTeam(); }
-  catch (e) { toast(e.message); }
+  catch (e) { alertError(e.message); }
 }
 
 async function teamAccept(id) {
   try { await api("POST", "/team/invites/" + id + "/accept"); toast("팀에 합류했습니다."); loadTeam(); }
-  catch (e) { toast(e.message); loadTeam(); }
+  catch (e) { alertError(e.message); loadTeam(); }
 }
 
 async function teamDecline(id) {
   if (!confirm("이 초대를 거절할까요?")) return;
   try { await api("POST", "/team/invites/" + id + "/decline"); toast("초대를 거절했습니다."); loadTeam(); }
-  catch (e) { toast(e.message); }
+  catch (e) { alertError(e.message); }
 }
 
 async function teamLeave() {
   if (!confirm("팀에서 탈퇴할까요? 탈퇴하면 팀의 요금제를 더 이상 사용할 수 없습니다.")) return;
   try { await api("POST", "/team/leave"); toast("팀에서 탈퇴했습니다."); loadTeam(); }
-  catch (e) { toast(e.message); }
+  catch (e) { alertError(e.message); }
 }
 
 // ── 분석 이력 ───────────────────────────────────────────────────
@@ -5337,7 +5382,7 @@ async function openHistoryReport(historyId, btn) {
     // 화면이 그려진 뒤에 리포트를 생성해야 지표/진단 영역이 정상적으로 담김
     setTimeout(() => downloadResult(), 300);
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
     if (btn) { btn.disabled = false; btn.textContent = "출력가능"; }
   }
 }
@@ -5507,7 +5552,7 @@ async function editCommunityPost() {
     document.getElementById("cw-error").style.display = "none";
     showPage("communityWrite");
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
   }
 }
 
@@ -5628,7 +5673,7 @@ async function deleteCommunityPost() {
     toast("글이 삭제되었습니다.");
     goCommunity();
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
   }
 }
 
@@ -5638,7 +5683,7 @@ async function deleteCommunityComment(id) {
     await api("DELETE", `/community/comments/${id}`);
     loadCommunityDetail();
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
   }
 }
 
@@ -5656,7 +5701,7 @@ async function saveCommunityComment(id) {
   const textareaEl = document.getElementById(`cc-edit-${id}`);
   const content = textareaEl.value.trim();
   if (!content) {
-    toast("댓글 내용을 입력해주세요.");
+    alertError("댓글 내용을 입력해주세요.");
     return;
   }
   try {
@@ -5664,7 +5709,7 @@ async function saveCommunityComment(id) {
     editingCommentId = null;
     loadCommunityDetail();
   } catch (e) {
-    toast(e.message);
+    alertError(e.message);
   }
 }
 
@@ -6719,7 +6764,7 @@ async function ensurePortOne() {
     window.PortOne = await import("https://cdn.portone.io/v2/browser-sdk.esm.js");
     return true;
   } catch (e) {
-    toast("결제 모듈 로드 실패. 새로고침 후 다시 시도해주세요.");
+    alertError("결제 모듈 로드 실패. 새로고침 후 다시 시도해주세요.");
     return false;
   }
 }
@@ -6729,7 +6774,7 @@ async function startSubscription() {
   if (!token) { showPage("login"); return; }
   if (subStarting) return;
   const plan = subState && subState.plans ? subState.plans.find(p => p.id === selectedPlan) : null;
-  if (!plan) { toast("요금제를 선택해주세요."); return; }
+  if (!plan) { alertError("요금제를 선택해주세요."); return; }
   if (!document.getElementById("sub-agree").checked) { toast("정기결제(자동결제) 안내에 동의해주세요."); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail || "")) {
     toast("계정 이메일 형식이 올바르지 않아 결제를 진행할 수 없습니다. 문의하기로 알려주세요.");
@@ -6753,12 +6798,12 @@ async function startSubscription() {
     });
     if (res.code !== undefined) {
       try { localStorage.removeItem("fa_pending_sub"); } catch (e) {}
-      if (res.code !== "USER_CANCEL" && !/cancel/i.test(res.code)) toast("카드 등록 실패: " + (res.message || res.code));
+      if (res.code !== "USER_CANCEL" && !/cancel/i.test(res.code)) alertError("카드 등록 실패: " + (res.message || res.code));
       return;
     }
     await finishSubscription(res.billingKey, plan.id);
   } catch (e) {
-    toast("카드 등록 중 오류: " + e.message);
+    alertError("카드 등록 중 오류: " + e.message);
   } finally {
     subStarting = false;
     updateSubButton();
@@ -6796,11 +6841,11 @@ async function handleBillingCallback() {
   showPage("charge");
   if (code) {
     try { localStorage.removeItem("fa_pending_sub"); } catch (e) {}
-    if (code !== "USER_CANCEL" && !/cancel/i.test(code)) toast("카드 등록 실패: " + (message || code));
+    if (code !== "USER_CANCEL" && !/cancel/i.test(code)) alertError("카드 등록 실패: " + (message || code));
     return;
   }
   if (!billingKey || !pending || !pending.plan) {
-    toast("카드 등록 결과를 확인하지 못했습니다. 다시 시도해주세요.");
+    alertError("카드 등록 결과를 확인하지 못했습니다. 다시 시도해주세요.");
     return;
   }
   await finishSubscription(billingKey, pending.plan);
@@ -6812,7 +6857,7 @@ async function cancelSubscription() {
     const d = await api("POST", "/subscription/cancel");
     toast(d.message || "해지가 예약되었습니다.");
     loadSubscription();
-  } catch (e) { toast(e.message); }
+  } catch (e) { alertError(e.message); }
 }
 
 async function resumeSubscription() {
@@ -6820,7 +6865,7 @@ async function resumeSubscription() {
     const d = await api("POST", "/subscription/resume");
     toast(d.message || "해지 예약을 취소했습니다.");
     loadSubscription();
-  } catch (e) { toast(e.message); }
+  } catch (e) { alertError(e.message); }
 }
 
 // ── (예전) 건당 결제 — 구독 전환으로 화면에서는 더 이상 쓰지 않지만, 결제 직후 끊긴 건을 복구하는 코드가 참조하므로 남겨둔다 ──
@@ -7000,7 +7045,7 @@ async function payFromModal(pkgId) {
 
 // 분석하려는데 구독도 크레딧도 없을 때: 구독 화면으로 안내
 function openPaymentModal() {
-  toast("분석하려면 구독이 필요합니다. 요금제를 선택해주세요.");
+  alertError("분석하려면 구독이 필요합니다. 요금제를 선택해주세요.");
   showPage("charge");
 }
 
@@ -7021,7 +7066,7 @@ async function executePayment(pkgId, fromModal) {
     try {
       window.PortOne = await import("https://cdn.portone.io/v2/browser-sdk.esm.js");
     } catch(e) {
-      toast("결제 모듈 로드 실패. 새로고침 후 다시 시도해주세요."); return;
+      alertError("결제 모듈 로드 실패. 새로고침 후 다시 시도해주세요."); return;
     }
   }
 
@@ -7052,7 +7097,7 @@ async function executePayment(pkgId, fromModal) {
     if (response.code) {
       // 오류 또는 사용자 취소
       try { localStorage.removeItem("fa_pending_pay"); } catch (e) {}
-      if (response.code !== "USER_CANCEL") toast("결제 실패: " + response.message);
+      if (response.code !== "USER_CANCEL") alertError("결제 실패: " + response.message);
       return;
     }
 
@@ -7061,14 +7106,14 @@ async function executePayment(pkgId, fromModal) {
     if (fromModal) closePaymentModal();
 
   } catch (e) {
-    toast("결제 중 오류: " + e.message);
+    alertError("결제 중 오류: " + e.message);
   }
 }
 
 // 백엔드로 결제 검증 + 크레딧 지급 요청
 async function confirmPayment(paymentId, pkgId, amount, promoCode) {
   if (!PKGS[pkgId]) {
-    toast("이용권 정보를 확인하지 못했습니다. 결제번호 " + (paymentId || "-") + " 로 문의해주세요.");
+    alertError("이용권 정보를 확인하지 못했습니다. 결제번호 " + (paymentId || "-") + " 로 문의해주세요.");
     return false;
   }
   try {
@@ -7094,7 +7139,7 @@ async function confirmPayment(paymentId, pkgId, amount, promoCode) {
       toast("이미 처리된 결제입니다.");
       return true;
     }
-    toast("결제 확인 중 오류: " + e.message + " (결제번호 " + (paymentId || "-") + ")");
+    alertError("결제 확인 중 오류: " + e.message + " (결제번호 " + (paymentId || "-") + ")");
     return false;
   }
 }
@@ -7119,7 +7164,7 @@ async function handlePaymentCallback() {
   const code = params.get("code");
   if (code) {
     try { localStorage.removeItem("fa_pending_pay"); } catch (e) {}
-    if (code !== "USER_CANCEL") toast("결제 실패: " + (params.get("message") || code));
+    if (code !== "USER_CANCEL") alertError("결제 실패: " + (params.get("message") || code));
     clearUrl();
     return true;
   }
@@ -7130,7 +7175,7 @@ async function handlePaymentCallback() {
   const promoCode = params.get("promo") || (pending && pending.promoCode) || null;
 
   if (!PKGS[pkgId]) {
-    toast("구매하신 이용권 정보를 확인하지 못했습니다. 결제번호 " + (paymentId || "-") + " 로 문의해주세요.");
+    alertError("구매하신 이용권 정보를 확인하지 못했습니다. 결제번호 " + (paymentId || "-") + " 로 문의해주세요.");
     clearUrl();
     return true;
   }

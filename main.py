@@ -1557,7 +1557,7 @@ def _hometax_calls(params, now):
     calls = [("registration", dict(params))]
     y = now.year
     if params.get("loginType") == "5":        # 부가세과세표준증명은 회원만
-        calls.append(("vat", dict(base, phoneNo=phone, startDate=f"{y - 3}01", endDate=f"{y - 1}07", isIdentityViewYN="0",
+        calls.append(("vat", dict(base, phoneNo=phone, startDate=f"{y - 3}01", endDate=_vat_end(now), isIdentityViewYN="0",
                                   usePurposes="99", submitTargets="99", applicationType="01", originDataYN="0")))
     calls.append(("tax_payment", dict(base, phoneNo=phone, isIdentityViewYN="0", isAddrViewYn="0", proofType="B0007",
                                       submitTargets="99", applicationType="01", originDataYN="0")))
@@ -1588,9 +1588,12 @@ def _ht_assemble(st, now, final):
         got.append("사업자등록증명")
     elif final or R.get("registration"):
         failed.append("사업자등록증명")
-    years = next((y for y in (_safe(_parse_vat, d, default=[]) for d in ok("vat")) if y), [])
-    if years:
-        fill["years"] = years
+    years, ytd = next((v for v in (_safe(_parse_vat_split, d, now.year, default=([], None)) for d in ok("vat")) if v[0] or v[1]), ([], None))
+    if years or ytd:
+        if years:
+            fill["years"] = years
+        if ytd:
+            fill["ytd"] = ytd
         got.append("부가세과세표준증명")
     elif final:
         failed.append("부가세과세표준증명")
@@ -1894,11 +1897,14 @@ async def _hometax_collect(params, reg_data, progress=None):
     if params.get("loginType") in ("0", "5"):
         step("부가세과세표준증명")
         y = now.year
-        data, err = await call("vat", {**ph("phoneNo"), "startDate": f"{y - 3}01", "endDate": f"{y - 1}07",
+        data, err = await call("vat", {**ph("phoneNo"), "startDate": f"{y - 3}01", "endDate": _vat_end(now),
                                        "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
-        years = _safe(_parse_vat, data, default=[]) if data is not None else []
-        if years:
-            fill["years"] = years
+        years, ytd = _safe(_parse_vat_split, data, now.year, default=([], None)) if data is not None else ([], None)
+        if years or ytd:
+            if years:
+                fill["years"] = years
+            if ytd:
+                fill["ytd"] = ytd
             got.append("부가세과세표준증명")
         else:
             failed.append("부가세과세표준증명")
@@ -1967,6 +1973,34 @@ def _codef_rows(obj, must):
         for v in obj:
             out.extend(_codef_rows(v, must))
     return out
+
+
+def _vat_end(now):
+    """조회 끝 과세기간 — 올해 1기 확정신고(7월 25일)가 끝난 8월부터는 올해 1기까지"""
+    return f"{now.year}01" if now.month >= 8 else f"{now.year - 1}07"
+
+
+def _parse_vat_split(data, this_year):
+    """부가세과세표준증명 → (지난 연도별 매출 최근 3년, 올해 누적 {year, month, sales})"""
+    by_year, months = {}, {}
+    for r in _codef_rows(data, ("commStartDate",)):
+        amt = _codef_amt(r.get("resIncomeTotalAmt"))
+        if amt is None:
+            amt = _codef_amt(r.get("resIncomeAmt"))
+        st, en = str(r.get("commStartDate") or ""), str(r.get("commEndDate") or "")
+        y = st[:4]
+        if amt is None or not y.isdigit():
+            continue
+        y = int(y)
+        try:
+            m = int(en[4:6]) - int(st[4:6]) + 1 if len(en) >= 6 and en[:4] == st[:4] else 6
+        except ValueError:
+            m = 6
+        by_year[y] = by_year.get(y, 0) + amt
+        months[y] = months.get(y, 0) + max(1, min(12, m))
+    past = [{"year": y, "vat": by_year[y]} for y in sorted(by_year) if y < this_year][-3:]
+    ytd = {"year": this_year, "month": min(12, months[this_year]), "sales": by_year[this_year]} if this_year in by_year else None
+    return past, ytd
 
 
 def _parse_vat(data):
@@ -2129,6 +2163,7 @@ async def extract_income_doc(
 - 상단에 상호(회사/사업체명), 성명(대표자명), 사업자등록번호가 표기됩니다.
 - 표에는 보통 과세기간(예: 2025년 제1기, 2025년 제2기 등)별로 "과세표준액"(공급가액) 금액이 나열됩니다.
 - 표에 나온 가장 최근 4개 과세기간(1년치, 분기 신고면 4개/반기 신고면 2개)의 과세표준액을 모두 더한 값을 revenue(연 매출액 추정치)로 반환하세요. 과세기간이 1년치가 안 되면 있는 만큼만 더하세요.
+- 그리고 표의 모든 과세기간을 빠짐없이 periods 배열로 반환하세요 (가장 최근 기간, 올해 기간 포함). 각 항목: {"start":"YYYY-MM","end":"YYYY-MM","amount":과세표준액 숫자}. 과세기간 표기가 "2025년 1기"면 start "2025-01", end "2025-06", "2기"면 "2025-07"~"2025-12", 예정·확정이 나뉘어 있으면 각각의 실제 기간(예: 2025-01~2025-03)으로 적으세요.
 
 [소득금액증명원]
 - 상단에 상호 또는 성명(대표자명), 사업자등록번호가 표기됩니다.
@@ -2144,7 +2179,7 @@ async def extract_income_doc(
 부가세·소득금액 서류에는 개업일·주소·업태가 없으면 null로 두세요. 대출·부채·자산 정보는 추출 대상이 아닙니다.
 
 아래 JSON 형식으로만 응답하세요. 문서에서 찾을 수 없는 항목은 null:
-{"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"income_amount":숫자또는null,"open_date":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
+{"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"periods":[{"start":"YYYY-MM","end":"YYYY-MM","amount":숫자}] 또는 null,"income_amount":숫자또는null,"open_date":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
 
     GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.7-flash"]
 
@@ -2221,6 +2256,23 @@ async def extract_income_doc(
                 data["business_number"] = f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
             elif not digits:
                 data["business_number"] = None
+        # 과세기간별 금액 → 지난 연도별 매출 + 올해 누적 (CODEF와 같은 방식)
+        pr = data.get("periods")
+        if isinstance(pr, list) and pr:
+            rows = []
+            for it in pr:
+                if not isinstance(it, dict):
+                    continue
+                st_, en_ = re.sub(r"\D", "", str(it.get("start") or "")), re.sub(r"\D", "", str(it.get("end") or ""))
+                if len(st_) >= 6:
+                    rows.append({"commStartDate": st_[:6] + "01", "commEndDate": (en_[:6] if len(en_) >= 6 else st_[:6]) + "28", "resIncomeTotalAmt": it.get("amount")})
+            now_kst = datetime.utcnow() + timedelta(hours=9)
+            yrs, ytd = _safe(_parse_vat_split, rows, now_kst.year, default=([], None))
+            if yrs:
+                data["years"] = yrs
+            if ytd:
+                data["ytd"] = ytd
+        data.pop("periods", None)
         kind = data.get("biz_kind") or ""
         bd = re.sub(r"\D", "", data.get("business_number") or "")
         if "법인" in kind or (len(bd) == 10 and bd[3:5] in ("81", "82", "83", "84", "85", "86", "87", "88")):   # 사업자번호 가운데 81~88 = 법인
