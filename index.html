@@ -503,6 +503,11 @@
   .ht-auth-prog .no { color: var(--text3); }
   .ht-npki-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
   .ht-npki-other { background: none; border: none; color: var(--text3); font-size: 12px; text-decoration: underline; cursor: pointer; font-family: inherit; padding: 8px 0 2px; }
+  .ht-bank-box { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin: 10px 0 8px; background: var(--surface); }
+  .ht-bank-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ht-bank-chips button { border: 1px solid var(--border-strong); background: var(--surface); color: var(--text2); border-radius: 999px; padding: 5px 11px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+  .ht-bank-chips button.on { background: #185FA5; border-color: #185FA5; color: #fff; font-weight: 700; }
+  .ht-bank-chips .more { border-style: dashed; color: #185FA5; }
   .ht-cert-saved { display: flex; align-items: center; gap: 10px; border: 1.5px solid #1D9E75; background: #E1F5EE; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
   .ht-cert-saved-ic { font-size: 24px; }
   .ht-cert-saved-name { font-size: 14px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3871,6 +3876,7 @@ function htAuthOpen() {
   if (rep && rep.value && !document.getElementById("htAuthName").value) document.getElementById("htAuthName").value = rep.value;
   htCertDropInit();
   htRelayInputsInit();
+  htRenderBanks();
   const mob = isMobileDevice();   // 휴대폰은 '가져오기', PC는 '보내기'만
   document.getElementById("htRelayGetBtn").style.display = mob ? "" : "none";
   document.getElementById("htRelaySendBtnOpen").style.display = mob ? "none" : "";
@@ -3898,6 +3904,25 @@ function htAuthClose() {
   const cf = document.getElementById("htCertFiles"); if (cf) cf.value = "";
   document.getElementById("htAuthModal").style.display = "none";
 }
+// 거래 은행 선택 (공동인증서 — 은행 대출 조회)
+const HT_BANKS = [["0004", "국민"], ["0088", "신한"], ["0020", "우리"], ["0081", "하나"], ["0003", "기업"], ["0011", "농협"],
+  ["0002", "산업"], ["0007", "수협"], ["0023", "SC"], ["0027", "씨티"], ["0031", "대구"], ["0032", "부산"], ["0034", "광주"],
+  ["0035", "제주"], ["0037", "전북"], ["0039", "경남"], ["0045", "새마을금고"], ["0048", "신협"], ["0071", "우체국"], ["0089", "K뱅크"]];
+let htBanksSel = [], htBanksAll = false;
+function htRenderBanks() {
+  const box = document.getElementById("htBankChips");
+  if (!box) return;
+  const list = htBanksAll ? HT_BANKS : HT_BANKS.filter((b, i) => i < 6 || htBanksSel.includes(b[0]));
+  box.innerHTML = list.map(([c, n]) => `<button type="button" class="${htBanksSel.includes(c) ? "on" : ""}" onclick="htToggleBank('${c}')">${n}</button>`).join("")
+    + (htBanksAll ? "" : `<button type="button" class="more" onclick="htBanksAll=true;htRenderBanks()">+ 다른 은행</button>`);
+}
+function htToggleBank(c) {
+  if (htBanksSel.includes(c)) htBanksSel = htBanksSel.filter(x => x !== c);
+  else if (htBanksSel.length >= 6) return alertError("은행은 최대 6곳까지 고를 수 있어요.");
+  else htBanksSel.push(c);
+  htRenderBanks();
+}
+
 function htAuthTab(t) {
   htAuthState.tab = t;
   document.getElementById("htAuthTabSimple").classList.toggle("on", t === "simple");
@@ -4442,7 +4467,7 @@ async function htCertStart() {
   htAuthShow(3);
   try {
     const res = await api("POST", "/codef/hometax/cert", {
-      cert_type: htCertFiles.type, cert_file: htCertFiles.cert, key_file: htCertFiles.key, password: pwEl.value,
+      cert_type: htCertFiles.type, cert_file: htCertFiles.cert, key_file: htCertFiles.key, password: pwEl.value, banks: htBanksSel.slice(),
       business_number: (document.getElementById("ht-biz") || {}).value || "",
     });
     pwEl.value = "";
@@ -4563,7 +4588,7 @@ function htAuthProgress(p) {
   const el = document.getElementById("htAuthProg");
   if (!el) return;
   const got = p.got || [], failed = (p.failed || p.pending || []).map(x => x.replace(/\(.*\)/, ""));
-  el.innerHTML = HT_DOCS.map(d => {
+  el.innerHTML = HT_DOCS.concat(p.banks ? ["은행 대출"] : []).map(d => {
     if (got.includes(d)) return `<div class="ok">✓ ${d}</div>`;
     if (failed.includes(d)) return `<div class="no">– ${d}</div>`;
     if (p.doing === d) return `<div class="now">⏳ ${d} 조회 중…</div>`;
@@ -4599,6 +4624,7 @@ function htAuthApply(res) {
   if (f.years) inc.years = f.years;
   if (f.ytd) inc.ytd = f.ytd;
   if (f.arrears) inc.arrears = f.arrears;
+  if (f.loans && f.loans.length) inc.loans = f.loans;
   if (f.fin) inc.fin = f.fin;
   htFillForm(htMergeForm(inc));
   htAuthState.pending = null;
@@ -4607,6 +4633,8 @@ function htAuthApply(res) {
   const got = (res.got || []).join(", ");
   const miss = (res.pending || []).join(", ");
   toast(got ? `${got} 자료로 정보를 채웠어요.${miss ? ` (${miss}는 불러오지 못해 직접 확인이 필요해요)` : ""} 나머지 항목을 확인한 뒤 분석해 주세요.` : "불러온 자료가 없어요. 직접 입력해 주세요.");
+  if (res.bank_ok) toast(`${res.bank_ok.join("·")}에서 대출 ${(f.loans || []).length}건을 불러왔어요.`);
+  if (res.bank_failed && res.bank_failed.length) alertError(`일부 은행은 대출을 불러오지 못했어요.\n${res.bank_failed.join("\n")}\n\n그 은행 인터넷뱅킹에 인증서가 등록돼 있는지 확인해 주세요.`);
   if (f._business_list && f._business_list.length > 1) toast(`사업장이 ${f._business_list.length}곳이에요. 다른 사업장은 사업자번호를 먼저 입력하고 다시 인증해 주세요.`);
 }
 
@@ -7634,6 +7662,11 @@ window.addEventListener("DOMContentLoaded", () => {
         <div class="ht-cert-move">
           <button type="button" id="htRelayGetBtn" onclick="htRelayOpen()">📲 PC에 있는 인증서 가져오기</button>
           <button type="button" id="htRelaySendBtnOpen" onclick="htRelaySendOpen()">📤 휴대폰으로 인증서 보내기</button>
+        </div>
+        <div class="ht-bank-box">
+          <div class="ht-auth-label" style="margin:0 0 4px;">🏦 거래 은행 대출도 불러오기 <span style="font-weight:400;color:var(--text3);">(선택 · 최대 6곳)</span></div>
+          <div class="ht-bank-chips" id="htBankChips"></div>
+          <p class="ht-cert-hint" style="margin:6px 0 0;">고른 은행의 인터넷뱅킹(법인은 기업뱅킹)에 이 인증서가 등록돼 있어야 해요. 은행 대출만 나오고, 중진공 직접대출·캐피탈 등은 나오지 않아요.</p>
         </div>
         <label class="ht-auth-grid" style="grid-template-columns:1fr;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">인증서 비밀번호</span><input id="htCertPw" type="password" class="ht-auth-input" autocomplete="off" placeholder="인증서 비밀번호" /></label>
         <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스 자료 조회를 위해 인증서를 인증 대행사(CODEF)에 제공하는 데 동의합니다. 비밀번호는 저장하지 않아요.</label>

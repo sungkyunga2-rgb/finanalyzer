@@ -1389,6 +1389,7 @@ class CodefCertBody(BaseModel):
     key_file: str = ""            # base64 (cert_type "1" 일 때)
     password: str
     business_number: str = ""
+    banks: list[str] = []         # 대출을 불러올 거래 은행 기관코드 (선택, 최대 6곳)
 
 
 def _codef_rsa(text):
@@ -1459,7 +1460,8 @@ async def codef_hometax_cert(body: CodefCertBody, user: models.User = Depends(ge
     res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], params)
     code = _codef_code(res)
     if code == "CF-00000":
-        return _hometax_start_job(params, res.get("data"), user.id)
+        banks = [b for b in dict.fromkeys(body.banks or []) if b in CODEF_BANKS][:6]
+        return _hometax_start_job(params, res.get("data"), user.id, banks=banks)
     print(f"[CODEF] cert 실패 {code}: {(res.get('result') or {}).get('message')}")
     msg = _codef_msg(res)
     if "비밀번호" in msg or "password" in msg.lower():
@@ -1797,6 +1799,82 @@ async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = De
 _codef_tasks = set()      # 백그라운드 작업이 중간에 정리되지 않도록 참조 보관
 
 
+# ── 은행 대출 (공동인증서 전용) ──
+#  CODEF 은행 상품은 connectedId 방식: 인증서를 은행별로 등록(account/create) → 보유계좌 조회 → 대출 계좌만 추림 → 등록 삭제.
+#  법인은 기업뱅킹(clientType B, /bank/b/), 개인·개인사업자는 개인뱅킹(P, /bank/p/). 은행 대출만 나온다(중진공 직접대출·캐피탈 등 제외).
+CODEF_BANKS = {"0004": "국민은행", "0088": "신한은행", "0020": "우리은행", "0081": "하나은행", "0003": "기업은행", "0011": "농협은행",
+               "0002": "산업은행", "0007": "수협은행", "0023": "SC은행", "0027": "씨티은행", "0031": "대구은행", "0032": "부산은행",
+               "0034": "광주은행", "0035": "제주은행", "0037": "전북은행", "0039": "경남은행", "0045": "새마을금고", "0048": "신협",
+               "0071": "우체국", "0089": "K뱅크"}
+
+
+async def _safe_async(coro, default=None):
+    try:
+        return await coro
+    except Exception as e:
+        print(f"[CODEF] 처리 오류: {e!r}")
+        return default
+
+
+def _bank_loan_rows(data):
+    """보유계좌 응답 → 대출 계좌 (대출 + 마이너스통장)"""
+    rows = data if isinstance(data, list) else [data]
+    out = []
+    for d in rows:
+        if not isinstance(d, dict):
+            continue
+        loans = d.get("resLoan") or []
+        loans = loans if isinstance(loans, list) else [loans]
+        for l in loans:
+            if isinstance(l, dict) and str(l.get("resAccountDeposit") or "40") != "99":
+                out.append({"name": l.get("resAccountName") or "대출", "balance": _codef_amt(l.get("resAccountBalance")),
+                            "start": l.get("resAccountStartDate") or ""})
+        deps = d.get("resDepositTrust") or []
+        deps = deps if isinstance(deps, list) else [deps]
+        for a in deps:     # 마이너스통장(한도대출)
+            if isinstance(a, dict) and str(a.get("resOverdraftAcctYN")) == "1":
+                bal = _codef_amt(a.get("resLoanBalance"))
+                if bal:
+                    out.append({"name": a.get("resLoanKind") or "마이너스통장", "balance": abs(bal), "start": a.get("resLoanStartDate") or ""})
+    return out
+
+
+async def _bank_loans(params, banks, corp):
+    """고른 은행들의 대출 → ([{org, date, amount}], 성공 은행, [(은행, 사유)])"""
+    client = "B" if corp else "P"
+    acc = {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "password": params.get("certPassword", "")}
+    if params.get("certType") == "pfx":
+        acc.update(certType="pfx", certFile=params.get("certFile", ""))
+    else:
+        acc.update(derFile=params.get("certFile", ""), keyFile=params.get("keyFile", ""))
+    res = await _codef_post("/v1/account/create", {"accountList": [dict(acc, organization=b) for b in banks]})
+    data = res.get("data") or {}
+    cid = data.get("connectedId") if isinstance(data, dict) else None
+    ok = [x.get("organization") for x in (data.get("successList") or []) if isinstance(x, dict)] if isinstance(data, dict) else []
+    bad = [(x.get("organization"), x.get("message") or "등록 실패") for x in (data.get("errorList") or []) if isinstance(x, dict)] if isinstance(data, dict) else []
+    if not cid:
+        print(f"[CODEF] 은행 계정 등록 실패 {_codef_code(res)}: {_codef_msg(res)}")
+        return [], [], [(b, "인증서 등록 실패") for b in banks]
+    loans, ok_banks = [], []
+    path = f"/v1/kr/bank/{'b' if corp else 'p'}/account/account-list"
+    try:
+        for b in ok:
+            r = await _codef_post(path, {"connectedId": cid, "organization": b})
+            if _codef_code(r) != "CF-00000":
+                print(f"[CODEF] {b} 보유계좌 실패 {_codef_code(r)}: {_codef_msg(r)}")
+                bad.append((b, (r.get("result") or {}).get("message") or "조회 실패"))
+                continue
+            ok_banks.append(b)
+            for l in _bank_loan_rows(r.get("data")):
+                d = _re2.sub(r"\D", "", str(l["start"]))
+                loans.append({"org": f"{CODEF_BANKS.get(b, b)} · {l['name']}".strip(" ·"),
+                              "date": f"{d[:4]}.{d[4:6]}" if len(d) >= 6 else "", "amount": l["balance"]})
+    finally:      # 인증서 등록은 조회 후 바로 지운다
+        await _safe_async(_codef_post("/v1/account/delete", {"connectedId": cid, "accountList": [
+            {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "organization": b} for b in ok]}))
+    return loans, ok_banks, bad
+
+
 def _job_save(job_id, status=None, result=None):
     db = SessionLocal()
     try:
@@ -1813,16 +1891,28 @@ def _job_save(job_id, status=None, result=None):
         db.close()
 
 
-async def _hometax_job(job_id, params, reg_data):
+async def _hometax_job(job_id, params, reg_data, banks=None):
     try:
-        res = await _hometax_collect(params, reg_data, progress=lambda p: _job_save(job_id, result=p))
+        res = await _hometax_collect(params, reg_data, progress=lambda p: _job_save(job_id, result=dict(p, banks=bool(banks))))
+        if banks:      # 공동인증서: 고른 거래 은행의 대출까지
+            _job_save(job_id, result={"got": res["got"], "failed": res["pending"], "doing": "은행 대출", "fill": res["fill"], "banks": True})
+            corp = (res.get("fill") or {}).get("biz_type") == "corp"
+            loans, ok_banks, bad = await _safe_async(_bank_loans(params, banks, corp), default=([], [], [(b, "조회 오류") for b in banks]))
+            if ok_banks:
+                res["fill"]["loans"] = loans
+                res["got"].append("은행 대출")
+                res["bank_ok"] = [CODEF_BANKS[b] for b in ok_banks]
+            if bad:
+                res["bank_failed"] = [f"{CODEF_BANKS.get(b, b)}({m})" for b, m in bad]
+                if not ok_banks:
+                    res["pending"].append("은행 대출")
         _job_save(job_id, "done", res)
     except Exception as e:
         print(f"[CODEF] 작업 오류 {job_id}: {e!r}")
         _job_save(job_id, "error", {"detail": "홈택스 자료를 불러오는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요."})
 
 
-def _hometax_start_job(params, reg_data, user_id):
+def _hometax_start_job(params, reg_data, user_id, banks=None):
     """인증 성공 → 나머지 서류는 서버에서 이어서 조회 (요청 하나가 너무 길어 연결이 끊기는 문제 방지)"""
     job_id = uuid.uuid4().hex
     fill = _safe(_parse_registration, reg_data, params.get("identity", ""), default={}) or {}
@@ -1834,7 +1924,7 @@ def _hometax_start_job(params, reg_data, user_id):
         db.commit()
     finally:
         db.close()
-    t = asyncio.create_task(_hometax_job(job_id, params, reg_data))
+    t = asyncio.create_task(_hometax_job(job_id, params, reg_data, banks))
     _codef_tasks.add(t)
     t.add_done_callback(_codef_tasks.discard)
     return {"status": "collecting", "job": job_id, "fill": fill}
