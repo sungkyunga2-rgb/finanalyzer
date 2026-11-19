@@ -508,9 +508,13 @@
   .ht-loan-note { font-size: 12.5px; line-height: 1.6; color: #0d3b7c; background: #EBF2FA; border: 1px solid #b9cfe8; border-radius: 10px; padding: 9px 12px; margin: 4px 0 8px; }
   .ht-bank-box.flash { animation: htBankFlash 1.6s ease 2; }
   @keyframes htBankFlash { 0%,100% { box-shadow: 0 0 0 0 rgba(24,95,165,0); } 50% { box-shadow: 0 0 0 4px rgba(24,95,165,.35); border-color: #185FA5; } }
-  .ht-bank-box { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin: 10px 0 8px; background: var(--surface); }
+  .ht-bank-box { border: 1.5px solid #3B82C4; border-radius: 12px; padding: 12px 12px 10px; margin: 10px 0 8px; background: linear-gradient(180deg, #EAF3FC 0%, #F6FAFE 100%); }
+  .ht-bank-title { font-size: 14.5px; font-weight: 800; color: #0d3b7c; }
+  .ht-bank-title span { font-size: 12px; font-weight: 500; color: #4a6f99; }
+  .ht-bank-sub { font-size: 12.5px; color: #185FA5; font-weight: 600; margin: 2px 0 8px; }
+  .ht-bank-box .ht-cert-hint { color: #4a6f99; }
   .ht-bank-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .ht-bank-chips button { border: 1px solid var(--border-strong); background: var(--surface); color: var(--text2); border-radius: 999px; padding: 5px 11px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+  .ht-bank-chips button { border: 1px solid #b9cfe8; background: #fff; color: #1b2430; border-radius: 999px; padding: 5px 11px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
   .ht-bank-chips button.on { background: #185FA5; border-color: #185FA5; color: #fff; font-weight: 700; }
   .ht-bank-chips .more { border-style: dashed; color: #185FA5; }
   .ht-cert-saved { display: flex; align-items: center; gap: 10px; border: 1.5px solid #1D9E75; background: #E1F5EE; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
@@ -7665,7 +7669,8 @@ window.addEventListener("DOMContentLoaded", () => {
         <div id="htBankWrap">
         <div class="ht-loan-note" id="htLoanNote" style="display:none;">🏦 <b>대출현황은 공동인증서로만 불러올 수 있어요.</b> 거래 은행을 고르고 인증서로 인증해 주세요. 홈택스 서류도 함께 채워져요.</div>
         <div class="ht-bank-box" id="htBankBox">
-          <div class="ht-auth-label" style="margin:0 0 4px;">🏦 대출현황 불러오기 <span style="font-weight:400;color:var(--text3);">(최대 6곳)</span></div>
+          <div class="ht-bank-title">🏦 대출현황 불러오기 <span>(최대 6곳)</span></div>
+          <div class="ht-bank-sub">이용 중인 은행을 선택해 주세요</div>
           <div class="ht-bank-chips" id="htBankChips"></div>
           <p class="ht-cert-hint" style="margin:6px 0 0;">고른 은행의 인터넷뱅킹(법인은 기업뱅킹)에 이 인증서가 등록돼 있어야 해요. 은행 대출만 나오고, 중진공 직접대출·캐피탈 등은 나오지 않아요. 우리은행은 법인만 조회돼요.</p>
         </div>
