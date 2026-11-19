@@ -1209,7 +1209,8 @@ CW_LEVELS = {"1", "3", "4", "5", "6", "7", "8", "10"}       # 근로복지공단
 
 def _cw_body(params, telecom="", corp=None, bizno=""):
     """근로자고용정보현황 요청 — 지금 일하는 일반 근로자(고용보험·산재 전체)"""
-    common = {"organization": "0001", "insuranceType": "0", "state": "1", "type": "1", "id": f"{params.get('id', 'fina')}-cw"}
+    common = {"organization": "0001", "insuranceType": "0", "state": "1", "type": "1", "id": f"{params.get('id', 'fina')}-cw",
+              "manageNoUseYN": "1"}      # 사업장관리번호를 모르니 목록을 받아 고른다(2-way). 0이면 CF-12411
     if params.get("loginType") in ("5", "6"):
         if params.get("loginTypeLevel") not in CW_LEVELS or not telecom or not params.get("phoneNo"):
             return None
