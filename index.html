@@ -889,7 +889,7 @@
       </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 본인 인증하기</button>
-        <button type="button" class="btn" onclick="c4uOpen()">🏦 크레딧포유로 기대출 불러오기</button>
+        <!-- 크레딧포유 기대출 불러오기(아이디 로그인)는 숨김 — CODEF에 간편인증 상품이 생기면 다시 연결: c4uOpen() -->
       </div>
       <p style="font-size:11px;color:var(--text3);margin-top:8px;">카카오톡·네이버·토스·PASS 등 간편인증 또는 공동인증서로 홈택스 자료를 불러옵니다.</p>
       <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
@@ -1042,10 +1042,7 @@
         <div class="ht-body">
           <label class="ht-chk"><input type="checkbox" id="ht-loans-none" onchange="htToggleLoans()" /> 기대출 없음</label>
           <div id="ht-loans" style="display:flex;flex-direction:column;gap:6px;"></div>
-          <div style="display:flex;gap:14px;flex-wrap:wrap;">
-            <button type="button" class="ht-link" id="ht-loan-add" onclick="htAddLoan()">+ 대출 추가</button>
-            <button type="button" class="ht-link" onclick="c4uOpen()">🏦 크레딧포유로 불러오기</button>
-          </div>
+          <button type="button" class="ht-link" id="ht-loan-add" onclick="htAddLoan()">+ 대출 추가</button>
         </div>
       </div>
 
