@@ -4260,7 +4260,7 @@ async function htAuthStart() {
       member: !document.getElementById("htAuthNonMember").checked,
     });
     if (res.status === "done" || res.status === "collecting") return await htAuthFinish(res);
-    htAuthState.pending = { params: res.params, two_way: res.two_way };
+    htAuthState.pending = { job: res.job };     // 서류 요청은 서버가 이미 한꺼번에 보내 둠 — 승인 1번이면 4종 모두
     htAuthShow(2);
     let left = 270;
     const tEl = document.getElementById("htAuthTimer");

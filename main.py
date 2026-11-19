@@ -1325,11 +1325,6 @@ class CodefStartBody(BaseModel):
     member: bool = True           # 홈택스 회원 여부 (회원: loginType 5 / 비회원: 6)
 
 
-class CodefCompleteBody(BaseModel):
-    params: dict
-    two_way: dict
-
-
 def _hometax_login_params(b: CodefStartBody, user_id: int):
     birth = _re2.sub(r"\D", "", b.birth)
     phone = _re2.sub(r"\D", "", b.phone)
@@ -1520,39 +1515,228 @@ def codef_status():
     return {"ready": _codef_ready(), "products": [k for k, v in CODEF_HOMETAX_PRODUCTS.items() if v]}
 
 
+# ── 간편인증: 서류 요청을 같은 id로 0.3초 간격으로 한꺼번에 보낸다 ──
+#  첫 요청만 추가인증(CF-03002)으로 돌아오고, 나머지는 사용자가 휴대폰에서 승인할 때까지 CODEF가 응답을 잡고 있다.
+#  승인 후 첫 요청에 2차 요청(simpleAuth/is2Way/twoWayInfo)을 보내면 잡혀 있던 요청들이 차례로 도착 → 승인 1번으로 서류 4종.
+#  (승인 뒤에 새로 보내면 매번 다시 승인해야 함 — 같은 세션 재사용 안 됨)
+#  진행 중인 요청·2차 인증 정보는 이 프로세스 메모리에만 둔다. 결과는 codef_jobs(DB)에 저장해 화면이 확인한다.
+_ht_live = {}     # job_id -> {"user_id", "leads": [...], "pending": n, "res": {key: [(code, data, msg)]}, "t": time}
+
+HT_DOC_LABEL = {"registration": "사업자등록증명", "vat": "부가세과세표준증명", "tax_payment": "납세증명서", "financial": "재무제표"}
+
+
+def _hometax_calls(params, now):
+    """간편인증 세션 하나로 보낼 서류 요청 목록 [(key, body)]"""
+    base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id", "telecom", "identity") if params.get(k)}
+    phone = params.get("phoneNo", "")
+    calls = [("registration", dict(params))]
+    y = now.year
+    if params.get("loginType") == "5":        # 부가세과세표준증명은 회원만
+        calls.append(("vat", dict(base, phoneNo=phone, startDate=f"{y - 3}01", endDate=f"{y - 1}07", isIdentityViewYN="0",
+                                  usePurposes="99", submitTargets="99", applicationType="01", originDataYN="0")))
+    calls.append(("tax_payment", dict(base, phoneNo=phone, isIdentityViewYN="0", isAddrViewYn="0", proofType="B0007",
+                                      submitTargets="99", applicationType="01", originDataYN="0")))
+    if 8 <= now.hour < 22:                    # 재무제표는 08~22시만. 법인/개인을 아직 모르니 둘 다 요청
+        years = [y - 1] + ([y - 2] if now.month < 6 else [])      # 상반기엔 작년 신고 전일 수 있어 재작년도
+        fin = dict(base, loginPhoneNo=phone, isIdentityViewYN="0", usePurposes="99", submitTargets="99", originDataYN="0")
+        for yy in years:
+            calls.append(("financial", dict(fin, startDate=f"{yy}12")))                    # 법인: 사업연도 종료연월
+            calls.append(("financial", dict(fin, startDate=str(yy), proofType="40")))      # 개인: 과세연도
+    return calls
+
+
+def _ht_is_2way(res):
+    d = res.get("data") if isinstance(res, dict) else None
+    return _codef_code(res) == "CF-03002" and isinstance(d, dict) and bool(d.get("continue2Way"))
+
+
+def _ht_assemble(st, now, final):
+    """지금까지 받은 서류 → {fill, got, failed}"""
+    R = st["res"]
+    ok = lambda k: [d for c, d, m in R.get(k, []) if c == "CF-00000"]
+    fill = {}
+    for d in ok("registration"):
+        fill = _safe(_parse_registration, d, st.get("identity", ""), default={}) or {}
+        break
+    got, failed = [], []
+    if fill:
+        got.append("사업자등록증명")
+    elif final or R.get("registration"):
+        failed.append("사업자등록증명")
+    years = next((y for y in (_safe(_parse_vat, d, default=[]) for d in ok("vat")) if y), [])
+    if years:
+        fill["years"] = years
+        got.append("부가세과세표준증명")
+    elif final:
+        failed.append("부가세과세표준증명")
+    tax = R.get("tax_payment", [])
+    arrears = None
+    for c, d, m in tax:
+        arrears = _safe(_parse_tax_cert, d if c == "CF-00000" else None, None if c == "CF-00000" else m)
+        if arrears:
+            break
+    if arrears:
+        fill["arrears"] = arrears
+        got.append("납세증명서")
+    elif final:
+        failed.append("납세증명서")
+    fins = [f for f in (_safe(_parse_financial, d) for d in ok("financial")) if f]
+    if fins:
+        fin = dict(sorted(fins, key=lambda f: f.get("_year", 0))[-1])     # 가장 최근 연도
+        rev = fin.pop("_revenue", None)
+        yr = fin.pop("_year", now.year - 1)
+        fill["fin"] = fin
+        got.append("재무제표")
+        if rev and not fill.get("years"):
+            fill["years"] = [{"year": int(yr), "vat": rev}]
+    elif final:
+        failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
+    return {"fill": fill, "got": got, "failed": failed}
+
+
+def _ht_progress(job_id, final=False):
+    st = _ht_live.get(job_id)
+    if not st:
+        return
+    now = datetime.utcnow() + timedelta(hours=9)
+    out = _ht_assemble(st, now, final)
+    if final:
+        _job_save(job_id, "done", {"status": "done", "fill": out["fill"], "got": out["got"], "pending": out["failed"]})
+        _ht_live.pop(job_id, None)
+    else:
+        waiting = [HT_DOC_LABEL[k] for k in HT_DOC_LABEL if k in st["keys"] and k not in st["done_keys"]]
+        _job_save(job_id, None, {"got": out["got"], "failed": [], "doing": waiting[0] if waiting else "", "fill": out["fill"]})
+
+
+def _ht_settle(job_id, key, res):
+    st = _ht_live.get(job_id)
+    if not st:
+        return
+    code = _codef_code(res)
+    if code != "CF-00000":
+        print(f"[CODEF] {key} 실패 {code}: {_codef_msg(res)}")
+    st["res"].setdefault(key, []).append((code, res.get("data") if isinstance(res, dict) else None, _codef_msg(res)))
+    st["left"][key] -= 1
+    if st["left"][key] <= 0:
+        st["done_keys"].add(key)
+    st["pending"] -= 1
+    _ht_progress(job_id, final=st["pending"] <= 0 and not st["leads"])
+
+
+async def _ht_fire(job_id, key, body):
+    try:
+        res = await _codef_post(CODEF_HOMETAX_PRODUCTS[key], body)
+    except Exception as e:
+        print(f"[CODEF] {key} 호출 오류: {e!r}")
+        res = {"result": {"code": "NETWORK", "message": "연결 오류"}, "data": None}
+    st = _ht_live.get(job_id)
+    if not st:
+        return
+    if _ht_is_2way(res):
+        d = res["data"]
+        st["leads"].append({"key": key, "body": body, "two_way": {k: d.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}})
+        st["pending"] -= 1          # 2차 요청 때 다시 집계
+        st["approval"].set()
+        return
+    _ht_settle(job_id, key, res)
+    if st["pending"] <= 0:
+        st["approval"].set()
+
+
+def _spawn(coro):
+    t = asyncio.create_task(coro)
+    _codef_tasks.add(t)
+    t.add_done_callback(_codef_tasks.discard)
+    return t
+
+
+async def _ht_launch(job_id, calls):
+    for key, body in calls:
+        _spawn(_ht_fire(job_id, key, body))
+        await asyncio.sleep(0.3)
+
+
+class CodefCompleteBody(BaseModel):
+    job: str
+
+
 @app.post("/codef/hometax/start")
 async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(get_current_user)):
-    """1차 요청 — 홈택스가 사용자 휴대폰으로 간편인증 요청을 보낸다"""
+    """서류 요청을 한꺼번에 보내고, 휴대폰 승인 요청이 뜨면 바로 알려준다"""
     if not _codef_ready():
         raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
     params = _hometax_login_params(body, user.id)
-    res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], params)
-    code = _codef_code(res)
-    data = res.get("data") or {}
-    if code == "CF-03002" and isinstance(data, dict) and data.get("continue2Way"):
-        two_way = {k: data.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}
-        return {"status": "need_approval", "params": params, "two_way": two_way, "method": data.get("method")}
-    if code == "CF-00000":
-        return _hometax_start_job(params, data, user.id)
-    print(f"[CODEF] start 실패 {code}: {_codef_msg(res)}")
-    raise HTTPException(status_code=400, detail=f"본인 인증 요청에 실패했습니다: {_codef_msg(res)}")
+    now = datetime.utcnow() + timedelta(hours=9)
+    calls = _hometax_calls(params, now)
+    # 오래된 진행 정보 정리 (15분)
+    for k in [k for k, v in _ht_live.items() if _time.time() - v["t"] > 900]:
+        _ht_live.pop(k, None)
+    job_id = uuid.uuid4().hex
+    keys = [k for k, _ in calls]
+    _ht_live[job_id] = {"user_id": user.id, "leads": [], "pending": len(calls), "res": {}, "t": _time.time(),
+                        "keys": set(keys), "done_keys": set(), "left": {k: keys.count(k) for k in set(keys)},
+                        "identity": params.get("identity", ""), "approval": asyncio.Event()}
+    db = SessionLocal()
+    try:
+        db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
+        db.add(models.CodefJob(id=job_id, user_id=user.id, status="running", result=_json.dumps({"got": [], "doing": "사업자등록증명", "fill": {}})))
+        db.commit()
+    finally:
+        db.close()
+    _spawn(_ht_launch(job_id, calls))
+    st = _ht_live[job_id]
+    try:
+        await asyncio.wait_for(st["approval"].wait(), timeout=60)
+    except asyncio.TimeoutError:
+        pass
+    st = _ht_live.get(job_id)
+    if st and st["leads"]:
+        return {"status": "need_approval", "job": job_id}
+    if not st:                                   # 승인 없이 모두 끝남
+        return {"status": "collecting", "job": job_id}
+    regs = st["res"].get("registration") or []
+    if regs and regs[0][0] != "CF-00000" and not st["leads"]:
+        _ht_live.pop(job_id, None)
+        _job_save(job_id, "error", {"detail": regs[0][2]})
+        raise HTTPException(status_code=400, detail=f"본인 인증 요청에 실패했습니다: {regs[0][2]}")
+    return {"status": "collecting", "job": job_id}
 
 
 @app.post("/codef/hometax/complete")
 async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = Depends(get_current_user)):
-    """2차 요청 — 사용자가 휴대폰에서 승인한 뒤 호출"""
-    params = dict(body.params or {})
-    if not str(params.get("id", "")).startswith(f"fina-{user.id}-"):
-        raise HTTPException(status_code=400, detail="인증 정보가 올바르지 않습니다. 처음부터 다시 시도해주세요.")
-    req = dict(params, simpleAuth="1", is2Way=True, twoWayInfo=body.two_way or {})
-    res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], req)
-    code = _codef_code(res)
-    if code == "CF-00000":
-        return _hometax_start_job(params, res.get("data"), user.id)
-    if code == "CF-03002":
+    """사용자가 휴대폰에서 승인한 뒤 — 첫 요청에 2차 요청을 보내면 잡혀 있던 나머지 서류도 이어서 도착"""
+    st = _ht_live.get(body.job)
+    if not st or st["user_id"] != user.id:
+        raise HTTPException(status_code=400, detail="인증 시간이 지났거나 서버가 다시 시작됐어요. 처음부터 다시 시도해 주세요.")
+    leads = list(st["leads"])
+    if not leads:
+        return {"status": "collecting", "job": body.job}
+
+    async def confirm(lead):
+        req = dict(lead["body"], simpleAuth="1", is2Way=True, twoWayInfo=lead["two_way"])
+        try:
+            res = await _codef_post(CODEF_HOMETAX_PRODUCTS[lead["key"]], req)
+        except Exception as e:
+            print(f"[CODEF] 2차 요청 오류: {e!r}")
+            res = {"result": {"code": "NETWORK", "message": "연결 오류"}, "data": None}
+        return lead, res
+
+    results = await asyncio.gather(*(confirm(l) for l in leads))
+    waiting = False
+    for lead, res in results:
+        if _codef_code(res) == "CF-03002":
+            waiting = True
+            continue
+        if lead in st["leads"]:
+            st["leads"].remove(lead)
+            st["pending"] += 1
+            _ht_settle(body.job, lead["key"], res)
+    if waiting:
         raise HTTPException(status_code=409, detail="아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요.")
-    print(f"[CODEF] complete 실패 {code}: {_codef_msg(res)}")
-    raise HTTPException(status_code=400, detail=f"홈택스 자료를 불러오지 못했습니다: {_codef_msg(res)}")
+    reg = (_ht_live.get(body.job) or {}).get("res", {}).get("registration") or []
+    if reg and all(c != "CF-00000" for c, _, _ in reg) and any(l["key"] == "registration" for l, _ in results):
+        print(f"[CODEF] complete 실패: {reg[0][2]}")
+    return {"status": "collecting", "job": body.job}
 
 
 _codef_tasks = set()      # 백그라운드 작업이 중간에 정리되지 않도록 참조 보관
