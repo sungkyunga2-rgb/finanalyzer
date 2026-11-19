@@ -4676,6 +4676,8 @@ function htMergeForm(inc) {
 function htStartAuto(mode) {
   htAuthOpen();
   document.getElementById("htLoanNote").style.display = "none";
+  const w = document.getElementById("htBankWrap"), home = document.getElementById("htBankHome");
+  if (w && home && w.nextSibling !== home) home.parentNode.insertBefore(w, home);   // 일반 인증: 은행 선택은 비밀번호 위
 }
 // 대출현황 불러오기 — 공동인증서 탭 + 거래 은행 선택으로 바로
 function htLoanOpen() {
@@ -4683,6 +4685,8 @@ function htLoanOpen() {
   htAuthOpen();
   htAuthTab("cert");
   document.getElementById("htLoanNote").style.display = "";
+  const top = document.getElementById("htBankTop"), w = document.getElementById("htBankWrap");
+  if (top && w) top.appendChild(w);            // 대출현황: 은행 선택을 맨 위로
   const box = document.getElementById("htBankBox");
   setTimeout(() => {
     box.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -7638,6 +7642,15 @@ window.addEventListener("DOMContentLoaded", () => {
       <button type="button" class="btn btn-primary btn-full" id="htAuthStartBtn" onclick="htAuthStart()">인증 요청하기</button>
       </div>
       <div id="htAuthCertBox" style="display:none;">
+        <div id="htBankTop"></div>
+        <div id="htBankWrap">
+        <div class="ht-loan-note" id="htLoanNote" style="display:none;">🏦 <b>대출현황은 공동인증서로만 불러올 수 있어요.</b> 거래 은행을 고르고 인증서로 인증해 주세요. 홈택스 서류도 함께 채워져요.</div>
+        <div class="ht-bank-box" id="htBankBox">
+          <div class="ht-auth-label" style="margin:0 0 4px;">🏦 거래 은행 대출도 불러오기 <span style="font-weight:400;color:var(--text3);">(선택 · 최대 6곳)</span></div>
+          <div class="ht-bank-chips" id="htBankChips"></div>
+          <p class="ht-cert-hint" style="margin:6px 0 0;">고른 은행의 인터넷뱅킹(법인은 기업뱅킹)에 이 인증서가 등록돼 있어야 해요. 은행 대출만 나오고, 중진공 직접대출·캐피탈 등은 나오지 않아요.</p>
+        </div>
+        </div>
         <p class="ht-auth-desc">대표자(법인은 법인) 명의 공동인증서(구 공인인증서)로 홈택스 자료를 채워드려요. <span class="ht-only-mob">인증서가 PC에만 있으면 <b>PC에 있는 인증서 가져오기</b>로 이 휴대폰에 옮길 수 있어요.</span><span class="ht-only-pc">휴대폰에서도 쓰려면 <b>휴대폰으로 인증서 보내기</b>로 옮길 수 있어요.</span></p>
         <div id="htCertSaved" style="display:none;margin-bottom:6px;">
           <div class="ht-npki-head">
@@ -7682,12 +7695,7 @@ window.addEventListener("DOMContentLoaded", () => {
           <button type="button" id="htRelayGetBtn" onclick="htRelayOpen()">📲 PC에 있는 인증서 가져오기</button>
           <button type="button" id="htRelaySendBtnOpen" onclick="htRelaySendOpen()">📤 휴대폰으로 인증서 보내기</button>
         </div>
-        <div class="ht-loan-note" id="htLoanNote" style="display:none;">🏦 <b>대출현황은 공동인증서로만 불러올 수 있어요.</b> 거래 은행을 고르고 인증서로 인증해 주세요. 홈택스 서류도 함께 채워져요.</div>
-        <div class="ht-bank-box" id="htBankBox">
-          <div class="ht-auth-label" style="margin:0 0 4px;">🏦 거래 은행 대출도 불러오기 <span style="font-weight:400;color:var(--text3);">(선택 · 최대 6곳)</span></div>
-          <div class="ht-bank-chips" id="htBankChips"></div>
-          <p class="ht-cert-hint" style="margin:6px 0 0;">고른 은행의 인터넷뱅킹(법인은 기업뱅킹)에 이 인증서가 등록돼 있어야 해요. 은행 대출만 나오고, 중진공 직접대출·캐피탈 등은 나오지 않아요.</p>
-        </div>
+        <div id="htBankHome"></div>
         <label class="ht-auth-grid" style="grid-template-columns:1fr;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">인증서 비밀번호</span><input id="htCertPw" type="password" class="ht-auth-input" autocomplete="off" placeholder="인증서 비밀번호" /></label>
         <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스 자료 조회를 위해 인증서를 인증 대행사(CODEF)에 제공하는 데 동의합니다. 비밀번호는 저장하지 않아요.</label>
         <button type="button" class="btn btn-primary btn-full" id="htCertBtn" onclick="htCertStart()">공동인증서로 불러오기</button>
