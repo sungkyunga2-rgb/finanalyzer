@@ -3913,13 +3913,11 @@ function htAuthClose() {
 const HT_BANKS = [["0004", "국민"], ["0088", "신한"], ["0020", "우리"], ["0081", "하나"], ["0003", "기업"], ["0011", "농협"],
   ["0002", "산업"], ["0007", "수협"], ["0023", "SC"], ["0027", "씨티"], ["0031", "대구"], ["0032", "부산"], ["0034", "광주"],
   ["0035", "제주"], ["0037", "전북"], ["0039", "경남"], ["0045", "새마을금고"], ["0048", "신협"], ["0071", "우체국"], ["0089", "K뱅크"]];
-let htBanksSel = [], htBanksAll = false;
+let htBanksSel = [];
 function htRenderBanks() {
   const box = document.getElementById("htBankChips");
   if (!box) return;
-  const list = htBanksAll ? HT_BANKS : HT_BANKS.filter((b, i) => i < 6 || htBanksSel.includes(b[0]));
-  box.innerHTML = list.map(([c, n]) => `<button type="button" class="${htBanksSel.includes(c) ? "on" : ""}" onclick="htToggleBank('${c}')">${n}</button>`).join("")
-    + (htBanksAll ? "" : `<button type="button" class="more" onclick="htBanksAll=true;htRenderBanks()">+ 다른 은행</button>`);
+  box.innerHTML = HT_BANKS.map(([c, n]) => `<button type="button" class="${htBanksSel.includes(c) ? "on" : ""}" onclick="htToggleBank('${c}')">${n}</button>`).join("");
 }
 function htToggleBank(c) {
   if (htBanksSel.includes(c)) htBanksSel = htBanksSel.filter(x => x !== c);
@@ -7646,7 +7644,7 @@ window.addEventListener("DOMContentLoaded", () => {
         <div id="htBankWrap">
         <div class="ht-loan-note" id="htLoanNote" style="display:none;">🏦 <b>대출현황은 공동인증서로만 불러올 수 있어요.</b> 거래 은행을 고르고 인증서로 인증해 주세요. 홈택스 서류도 함께 채워져요.</div>
         <div class="ht-bank-box" id="htBankBox">
-          <div class="ht-auth-label" style="margin:0 0 4px;">🏦 거래 은행 대출도 불러오기 <span style="font-weight:400;color:var(--text3);">(선택 · 최대 6곳)</span></div>
+          <div class="ht-auth-label" style="margin:0 0 4px;">🏦 대출현황 불러오기 <span style="font-weight:400;color:var(--text3);">(최대 6곳)</span></div>
           <div class="ht-bank-chips" id="htBankChips"></div>
           <p class="ht-cert-hint" style="margin:6px 0 0;">고른 은행의 인터넷뱅킹(법인은 기업뱅킹)에 이 인증서가 등록돼 있어야 해요. 은행 대출만 나오고, 중진공 직접대출·캐피탈 등은 나오지 않아요.</p>
         </div>
