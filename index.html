@@ -937,6 +937,7 @@
 
     <style>
       #hometaxSection .ht-ytd-m { font-style: normal; color: var(--text3); font-weight: 400; margin-left: 4px; }
+      #hometaxSection .ht-auto { background: var(--surface2, #f3f6fa) !important; color: #185FA5; font-weight: 700; cursor: default; }
       #hometaxSection .ht-req { color:#A32D2D; font-weight:700; margin-left:1px; }
       #hometaxSection .ht-sheet { padding:0; overflow:hidden; }
       #hometaxSection .ht-row { display:grid; grid-template-columns:116px 1fr; border-bottom:1px solid var(--border); }
@@ -1116,8 +1117,8 @@
               <label class="ht-f"><span>영업이익 (연)</span><input type="text" inputmode="text" id="ht-opincome" oninput="htSignedMoney(this)" /></label>
               <label class="ht-f"><span>이자비용 (연)</span><input type="text" inputmode="numeric" id="ht-interest" oninput="formatMoneyInput(this)" /></label>
               <label class="ht-f"><span>당기순이익 (연)</span><input type="text" inputmode="text" id="ht-netincome" oninput="htSignedMoney(this)" /></label>
-              <label class="ht-f"><span>부채비율 (%) 직접</span><input type="text" inputmode="decimal" id="ht-dr-direct" placeholder="180" /></label>
-              <label class="ht-f"><span>이자보상배수 직접</span><input type="text" inputmode="decimal" id="ht-icr-direct" placeholder="2.5" /></label>
+              <label class="ht-f"><span>부채비율 (자동)</span><input type="text" id="ht-dr-auto" class="ht-auto" readonly tabindex="-1" placeholder="총자산·총부채로 계산" /></label>
+              <label class="ht-f"><span>이자보상배수 (자동)</span><input type="text" id="ht-icr-auto" class="ht-auto" readonly tabindex="-1" placeholder="영업이익·이자비용으로 계산" /></label>
             </div>
           </div>
         </div>
@@ -3545,7 +3546,7 @@ const HT_FIELDS = [
   ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
   ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
-  ["fin.debt_ratio", "ht-dr-direct", "dec"], ["fin.icr", "ht-icr-direct", "dec"],
+
 ];
 
 function htGet(obj, path) { return path.split(".").reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj); }
@@ -3730,6 +3731,21 @@ function htToggleArrears() {
   document.getElementById("ht-arrears-detail").style.display = v === "has" ? "grid" : "none";
 }
 
+// 부채비율·이자보상배수 — 재무 수치로 자동 계산 (분석과 같은 기준)
+function htFinAuto() {
+  const v = id => { const el = document.getElementById(id); if (!el) return null; const n = parseFloat(String(el.value).replace(/[^\d.-]/g, "")); return isNaN(n) ? null : n; };
+  const assets = v("ht-assets"), debt = v("ht-debt"), op = v("ht-opincome"), int = v("ht-interest");
+  const drEl = document.getElementById("ht-dr-auto"), icEl = document.getElementById("ht-icr-auto");
+  if (!drEl || !icEl) return;
+  if (assets !== null && debt !== null) {
+    const eq = assets - debt;
+    drEl.value = eq > 0 ? `${(debt / eq * 100).toFixed(1)}%` : "자본잠식";
+  } else drEl.value = "";
+  if (int !== null && op !== null) icEl.value = int > 0 ? `${(op / int).toFixed(2)}배` : "이자비용 없음";
+  else icEl.value = "";
+}
+document.addEventListener("input", e => { if (e.target && ["ht-assets", "ht-debt", "ht-opincome", "ht-interest"].includes(e.target.id)) htFinAuto(); });
+
 function htToggleFin(forceOpen) {
   const wrap = document.getElementById("ht-fin-wrap");
   const open = forceOpen === true ? true : forceOpen === false ? false : wrap.classList.contains("hidden");
@@ -3781,6 +3797,7 @@ function htFillForm(input) {
   htToggleFin(!!input.fin);
   htSyncYtdLabel();
   htFoundedToSelects();
+  htFinAuto();
   htShowInd2(!!(input.industry2 || input.item2), true);
   if (!document.getElementById("ht-ytd-year").value) document.getElementById("ht-ytd-year").value = new Date().getFullYear();
 }
