@@ -894,7 +894,7 @@
     <div class="card" id="ht-auto-card" style="background:var(--surface2);">
       <div class="card-title" style="margin-bottom:.4rem;">본인 인증으로 자동 채우기</div>
       <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:10px;">
-        공동인증서·휴대폰·간편인증으로 인증하면 아래 정보가 자동으로 채워집니다. 이미 입력한 칸은 그대로 두고, 비어 있는 칸만 채웁니다.
+        공동인증서·휴대폰·간편인증으로 인증하면 아래 정보가 자동으로 채워집니다. 이미 입력한 칸도 인증으로 받은 정보로 바뀝니다.
       </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 본인 인증하기</button>
@@ -969,7 +969,7 @@
         <div class="ht-head">업체</div>
         <div class="ht-body">
           <div class="ht-line">
-            <label class="ht-f" style="grid-column:span 2;"><span>회사이름<b class="ht-req">*</b></span><input type="text" id="ht-company" placeholder="(주)씨앤지파트너스" /></label>
+            <label class="ht-f" style="grid-column:span 2;"><span>회사이름</span><input type="text" id="ht-company" placeholder="(주)씨앤지파트너스" /></label>
             <label class="ht-f"><span>대표자명</span><input type="text" id="ht-rep" placeholder="홍길동" /></label>
             <label class="ht-f"><span>사업자등록번호</span><input type="text" id="ht-biz" placeholder="123-45-67890" /></label>
           </div>
@@ -1116,7 +1116,7 @@
       </div>
 
     </div>
-    <p style="font-size:11px;color:var(--text3);margin:-.5rem 0 .75rem;"><b class="ht-req">*</b> 표시는 꼭 확인할 항목입니다.</p>
+
 
     <button class="btn btn-primary btn-full" id="ht-analyze-btn" onclick="doHometaxAnalyze()">입력 정보로 분석하기</button>
 
@@ -1905,6 +1905,10 @@ function alertError(msg) {
 }
 
 function toast(msg) {
+  // 오류·경고 문구는 아래 토스트 대신 가운데 알림창으로 (확인을 눌러야 닫힘)
+  const t = String(msg || "");
+  if (/오류|실패|못했|못 했|없습니다|없어요|올바르지|않습니다|않아요|불가|넘었|초과|만료|끊겼|확인해 주세요|입력해 ?주세요|선택해 ?주세요|동의해 ?주세요/.test(t)
+      && !/접수|완료|되었습니다|채웠어요|불러왔어요|보냈어요|저장|가져왔어요|복사했어요|삭제했어요/.test(t)) return alertError(t);
   const wrap = document.getElementById("toastWrap");
   // 토스트가 계속 쌓이지 않도록 오래된 것부터 정리 (최대 2개 유지)
   while (wrap.children.length >= 2) wrap.removeChild(wrap.firstChild);
@@ -2347,13 +2351,13 @@ fileInput.addEventListener("change", e => { if (e.target.files.length) addFiles(
 function addFiles(fileList) {
   const files = Array.from(fileList);
   const remainingSlots = MAX_IMAGES - uploadedImages.length;
-  if (remainingSlots <= 0) { toast(`이미지는 최대 ${MAX_IMAGES}장까지 첨부할 수 있습니다.`); return; }
+  if (remainingSlots <= 0) { alertError(`이미지는 최대 ${MAX_IMAGES}장까지 첨부할 수 있습니다.`); return; }
 
   const validFiles = files.filter(f => f.type.startsWith("image/") || f.type === "application/pdf");
   if (validFiles.length < files.length) alertError("JPG, PNG, PDF 파일만 업로드 가능합니다.");
 
   const toProcess = validFiles.slice(0, remainingSlots);
-  if (validFiles.length > toProcess.length) toast(`최대 ${MAX_IMAGES}장까지만 첨부 가능해 ${toProcess.length}장만 추가되었습니다.`);
+  if (validFiles.length > toProcess.length) alertError(`최대 ${MAX_IMAGES}장까지만 첨부 가능해 ${toProcess.length}장만 추가되었습니다.`);
 
   toProcess.forEach(file => {
     const reader = new FileReader();
@@ -2758,7 +2762,7 @@ async function doManualAnalyze() {
   const profit   = parseMoneyInput("m-profit") || null;
 
   if (!companyName || isNaN(sales) || isNaN(debt) || !assets) {
-    toast("회사이름, 매출금액, 부채금액, 총 자산은 필수 입력 항목입니다.");
+    alertError("회사이름, 매출금액, 부채금액, 총 자산은 필수 입력 항목입니다.");
     return;
   }
 
@@ -3833,7 +3837,7 @@ function htAutoYtdMonth(input) {
 function htMissing(input) {
   const miss = [];
   const need = (cond, label, id) => { if (cond) miss.push({ label, id }); };
-  need(!input.company_name, "회사이름", "ht-company");
+  // 회사이름도 선택 (비우면 "미입력")
   // 창업년월·사업장 소재지·국세 체납·기대출은 선택 (비워 두면 결과에 "미입력"으로 표시)
   return miss;
 }
@@ -4623,21 +4627,42 @@ function htAuthApply(res) {
   if (f.loans && f.loans.length) inc.loans = f.loans;
   if (f.employees !== undefined && f.employees !== null) inc.employees = f.employees;
   if (f.fin) inc.fin = f.fin;
-  htFillForm(htMergeForm(inc));
+  htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
   htAuthState.pending = null;
   htAuthClose();
   htToggleFin(true);     // 서류를 가져왔으면 재무 칸은 펼쳐서 보여줌
   const got = (res.got || []).join(", ");
   const miss = (res.pending || []).join(", ");
-  toast(got ? `${got} 자료로 정보를 채웠어요.${miss ? ` (${miss}는 불러오지 못해 직접 확인이 필요해요)` : ""} 나머지 항목을 확인한 뒤 분석해 주세요.` : "불러온 자료가 없어요. 직접 입력해 주세요.");
+  if (!got) alertError("불러온 자료가 없어요. 직접 입력해 주세요.");
+  else if (miss) alertError(`${got} 자료로 정보를 채웠어요.\n\n${miss}는 불러오지 못했어요. 직접 확인해 주세요.`);
+  else toast(`${got} 자료로 정보를 채웠어요. 나머지 항목을 확인한 뒤 분석해 주세요.`);
   if (res.bank_ok) toast(`${res.bank_ok.join("·")}에서 대출 ${(f.loans || []).length}건을 불러왔어요.`);
   if (res.bank_failed && res.bank_failed.length) alertError(`일부 은행은 대출을 불러오지 못했어요.\n${res.bank_failed.join("\n")}\n\n그 은행 인터넷뱅킹에 인증서가 등록돼 있는지 확인해 주세요.`);
-  if (f._business_list && f._business_list.length > 1) toast(`사업장이 ${f._business_list.length}곳이에요. 다른 사업장은 사업자번호를 먼저 입력하고 다시 인증해 주세요.`);
+  if (f._business_list && f._business_list.length > 1) alertError(`사업장이 ${f._business_list.length}곳이에요. ${f.company_name || "첫 번째 사업장"} 기준으로 채웠어요.\n다른 사업장으로 하려면 그 사업자번호를 입력한 뒤 다시 인증해 주세요.`);
 }
 
 async function fetchHometaxFromProvider(mode) {
   htAuthOpen();
   return null;
+}
+
+// 인증으로 받은 값 → 입력창에 덮어쓰기 (받은 항목만, 나머지는 그대로)
+function htOverwriteForm(inc) {
+  const cur = htReadForm();
+  ["company_name", "rep_name", "business_number", "industry", "item", "industry2", "item2", "founded", "location", "biz_type", "employees"]
+    .forEach(k => { if (inc[k] !== undefined && inc[k] !== null && inc[k] !== "") cur[k] = inc[k]; });
+  if (inc.industry && !inc.industry2 && !inc.item2) { cur.industry2 = ""; cur.item2 = ""; }
+  if (inc.years && inc.years.length) {
+    const byYear = {};
+    (cur.years || []).forEach(y => { if (y.year) byYear[y.year] = y; });
+    inc.years.forEach(y => { byYear[y.year] = Object.assign(byYear[y.year] || { purchase: null, income: null }, { year: y.year, vat: y.vat }); });
+    cur.years = Object.values(byYear).sort((a, b) => a.year - b.year).slice(-3);
+  }
+  if (inc.ytd) cur.ytd = Object.assign({}, cur.ytd, inc.ytd);
+  if (inc.arrears && inc.arrears.status) cur.arrears = Object.assign({}, cur.arrears, inc.arrears);
+  if (inc.loans && inc.loans.length) { cur.loans = inc.loans; cur.loans_none = false; }
+  if (inc.fin) cur.fin = Object.assign({}, cur.fin || {}, Object.fromEntries(Object.entries(inc.fin).filter(([, v]) => v !== null && v !== undefined)));
+  return cur;
 }
 
 // 자동 수집 결과를 입력창의 "빈칸"에만 채운다 (사용자가 이미 적은 값은 덮어쓰지 않는다)
@@ -5103,7 +5128,7 @@ function htReportBody(r, input) {
 function showHometaxReport() {
   const last = window.__htLast;
   if (!last) return;
-  if (!faFullAccess(last.input)) { toast("전체 결과와 리포트는 구독 후 확인할 수 있어요."); showPage("charge"); return; }
+  if (!faFullAccess(last.input)) { alertError("전체 결과와 리포트는 구독 후 확인할 수 있어요."); showPage("charge"); return; }
   const keep = { c: window.lastCompanyName, r: window.lastRepName, b: window.lastBizNumber };
   window.lastCompanyName = last.input.company_name || "";
   window.lastRepName = last.input.rep_name || "";
@@ -5708,7 +5733,7 @@ async function editCommunityPost() {
   try {
     const d = await api("GET", `/community/posts/${currentCommunityPostId}`);
     if (!d.author_email || d.author_email !== userEmail) {
-      toast("본인이 작성한 글만 수정할 수 있습니다.");
+      alertError("본인이 작성한 글만 수정할 수 있습니다.");
       return;
     }
     communityEditPostId = currentCommunityPostId;
@@ -5981,13 +6006,13 @@ function downloadResult() {
   const isSample = !!window.__sampleReport;   // 샘플 보기 모드 (저장·인쇄 불가)
   const HT = window.__htReport || null;      // 원클릭 분석 리포트
   if (!isSample && !HT && !faFullAccess(window.currentAnalysisData)) {
-    toast("전체 결과와 리포트는 구독 후 확인할 수 있어요.");
+    alertError("전체 결과와 리포트는 구독 후 확인할 수 있어요.");
     showPage("charge");
     return;
   }
   // 이미 출력한 건은 재발급 불가 (이용약관 제3조)
   if (!isSample && window.currentHistoryPrinted) {
-    toast("이미 출력하신 분석 결과입니다. 리포트 출력은 1회만 가능하며 재발급되지 않습니다.");
+    alertError("이미 출력하신 분석 결과입니다. 리포트 출력은 1회만 가능하며 재발급되지 않습니다.");
     return;
   }
   const now = new Date();
@@ -6942,9 +6967,9 @@ async function startSubscription() {
   if (subStarting) return;
   const plan = subState && subState.plans ? subState.plans.find(p => p.id === selectedPlan) : null;
   if (!plan) { alertError("요금제를 선택해주세요."); return; }
-  if (!document.getElementById("sub-agree").checked) { toast("정기결제(자동결제) 안내에 동의해주세요."); return; }
+  if (!document.getElementById("sub-agree").checked) { alertError("정기결제(자동결제) 안내에 동의해주세요."); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail || "")) {
-    toast("계정 이메일 형식이 올바르지 않아 결제를 진행할 수 없습니다. 문의하기로 알려주세요.");
+    alertError("계정 이메일 형식이 올바르지 않아 결제를 진행할 수 없습니다. 문의하기로 알려주세요.");
     return;
   }
   subStarting = true;
@@ -7224,7 +7249,7 @@ function closePaymentModal() {
 async function executePayment(pkgId, fromModal) {
   if (!token) { showPage("login"); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail || "")) {
-    toast("계정 이메일 형식이 올바르지 않아 결제를 진행할 수 없습니다. '내 정보'에서 확인하거나, 정상적인 이메일로 다시 가입해주세요.");
+    alertError("계정 이메일 형식이 올바르지 않아 결제를 진행할 수 없습니다. '내 정보'에서 확인하거나, 정상적인 이메일로 다시 가입해주세요.");
     return;
   }
 
@@ -7303,7 +7328,7 @@ async function confirmPayment(paymentId, pkgId, amount, promoCode) {
     // 이미 처리된 결제라면 정상 상황이므로 대기 정보만 정리
     if (e.message && e.message.indexOf("이미 처리된") !== -1) {
       try { localStorage.removeItem("fa_pending_pay"); } catch (err) {}
-      toast("이미 처리된 결제입니다.");
+      alertError("이미 처리된 결제입니다.");
       return true;
     }
     alertError("결제 확인 중 오류: " + e.message + " (결제번호 " + (paymentId || "-") + ")");

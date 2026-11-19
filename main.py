@@ -1298,6 +1298,7 @@ def _codef_parse(text):
 
 
 async def _codef_post(path, body, timeout=310):
+    body = {k: v for k, v in (body or {}).items() if not str(k).startswith("_")}     # '_'로 시작하는 키는 피나 내부용
     token = await _codef_token()
     payload = _cq(_json.dumps(body, ensure_ascii=False))
     for attempt in (1, 2):
@@ -1435,7 +1436,7 @@ def _hometax_login_params(b: CodefStartBody, user_id: int):
         p["telecom"] = b.telecom
     bn = _re2.sub(r"\D", "", b.business_number or "")
     if len(bn) == 10:
-        p["identity"] = bn
+        p["_want_biz"] = bn      # 화면에 적힌 사업자번호는 '여러 사업장 중 고르기'에만 씀 (CODEF로 보내지 않음 — 보내면 정보 불일치 오류)
     return p
 
 
@@ -1503,7 +1504,7 @@ def _hometax_cert_params(b: CodefCertBody, user_id: int):
         p["keyFile"] = key
     bn = _re2.sub(r"\D", "", b.business_number or "")
     if len(bn) == 10:
-        p["identity"] = bn
+        p["_want_biz"] = bn      # 화면에 적힌 사업자번호는 '여러 사업장 중 고르기'에만 씀 (CODEF로 보내지 않음 — 보내면 정보 불일치 오류)
     return p
 
 
@@ -1782,7 +1783,7 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
     keys = [k for k, _ in calls]
     _ht_live[job_id] = {"user_id": user.id, "leads": [], "pending": len(calls), "res": {}, "t": _time.time(),
                         "keys": set(keys), "done_keys": set(), "left": {k: keys.count(k) for k in set(keys)},
-                        "identity": params.get("identity", ""), "approval": asyncio.Event(), "launched": asyncio.Event()}
+                        "identity": params.get("_want_biz", ""), "approval": asyncio.Event(), "launched": asyncio.Event()}
     db = SessionLocal()
     try:
         db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
@@ -1987,7 +1988,7 @@ async def _hometax_job(job_id, params, reg_data, banks=None):
 def _hometax_start_job(params, reg_data, user_id, banks=None):
     """인증 성공 → 나머지 서류는 서버에서 이어서 조회 (요청 하나가 너무 길어 연결이 끊기는 문제 방지)"""
     job_id = uuid.uuid4().hex
-    fill = _safe(_parse_registration, reg_data, params.get("identity", ""), default={}) or {}
+    fill = _safe(_parse_registration, reg_data, params.get("_want_biz", ""), default={}) or {}
     db = SessionLocal()
     try:
         db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
@@ -2128,7 +2129,7 @@ def _safe(fn, *a, default=None):
 
 async def _hometax_collect(params, reg_data, progress=None):
     """인증이 끝난 세션(같은 id)으로 나머지 서류를 이어서 조회해 원클릭 입력값으로 정리"""
-    fill = _safe(_parse_registration, reg_data, params.get("identity", ""), default={}) or {}
+    fill = _safe(_parse_registration, reg_data, params.get("_want_biz", ""), default={}) or {}
     got, failed = (["사업자등록증명"] if fill else []), []
     step = (lambda doing: progress and progress({"got": list(got), "failed": list(failed), "doing": doing, "fill": fill}))
     now = datetime.utcnow() + timedelta(hours=9)
@@ -2137,8 +2138,6 @@ async def _hometax_collect(params, reg_data, progress=None):
                                    "certType", "certFile", "keyFile", "certPassword") if k in params}
     if params.get("telecom"):
         base["telecom"] = params["telecom"]
-    if params.get("identity"):
-        base["identity"] = params["identity"]
     phone = params.get("phoneNo", "")
     ph = (lambda key: {key: phone} if phone else {})    # 간편인증만 휴대폰 번호를 보낸다
 
@@ -2206,7 +2205,7 @@ async def _hometax_collect(params, reg_data, progress=None):
     else:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     # ④ 직원 수 — 근로복지공단 근로자고용정보현황 (인증서는 추가 승인 없음)
-    cw = _cw_body(params, corp=corp, bizno=_re2.sub(r"\D", "", fill.get("business_number", "") or params.get("identity", "")))
+    cw = _cw_body(params, corp=corp, bizno=_re2.sub(r"\D", "", fill.get("business_number", "") or params.get("_want_biz", "")))
     if cw:
         step("직원 수(고용보험)")
         try:
