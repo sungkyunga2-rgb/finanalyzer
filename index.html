@@ -3917,6 +3917,7 @@ async function htNpkiReopen() {
 }
 async function htNpkiConnect() {
   let dir;
+  try { navigator.clipboard.writeText(document.getElementById("htNpkiPath").textContent); } catch (e) {}   // 경로 자동 복사 → 주소창에 붙여넣기만
   try { dir = await window.showDirectoryPicker({ id: "fina-npki", mode: "read" }); }
   catch (e) { if (e && e.name !== "AbortError") toast("이 폴더는 열 수 없어요. 안내된 경로의 NPKI 폴더를 선택해 주세요."); return; }
   await htNpkiScan(dir, true);
@@ -7205,10 +7206,10 @@ window.addEventListener("DOMContentLoaded", () => {
             <div id="htNpkiGuide" class="ht-npki-guide" style="display:none;">
               <b>처음 한 번만 인증서 폴더를 연결해 주세요.</b>
               <ol>
-                <li>아래 <b>경로 복사</b>를 누릅니다.</li>
-                <li><b>📂 인증서 폴더 연결</b> → 폴더 선택 창 위쪽 주소창에 붙여넣고 <b>Enter</b></li>
-                <li><b>폴더 선택</b> → <b>파일 보기 허용</b>을 누르면 목록이 나와요.</li>
+                <li><b>📂 인증서 폴더 연결</b>을 누르면 경로가 자동으로 복사돼요.</li>
+                <li>폴더 선택 창 위쪽 주소창에 <b>Ctrl + V</b> → <b>Enter</b> → <b>폴더 선택</b> → <b>파일 보기 허용</b></li>
               </ol>
+              <div class="ht-npki-sub" style="margin:0 0 6px;">다음부터는 자동으로 목록이 나와요. 허용 창에서 <b>“방문할 때마다 허용”</b>을 고르면 묻지도 않아요.</div>
               <div class="ht-npki-path"><code id="htNpkiPath">%USERPROFILE%\AppData\LocalLow\NPKI</code><button type="button" onclick="htNpkiCopyPath()">경로 복사</button></div>
               <div class="ht-npki-sub">USB에 인증서가 있으면 USB 안의 <b>NPKI</b> 폴더를 선택하세요.</div>
             </div>
