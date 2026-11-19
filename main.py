@@ -1644,11 +1644,6 @@ def _hometax_calls(params, now, telecom=""):
         for yy in years:
             calls.append(("financial", dict(fin, startDate=f"{yy}12")))                    # 법인: 사업연도 종료연월
             calls.append(("financial", dict(fin, startDate=str(yy), proofType="40")))      # 개인: 과세연도
-    cw = _cw_body(params, telecom)
-    if cw:
-        if params.get("_want_biz"):
-            cw["identity"] = params["_want_biz"]
-        calls.append(("employees", cw))       # 근로복지공단 — 승인이 따로 1번 더
     return calls
 
 
@@ -1727,7 +1722,8 @@ def _ht_progress(job_id, final=False):
         _ht_live.pop(job_id, None)
     else:
         waiting = [HT_DOC_LABEL[k] for k in HT_DOC_LABEL if k in st["keys"] and k not in st["done_keys"]]
-        _job_save(job_id, None, {"got": out["got"], "failed": [], "doing": waiting[0] if waiting else "", "fill": out["fill"]})
+        approve = "근로복지공단" if any(l["key"] == "employees" for l in st["leads"]) and st.get("cw_fired") else ""
+        _job_save(job_id, None, {"got": out["got"], "failed": [], "doing": waiting[0] if waiting else "", "fill": out["fill"], "approve": approve})
 
 
 def _ht_settle(job_id, key, res):
@@ -1742,7 +1738,31 @@ def _ht_settle(job_id, key, res):
     if st["left"][key] <= 0:
         st["done_keys"].add(key)
     st["pending"] -= 1
+    if key == "registration" and st.get("cw_body") and not st.get("cw_fired"):
+        st["cw_fired"] = True
+        if code == "CF-00000":
+            data = res.get("data")
+            rrn = _safe(_reg_rrn, data, st.get("identity", ""), default="") or ""
+            reg = _safe(_parse_registration, data, st.get("identity", ""), default={}) or {}
+            biz = _re2.sub(r"\D", "", reg.get("business_number", ""))
+            cw = dict(st["cw_body"], identity=rrn or biz)       # 대표자 개인명의 → 주민번호 (서버 안에서만)
+            _spawn(_ht_fire(job_id, "employees", cw))
+        else:
+            st["res"].setdefault("employees", []).append(("SKIP", None, "사업자등록증명 실패"))
+            st["left"]["employees"] = 0
+            st["done_keys"].add("employees")
+            st["pending"] -= 1
     _ht_progress(job_id, final=st["pending"] <= 0 and not st["leads"])
+
+
+async def _cw_watchdog(job_id, lead, wait=285):
+    """근로복지공단 인증을 4분 45초 안에 승인하지 않으면 직원 수만 건너뛰고 마무리"""
+    await asyncio.sleep(wait)
+    st = _ht_live.get(job_id)
+    if st and lead in st["leads"]:
+        st["leads"].remove(lead)
+        st["pending"] += 1
+        _ht_settle(job_id, "employees", {"result": {"code": "TIMEOUT", "message": "근로복지공단 인증 시간이 지났습니다."}, "data": None})
 
 
 async def _ht_fire(job_id, key, body):
@@ -1758,9 +1778,14 @@ async def _ht_fire(job_id, key, body):
         return
     if _ht_is_2way(res):
         d = res["data"]
-        st["leads"].append({"key": key, "body": body, "two_way": {k: d.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}})
+        lead = {"key": key, "body": body, "two_way": {k: d.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}}
+        st["leads"].append(lead)
         st["pending"] -= 1          # 2차 요청 때 다시 집계
         st["approval"].set()
+        if key == "employees":      # 홈택스 승인 뒤 새로 온 인증 → 확인 횟수 새로, 화면에 승인 안내
+            st["tries"] = 0
+            _spawn(_cw_watchdog(job_id, lead))
+            _ht_progress(job_id)
         return
     _ht_settle(job_id, key, res)
     if st["pending"] <= 0:
@@ -1806,9 +1831,13 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
         _ht_live.pop(k, None)
     job_id = uuid.uuid4().hex
     keys = [k for k, _ in calls]
-    _ht_live[job_id] = {"user_id": user.id, "leads": [], "pending": len(calls), "res": {}, "t": _time.time(),
+    cw = _cw_body(params, body.telecom)        # 근로복지공단(직원 수)은 사업자등록증명에서 대표자 주민번호를 받은 뒤 따로 요청
+    if cw:
+        keys.append("employees")
+    _ht_live[job_id] = {"user_id": user.id, "leads": [], "pending": len(keys), "res": {}, "t": _time.time(),
                         "keys": set(keys), "done_keys": set(), "left": {k: keys.count(k) for k in set(keys)},
-                        "identity": params.get("_want_biz", ""), "approval": asyncio.Event(), "launched": asyncio.Event()}
+                        "identity": params.get("_want_biz", ""), "approval": asyncio.Event(), "launched": asyncio.Event(),
+                        "cw_body": cw}
     db = SessionLocal()
     try:
         db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
@@ -1833,6 +1862,19 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
         _job_save(job_id, "error", {"detail": regs[0][2]})
         raise HTTPException(status_code=400, detail=f"본인 인증 요청에 실패했습니다: {regs[0][2]}")
     return {"status": "collecting", "job": job_id}
+
+
+@app.post("/codef/hometax/skip-employees")
+async def codef_hometax_skip_employees(body: CodefCompleteBody, user: models.User = Depends(get_current_user)):
+    """근로복지공단 인증을 건너뛰고(직원 수 제외) 마무리"""
+    st = _ht_live.get(body.job)
+    if not st or st["user_id"] != user.id:
+        return {"status": "collecting", "job": body.job}
+    for lead in [l for l in st["leads"] if l["key"] == "employees"]:
+        st["leads"].remove(lead)
+        st["pending"] += 1
+        _ht_settle(body.job, "employees", {"result": {"code": "SKIP", "message": "건너뜀"}, "data": None})
+    return {"status": "collecting", "job": body.job}
 
 
 @app.post("/codef/hometax/complete")

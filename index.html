@@ -497,6 +497,9 @@
   .ht-saved-table td.nm small { display: block; font-size: 10.5px; color: var(--text3); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ht-saved-del { border: none; background: none; color: var(--text3); font-size: 15px; cursor: pointer; padding: 2px 6px; font-family: inherit; }
   .ht-saved-del:hover { color: #c0392b; }
+  .ht-cw-box { text-align: left; border: 1.5px solid #3B82C4; background: #EAF3FC; border-radius: 12px; padding: 12px; margin-top: 12px; }
+  .ht-cw-t { font-size: 14px; color: #0d3b7c; font-weight: 700; }
+  .ht-cw-d { font-size: 12.5px; color: #4a6f99; margin-top: 4px; line-height: 1.5; }
   .ht-auth-prog { text-align: left; max-width: 260px; margin: 6px auto 0; font-size: 13px; line-height: 2; color: var(--text2); }
   .ht-auth-prog .ok { color: #1D9E75; font-weight: 700; }
   .ht-auth-prog .now { color: #185FA5; font-weight: 700; }
@@ -1668,10 +1671,18 @@
       ③ 회사의 개인정보 관리책임자 및 권한이 부여된 관리자는 서비스 운영, 오류 확인, 고객 문의 대응 등 서비스 제공에 필요한 범위에서 위 분석 결과를 열람할 수 있습니다. 이 경우에도 수집 목적 외의 용도로 이용하거나 정보주체의 동의 없이 제3자에게 제공하지 않습니다.<br/>
       ④ 관리자의 열람은 관리자 인증을 거친 경우에만 가능하며, 회원이 업로드한 재무제표 원본은 보관하지 않으므로 열람 대상에 포함되지 않습니다.</p>
       <br/>
-      <p><strong>8. 고객 의견수렴 및 불만처리</strong></p>
+      <p><strong>8. 본인 인증 자동 조회(홈택스·근로복지공단·은행) 시 개인정보 처리</strong></p>
+      <p>① 회원이 원클릭 분석에서 본인 인증(간편인증·공동인증서)으로 자료 불러오기를 요청한 경우, 회사는 회원 본인의 자료를 조회하기 위해 인증 대행사인 코드에프(CODEF, 헥토데이터)를 통해 국세청 홈택스, 근로복지공단(고용·산재보험 토탈서비스), 회원이 선택한 은행에 조회를 요청합니다.<br/>
+      ② 이때 처리하는 정보는 다음과 같습니다. 간편인증: 성명, 생년월일, 휴대폰 번호, 통신사 / 공동인증서: 인증서 파일, 인증서 비밀번호 / 공통: 사업자등록증명에 기재된 대표자 주민등록번호.<br/>
+      ③ 대표자 주민등록번호는 회원 본인의 요청에 따라 근로복지공단에서 직원 수(고용보험 근로자 수)를 조회하는 데에만 사용하며, 조회 요청을 위해 서버 메모리에서 일시적으로 처리할 뿐 저장·보관하지 않고 회원 화면이나 기록(로그)에도 남기지 않습니다.<br/>
+      ④ 인증서 파일·인증서 비밀번호·휴대폰 인증 정보는 조회에만 사용하고 저장하지 않습니다. 은행 조회를 위해 코드에프에 등록한 인증서 정보는 조회가 끝나는 즉시 삭제를 요청합니다. 다만 회원이 '이 기기에 인증서 보관하기'를 선택한 경우 인증서 파일은 회원의 기기(브라우저)에만 보관되며 회사 서버에는 보관되지 않습니다.<br/>
+      ⑤ 조회로 받은 결과(상호, 대표자명, 사업자등록번호, 업태·종목, 매출, 체납 여부, 재무수치, 직원 수, 대출 현황 등)는 입력 칸을 채우는 데 사용되며, 회원이 분석을 실행한 경우에 한해 제7조 ②에 따라 분석 결과로 보관됩니다.<br/>
+      ⑥ 회원은 자동 조회에 동의하지 않을 수 있으며, 이 경우 각 항목을 직접 입력하거나 서류를 올려 분석을 이용할 수 있습니다.</p>
+      <br/>
+      <p><strong>9. 고객 의견수렴 및 불만처리</strong></p>
       <p>회사는 개인정보보호와 관련하여 정보주체 및 회원의 의견과 불만을 제기할 수 있는 창구를 개설하고 있습니다. 개인정보와 관련한 불만이 있으신 분은 회사의 개인정보 관리책임자에게 의견을 주시면 접수 즉시 조치하여 처리결과를 통보해 드립니다.</p>
       <br/>
-      <p><strong>9. 개인정보 관리책임자</strong></p>
+      <p><strong>10. 개인정보 관리책임자</strong></p>
       <p>회사는 개인정보에 대한 의견수렴 및 불만처리의 정책을 담당하는 개인정보정책 담당 관리책임자를 지정하고 있습니다. 본 정책에 대한 불만사항이 있으시다면 아래 연락처로 문의 하시면 친절히 처리하여 드리겠습니다.<br/>
       이메일 : cngpartners123@gmail.com</p>
     </div>
@@ -3895,6 +3906,7 @@ function htAuthOpen() {
 }
 function htAuthClose() {
   clearInterval(htAuthState.timer);
+  htCwState({}, null);
   htAuthStopAuto();
   htRelayStop();
   htNpki.sel = null;
@@ -4520,7 +4532,7 @@ async function htAuthStart() {
     htAuthState.pending = { job: res.job };     // 서류 요청은 서버가 이미 한꺼번에 보내 둠 — 승인 1번이면 4종 모두
     const two = ["1", "3", "4", "5", "6", "7", "8", "10"].includes(htAuthState.provider);
     document.getElementById("htAuthStep2Desc").innerHTML = two
-      ? "인증 요청을 보냈어요. <b>홈택스</b>와 <b>근로복지공단(직원 수)</b> 인증이 각각 1번씩 와요. 둘 다 승인하면 <b>자동으로 넘어가요.</b><br>바로 넘어가지 않으면 아래 버튼을 눌러주세요. (4분 30초 안에 완료)"
+      ? "인증 요청을 보냈어요. 먼저 <b>홈택스</b> 인증을 승인하면 <b>자동으로 넘어가요.</b><br>서류를 불러온 뒤 <b>근로복지공단(직원 수)</b> 인증이 한 번 더 와요. (4분 30초 안에 완료)"
       : "인증 요청을 보냈어요. 휴대폰 앱에서 인증을 마치면 <b>자동으로 넘어가요.</b><br>바로 넘어가지 않으면 아래 버튼을 눌러주세요. (4분 30초 안에 완료)";
     htAuthShow(2);
     htAuthStartAuto();
@@ -4567,6 +4579,38 @@ async function htAuthComplete(auto) {
   }
 }
 
+// 근로복지공단(직원 수) 인증 — 홈택스 승인 뒤 대표자 주민번호로 새로 요청되어 승인이 한 번 더 옴
+function htCwState(p, job) {
+  const box = document.getElementById("htCwBox");
+  if (!box) return;
+  const on = !!(p && p.approve);
+  box.style.display = on ? "" : "none";
+  if (on && htAuthState.cwJob !== job) {
+    htAuthState.cwJob = job;
+    (htAuthState.cwTimers || []).forEach(clearTimeout);
+    htAuthState.cwTimers = [40000, 110000].map(ms => setTimeout(() => htCwConfirm(true), ms));
+  }
+  if (!on && htAuthState.cwJob) {
+    (htAuthState.cwTimers || []).forEach(clearTimeout);
+    htAuthState.cwTimers = []; htAuthState.cwJob = null;
+  }
+}
+async function htCwConfirm(auto) {
+  const job = htAuthState.cwJob;
+  if (!job || htAuthState.cwBusy) return;
+  htAuthState.cwBusy = true;
+  const btn = document.getElementById("htCwBtn"); if (btn) btn.disabled = true;
+  try { await api("POST", "/codef/hometax/complete", { job, auto: !!auto }); }
+  catch (e) { if (!auto) alertError(e.message); }
+  finally { htAuthState.cwBusy = false; if (btn) btn.disabled = false; }
+}
+async function htCwSkip() {
+  const job = htAuthState.cwJob;
+  if (!job) return;
+  try { await api("POST", "/codef/hometax/skip-employees", { job }); } catch (e) {}
+  document.getElementById("htCwBox").style.display = "none";
+}
+
 // 승인 자동 감지 — CODEF는 승인 전 확인을 3번까지만 받아서(3번째 미승인 시 종료) 확실한 순간에만 확인
 //  ① 휴대폰: 인증 앱에서 승인하고 피나로 돌아온 순간  ② PC: 40초·110초 후  (서버가 자동 확인은 2번까지로 제한)
 function htAuthStartAuto() {
@@ -4579,6 +4623,11 @@ function htAuthStopAuto() {
   htAuthState.autoTimers = [];
 }
 document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && htAuthState.cwJob && htAuthState.cwHiddenAt && Date.now() - htAuthState.cwHiddenAt > 4000) {
+    htAuthState.cwHiddenAt = 0;
+    setTimeout(() => htCwConfirm(true), 1500);       // 인증 앱에서 돌아옴 → 근로복지공단 확인
+  }
+  if (document.hidden && htAuthState.cwJob) htAuthState.cwHiddenAt = Date.now();
   if (!htAuthState.pending) return;
   if (document.hidden) { htAuthState.hiddenAt = Date.now(); return; }
   if (htAuthState.hiddenAt && Date.now() - htAuthState.hiddenAt > 4000) {   // 다른 앱에 갔다가 돌아옴
@@ -4617,7 +4666,8 @@ async function htAuthFinish(res) {
       continue;
     }
     htAuthProgress(p);
-    if (p.status === "done") return htAuthApply(p);
+    htCwState(p, res.job);
+    if (p.status === "done") { htCwState({}, null); return htAuthApply(p); }
     if (p.status === "error") throw new Error(p.detail || "홈택스 자료를 불러오지 못했어요.");
   }
   throw new Error("자료 조회가 너무 오래 걸려요. 잠시 후 다시 시도해 주세요.");
@@ -7776,6 +7826,14 @@ window.addEventListener("DOMContentLoaded", () => {
       <div class="ht-auth-title">홈택스 자료를 불러오는 중이에요</div>
       <p class="ht-auth-desc">잠시만 기다려 주세요. 최대 1~2분 걸릴 수 있어요.</p>
       <div id="htAuthProg" class="ht-auth-prog"></div>
+      <div id="htCwBox" class="ht-cw-box" style="display:none;">
+        <div class="ht-cw-t">📱 휴대폰에서 <b>근로복지공단</b> 인증을 승인해 주세요</div>
+        <div class="ht-cw-d">직원 수를 불러오는 인증이 한 번 더 왔어요. 승인하면 자동으로 넘어가요.</div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button type="button" class="btn" style="flex:1;" onclick="htCwSkip()">건너뛰기</button>
+          <button type="button" class="btn btn-primary" style="flex:2;" id="htCwBtn" onclick="htCwConfirm(false)">인증 완료</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
