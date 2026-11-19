@@ -889,6 +889,7 @@
       </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 본인 인증하기</button>
+        <button type="button" class="btn" onclick="c4uOpen()">🏦 크레딧포유로 기대출 불러오기</button>
       </div>
       <p style="font-size:11px;color:var(--text3);margin-top:8px;">카카오톡·네이버·토스·PASS 등 간편인증 또는 공동인증서로 홈택스 자료를 불러옵니다.</p>
       <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
@@ -1041,7 +1042,10 @@
         <div class="ht-body">
           <label class="ht-chk"><input type="checkbox" id="ht-loans-none" onchange="htToggleLoans()" /> 기대출 없음</label>
           <div id="ht-loans" style="display:flex;flex-direction:column;gap:6px;"></div>
-          <button type="button" class="ht-link" id="ht-loan-add" onclick="htAddLoan()">+ 대출 추가</button>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;">
+            <button type="button" class="ht-link" id="ht-loan-add" onclick="htAddLoan()">+ 대출 추가</button>
+            <button type="button" class="ht-link" onclick="c4uOpen()">🏦 크레딧포유로 불러오기</button>
+          </div>
         </div>
       </div>
 
@@ -2540,6 +2544,80 @@ async function htHandleCreditFiles(all) {
     btn.disabled = false; btn.innerHTML = btnHtml;
   }
 }
+// ── 크레딧포유 신용정보조회서 → 기대출 (아이디 로그인, 보안문자는 대부분 자동) ──
+let c4u = { job: null, busy: false };
+function c4uShow(n) { [1, 2, 3].forEach(i => document.getElementById("c4uStep" + i).style.display = i === n ? "" : "none"); }
+function c4uOpen() {
+  if (!token) { showPage("login"); return; }
+  c4u = { job: null, busy: false };
+  document.getElementById("c4uPw").value = "";
+  c4uShow(1);
+  document.getElementById("c4uModal").style.display = "flex";
+  setTimeout(() => document.getElementById("c4uId").focus(), 50);
+}
+function c4uClose() {
+  document.getElementById("c4uModal").style.display = "none";
+  document.getElementById("c4uPw").value = "";
+  c4u.job = null;
+}
+function c4uNoAccount() {
+  c4uClose();
+  alertError("크레딧포유 미가입 회원이에요.\n크레딧포유에 가입된 경우에만 대출내역을 자동으로 불러올 수 있어요. 기대출은 직접 입력해 주세요.");
+}
+async function c4uStart() {
+  const id = document.getElementById("c4uId").value.trim(), pw = document.getElementById("c4uPw").value;
+  if (!id || !pw) return alertError("크레딧포유 아이디와 비밀번호를 입력해 주세요.");
+  if (!document.getElementById("c4uAgree").checked) return alertError("정보 제공에 동의해 주세요.");
+  const btn = document.getElementById("c4uBtn");
+  btn.disabled = true;
+  c4uShow(3);
+  try {
+    const res = await api("POST", "/codef/credit4u/report", { user_id: id, password: pw });
+    document.getElementById("c4uPw").value = "";
+    c4u.job = res.job;
+    await c4uWait();
+  } catch (e) {
+    alertError(e.message); c4uShow(1);
+  } finally { btn.disabled = false; }
+}
+async function c4uSecure(refresh) {
+  const v = document.getElementById("c4uSecure").value.trim();
+  if (!refresh && !v) return alertError("보안문자를 입력해 주세요.");
+  c4uShow(3);
+  try {
+    await api("POST", "/codef/credit4u/secure", { job: c4u.job, secure_no: v, refresh: !!refresh });
+    await c4uWait();
+  } catch (e) { alertError(e.message); c4uShow(1); }
+}
+async function c4uWait() {
+  const job = c4u.job, started = Date.now();
+  let misses = 0;
+  while (c4u.job === job && Date.now() - started < 6 * 60 * 1000) {
+    await new Promise(r => setTimeout(r, 2000));
+    if (c4u.job !== job || document.getElementById("c4uModal").style.display === "none") return;
+    let p;
+    try { p = await api("GET", "/codef/hometax/job/" + job); misses = 0; }
+    catch (e) { if (++misses >= 6) throw e; continue; }
+    if (p.status === "need_secure") {
+      document.getElementById("c4uImg").src = p.secure_img || "";
+      document.getElementById("c4uSecure").value = "";
+      c4uShow(2);
+      setTimeout(() => document.getElementById("c4uSecure").focus(), 50);
+      return;
+    }
+    if (p.status === "done") {
+      c4uClose();
+      const d = (p.credit || {});
+      d.doc_type = "크레딧포유 신용정보조회서";
+      htFillFromCredit(d);
+      const card = document.getElementById("ht-loans-card");
+      if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (p.status === "error") { c4uShow(1); return alertError(p.detail || "크레딧포유 조회에 실패했어요."); }
+  }
+}
+
 function htFillFromCredit(d) {
   const cur = htReadForm();
   const filled = [];
@@ -7460,6 +7538,36 @@ window.addEventListener("DOMContentLoaded", () => {
 </script>
 
 <!-- 본인 인증 (홈택스 간편인증) -->
+<div id="c4uModal" class="ht-auth-bg" style="display:none;">
+  <div class="ht-auth">
+    <button type="button" class="ht-auth-x" onclick="c4uClose()" aria-label="닫기">×</button>
+    <div id="c4uStep1">
+      <div class="ht-auth-title">🏦 크레딧포유로 기대출 불러오기</div>
+      <p class="ht-auth-desc">신용정보원 크레딧포유에 로그인해 신용정보조회서를 발급받고, 대출·보증·연체 내역을 기대출 칸에 채워드려요. 아이디·비밀번호는 조회에만 쓰고 저장하지 않아요.</p>
+      <label class="ht-auth-grid" style="grid-template-columns:1fr;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">크레딧포유 아이디</span><input id="c4uId" class="ht-auth-input" autocomplete="off" autocapitalize="off" placeholder="아이디" /></label>
+      <label class="ht-auth-grid" style="grid-template-columns:1fr;margin-top:8px;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">비밀번호</span><input id="c4uPw" type="password" class="ht-auth-input" autocomplete="off" placeholder="비밀번호" /></label>
+      <label class="ht-auth-check"><input type="checkbox" id="c4uAgree" /> 대출 내역 조회를 위해 위 정보를 인증 대행사(CODEF)에 제공하는 데 동의합니다.</label>
+      <button type="button" class="btn btn-primary btn-full" id="c4uBtn" onclick="c4uStart()">불러오기</button>
+      <button type="button" class="ht-link" style="display:block;margin:10px auto 0;" onclick="c4uNoAccount()">크레딧포유 아이디가 없어요</button>
+      <p class="ht-cert-hint" style="text-align:center;">개인·개인사업자 대출이 조회돼요. 법인 대출은 나오지 않아요.</p>
+    </div>
+    <div id="c4uStep2" style="display:none;">
+      <div class="ht-auth-title">보안문자를 입력해 주세요</div>
+      <p class="ht-auth-desc">크레딧포유가 보안문자 확인을 요청했어요. 그림의 숫자를 입력해 주세요.</p>
+      <div style="text-align:center;margin:8px 0;"><img id="c4uImg" alt="보안문자" style="max-width:100%;height:64px;border:1px solid var(--border);border-radius:8px;background:#fff;" /></div>
+      <div style="display:flex;gap:6px;">
+        <input id="c4uSecure" class="ht-auth-input" inputmode="numeric" autocomplete="off" placeholder="보안문자" style="flex:1;" />
+        <button type="button" class="btn" onclick="c4uSecure(true)">새로고침</button>
+      </div>
+      <button type="button" class="btn btn-primary btn-full" onclick="c4uSecure(false)">확인</button>
+    </div>
+    <div id="c4uStep3" style="display:none;text-align:center;">
+      <div style="font-size:36px;margin:8px 0;">⏳</div>
+      <div class="ht-auth-title" id="c4uWaitTitle">크레딧포유에서 불러오는 중이에요</div>
+      <p class="ht-auth-desc">조회서를 발급받아 읽고 있어요. 최대 1~2분 걸릴 수 있어요.</p>
+    </div>
+  </div>
+</div>
 <div id="htAuthModal" class="ht-auth-bg" style="display:none;">
   <div class="ht-auth">
     <button type="button" class="ht-auth-x" onclick="htAuthClose()" aria-label="닫기">×</button>

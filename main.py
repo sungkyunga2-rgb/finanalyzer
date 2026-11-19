@@ -1840,6 +1840,105 @@ def _hometax_start_job(params, reg_data, user_id):
     return {"status": "collecting", "job": job_id, "fill": fill}
 
 
+# ── 크레딧포유(신용정보원) 신용정보조회서 → 기대출 ──
+#  CODEF 상품은 크레딧포유 아이디·비밀번호 로그인만 지원(간편인증 X). 보안문자는 CODEF가 자동 인식, 7번 실패 시 사용자 입력.
+#  결과는 조회서 PDF(Base64)뿐 → AI로 읽어 대출·보증·연체 정리. 아이디·비밀번호·PDF는 저장하지 않는다.
+CODEF_CREDIT4U_REPORT = "/v1/kr/insurance/is/credit4u/credit-report"
+C4U_NOT_MEMBER = "크레딧포유 미가입 회원이에요. 크레딧포유에 가입된 경우에만 대출내역을 불러올 수 있어요. (가입했다면 아이디·비밀번호를 확인해 주세요)"
+_c4u_live = {}      # job_id -> {"user_id", "params", "two_way", "t"}
+
+
+class Credit4uBody(BaseModel):
+    user_id: str
+    password: str
+
+
+class Credit4uSecureBody(BaseModel):
+    job: str
+    secure_no: str = ""
+    refresh: bool = False
+
+
+def _c4u_login_fail(res):
+    msg = _codef_msg(res)
+    code = _codef_code(res)
+    return code.startswith("CF-128") or any(k in msg for k in ("아이디", "비밀번호", "패스워드", "회원", "로그인", "일치하지"))
+
+
+async def _c4u_run(job_id, req):
+    """크레딧포유 요청 1번 → 보안문자 필요 / 성공(PDF 해석) / 실패를 작업에 기록"""
+    st = _c4u_live.get(job_id)
+    if not st:
+        return
+    try:
+        res = await _codef_post(CODEF_CREDIT4U_REPORT, req)
+    except Exception as e:
+        print(f"[CODEF] credit4u 호출 오류: {e!r}")
+        _c4u_live.pop(job_id, None)
+        return _job_save(job_id, "error", {"detail": "크레딧포유 연결에 실패했어요. 잠시 후 다시 시도해 주세요."})
+    code, data = _codef_code(res), (res.get("data") or {})
+    if code == "CF-03002" and isinstance(data, dict) and data.get("continue2Way"):
+        ex = data.get("extraInfo") or {}
+        st["two_way"] = {k: data.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}
+        img = ex.get("reqSecureNo") or ""
+        return _job_save(job_id, "need_secure", {"secure_img": img if str(img).startswith("data:") else (f"data:image/png;base64,{img}" if img else "")})
+    _c4u_live.pop(job_id, None)
+    if code != "CF-00000":
+        print(f"[CODEF] credit4u 실패 {code}: {_codef_msg(res)}")
+        return _job_save(job_id, "error", {"detail": C4U_NOT_MEMBER if _c4u_login_fail(res) else f"크레딧포유 조회에 실패했어요: {_codef_msg(res)}",
+                                           "not_member": _c4u_login_fail(res)})
+    rows = data if isinstance(data, list) else [data]
+    pdf = next((r.get("resOriGinalData") or r.get("resOriginalData") for r in rows if isinstance(r, dict) and (r.get("resOriGinalData") or r.get("resOriginalData"))), "")
+    if not pdf:
+        return _job_save(job_id, "error", {"detail": "크레딧포유에서 조회서를 받지 못했어요. 잠시 후 다시 시도해 주세요."})
+    _job_save(job_id, "running", {"doing": "조회서 읽는 중"})
+    parsed, err = await _gemini_json([{"inline_data": {"mime_type": "application/pdf", "data": pdf}}], CREDIT_DOC_PROMPT)
+    if parsed is None:
+        print(f"[CODEF] credit4u PDF 해석 실패: {err}")
+        return _job_save(job_id, "error", {"detail": "조회서를 읽지 못했어요. 잠시 후 다시 시도해 주세요."})
+    out = _credit_clean(parsed)
+    out["kcb"] = out["nice"] = None        # 크레딧포유에는 신용점수가 없음
+    _job_save(job_id, "done", {"credit": out})
+
+
+@app.post("/codef/credit4u/report")
+async def codef_credit4u_report(body: Credit4uBody, user: models.User = Depends(get_current_user)):
+    if not _codef_ready():
+        raise HTTPException(status_code=503, detail="연동이 아직 설정되지 않았습니다.")
+    uid = (body.user_id or "").strip()
+    if not uid or not body.password:
+        raise HTTPException(status_code=400, detail="크레딧포유 아이디와 비밀번호를 입력해 주세요.")
+    for k in [k for k, v in _c4u_live.items() if _time.time() - v["t"] > 600]:
+        _c4u_live.pop(k, None)
+    params = {"organization": "0001", "userId": uid, "userPass": _codef_rsa(body.password),
+              "isIdentityViewYn": "0", "originDataYN": "1"}
+    job_id = uuid.uuid4().hex
+    _c4u_live[job_id] = {"user_id": user.id, "params": params, "two_way": None, "t": _time.time()}
+    db = SessionLocal()
+    try:
+        db.add(models.CodefJob(id=job_id, user_id=user.id, status="running", result=_json.dumps({"doing": "크레딧포유 조회 중"})))
+        db.commit()
+    finally:
+        db.close()
+    _spawn(_c4u_run(job_id, params))
+    return {"status": "running", "job": job_id}
+
+
+@app.post("/codef/credit4u/secure")
+async def codef_credit4u_secure(body: Credit4uSecureBody, user: models.User = Depends(get_current_user)):
+    """보안문자 입력(또는 새로고침) → 이어서 조회"""
+    st = _c4u_live.get(body.job)
+    if not st or st["user_id"] != user.id or not st.get("two_way"):
+        raise HTTPException(status_code=400, detail="조회 시간이 지났어요. 처음부터 다시 시도해 주세요.")
+    req = dict(st["params"], secureNo=(body.secure_no or "").strip(), secureNoRefresh="1" if body.refresh else "0",
+               is2Way=True, twoWayInfo=st["two_way"])
+    if not body.refresh and not req["secureNo"]:
+        raise HTTPException(status_code=400, detail="보안문자를 입력해 주세요.")
+    _job_save(body.job, "running", {"doing": "크레딧포유 조회 중"})
+    _spawn(_c4u_run(body.job, req))
+    return {"status": "running", "job": body.job}
+
+
 @app.get("/codef/hometax/job/{job_id}")
 def codef_hometax_job(job_id: str, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     row = db.query(models.CodefJob).filter(models.CodefJob.id == job_id, models.CodefJob.user_id == user.id).first()
@@ -2181,17 +2280,8 @@ CREDIT_DOC_PROMPT = """이 문서는 한국의 개인 신용정보 조회 결과
 {"doc_type":문서 종류,"name":문자열또는null,"kcb":숫자또는null,"nice":숫자또는null,"loans":[...] 또는 null,"guarantees":[...] 또는 null,"has_delinquency":true/false/null,"comment":"인식 관련 메모 1문장"}"""
 
 
-@app.post("/extract/credit-doc")
-async def extract_credit_doc(body: IncomeDocExtractRequest, user: models.User = Depends(get_current_user)):
-    """신용정보조회서·신용점수 화면 → 신용점수(KCB·NICE)·기대출 목록. 문서·결과는 저장하지 않는다."""
-    if not body.images:
-        raise HTTPException(status_code=400, detail="분석할 서류 이미지가 없습니다.")
-    if len(body.images) > 8:
-        raise HTTPException(status_code=400, detail="서류는 최대 8장까지 첨부할 수 있습니다.")
-    parts = [{"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}} for img in body.images]
-    data, err = await _gemini_json(parts, CREDIT_DOC_PROMPT)
-    if data is None:
-        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+def _credit_clean(data):
+    """AI가 읽은 신용정보 → 신용점수·기대출 정리"""
     num = lambda v: _codef_amt(v)
 
     def score(v):
@@ -2217,7 +2307,21 @@ async def extract_credit_doc(body: IncomeDocExtractRequest, user: models.User = 
             d = _re2.sub(r"[^\d]", "", str(l.get("date") or ""))
             loans.append({"org": org, "date": f"{d[:4]}.{d[4:6]}" if len(d) >= 6 else (d[:4] if len(d) >= 4 else ""), "amount": amt})
         out["loans"] = [l for l in loans if l["org"] or l["amount"]]
-    return {"data": out}
+    return out
+
+
+@app.post("/extract/credit-doc")
+async def extract_credit_doc(body: IncomeDocExtractRequest, user: models.User = Depends(get_current_user)):
+    """신용정보조회서·신용점수 화면 → 신용점수(KCB·NICE)·기대출 목록. 문서·결과는 저장하지 않는다."""
+    if not body.images:
+        raise HTTPException(status_code=400, detail="분석할 서류 이미지가 없습니다.")
+    if len(body.images) > 8:
+        raise HTTPException(status_code=400, detail="서류는 최대 8장까지 첨부할 수 있습니다.")
+    parts = [{"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}} for img in body.images]
+    data, err = await _gemini_json(parts, CREDIT_DOC_PROMPT)
+    if data is None:
+        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+    return {"data": _credit_clean(data)}
 
 
 @app.post("/extract/income-doc")
