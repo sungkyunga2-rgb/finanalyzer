@@ -474,6 +474,9 @@
   .ht-npki-btn { display: block; width: 100%; border: 1.5px solid #185FA5; background: #F3F8FD; color: #185FA5; border-radius: 10px; padding: 12px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
   .ht-npki-guide { font-size: 12px; color: var(--text2); line-height: 1.6; background: var(--surface2, #f6f8fb); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
   .ht-npki-guide ol { padding-left: 18px; margin: 4px 0 8px; }
+  .ht-only-mob, .ht-only-pc { display: none; }
+  .is-mob .ht-only-mob, .is-pc .ht-only-pc { display: inline; }
+  .ht-npki-pathrow { margin-top: 8px; }
   .ht-npki-path { display: flex; gap: 6px; align-items: center; }
   .ht-npki-path code { flex: 1; min-width: 0; font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ht-npki-path button { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; font-family: inherit; white-space: nowrap; }
@@ -485,7 +488,7 @@
   .ht-cert-saved-sub { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
   .ht-cert-saved-btns { display: flex; flex-direction: column; gap: 4px; }
   .ht-cert-saved-btns button { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 7px; font-size: 11.5px; padding: 4px 8px; cursor: pointer; font-family: inherit; color: var(--text2); white-space: nowrap; }
-  .ht-cert-move { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 4px; }
+  .ht-cert-move { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 10px 0 4px; }
   .ht-cert-move button { border: 1px solid #b9cfe8; background: #F3F8FD; color: #185FA5; border-radius: 10px; padding: 9px 4px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
   .ht-relay-flow { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0 14px; font-size: 13px; font-weight: 700; color: var(--text2); }
   .ht-relay-flow span { border: 1.5px solid #b9cfe8; border-radius: 999px; padding: 8px 14px; background: #F3F8FD; }
@@ -3672,6 +3675,11 @@ function htAuthOpen() {
   if (rep && rep.value && !document.getElementById("htAuthName").value) document.getElementById("htAuthName").value = rep.value;
   htCertDropInit();
   htRelayInputsInit();
+  const mob = isMobileDevice();   // 휴대폰은 '가져오기', PC는 '보내기'만
+  document.getElementById("htRelayGetBtn").style.display = mob ? "" : "none";
+  document.getElementById("htRelaySendBtnOpen").style.display = mob ? "none" : "";
+  document.getElementById("htAuthCertBox").classList.toggle("is-mob", mob);
+  document.getElementById("htAuthCertBox").classList.toggle("is-pc", !mob);
   htCertState.useSaved = true;
   htCertFiles = { type: "", cert: "", key: "" };
   htCertRenderSaved();
@@ -7190,7 +7198,7 @@ window.addEventListener("DOMContentLoaded", () => {
       <button type="button" class="btn btn-primary btn-full" id="htAuthStartBtn" onclick="htAuthStart()">인증 요청하기</button>
       </div>
       <div id="htAuthCertBox" style="display:none;">
-        <p class="ht-auth-desc">대표자(법인은 법인) 명의 공동인증서(구 공인인증서)로 홈택스 자료를 채워드려요. 인증서가 PC에만 있으면 <b>PC에서 가져오기</b>로 휴대폰에 옮길 수 있어요.</p>
+        <p class="ht-auth-desc">대표자(법인은 법인) 명의 공동인증서(구 공인인증서)로 홈택스 자료를 채워드려요. <span class="ht-only-mob">인증서가 PC에만 있으면 <b>PC에 있는 인증서 가져오기</b>로 이 휴대폰에 옮길 수 있어요.</span><span class="ht-only-pc">휴대폰에서도 쓰려면 <b>휴대폰으로 인증서 보내기</b>로 옮길 수 있어요.</span></p>
         <div id="htCertSaved" class="ht-cert-saved" style="display:none;">
           <div class="ht-cert-saved-ic">🔒</div>
           <div style="flex:1;min-width:0;"><div class="ht-cert-saved-name" id="htCertSavedName"></div><div class="ht-cert-saved-sub" id="htCertSavedSub">이 기기에 보관된 인증서</div></div>
@@ -7210,8 +7218,10 @@ window.addEventListener("DOMContentLoaded", () => {
                 <li>폴더 선택 창 위쪽 주소창에 <b>Ctrl + V</b> → <b>Enter</b> → <b>폴더 선택</b> → <b>파일 보기 허용</b></li>
               </ol>
               <div class="ht-npki-sub" style="margin:0 0 6px;">다음부터는 자동으로 목록이 나와요. 허용 창에서 <b>“방문할 때마다 허용”</b>을 고르면 묻지도 않아요.</div>
+            </div>
+            <div class="ht-npki-pathrow">
               <div class="ht-npki-path"><code id="htNpkiPath">%USERPROFILE%\AppData\LocalLow\NPKI</code><button type="button" onclick="htNpkiCopyPath()">경로 복사</button></div>
-              <div class="ht-npki-sub">USB에 인증서가 있으면 USB 안의 <b>NPKI</b> 폴더를 선택하세요.</div>
+              <div class="ht-npki-sub">인증서 폴더 경로예요. USB에 인증서가 있으면 USB 안의 <b>NPKI</b> 폴더를 선택하세요.</div>
             </div>
             <button type="button" class="ht-npki-other" onclick="htNpkiShowFiles()">파일로 직접 선택하기</button>
           </div>
@@ -7227,8 +7237,8 @@ window.addEventListener("DOMContentLoaded", () => {
           <label class="ht-auth-check"><input type="checkbox" id="htCertKeep" checked /> 이 기기에 인증서 보관하기 (다음부터 비밀번호만 입력)</label>
         </div>
         <div class="ht-cert-move">
-          <button type="button" onclick="htRelayOpen()">📲 PC에서 가져오기</button>
-          <button type="button" onclick="htRelaySendOpen()">📤 휴대폰으로 보내기</button>
+          <button type="button" id="htRelayGetBtn" onclick="htRelayOpen()">📲 PC에 있는 인증서 가져오기</button>
+          <button type="button" id="htRelaySendBtnOpen" onclick="htRelaySendOpen()">📤 휴대폰으로 인증서 보내기</button>
         </div>
         <label class="ht-auth-grid" style="grid-template-columns:1fr;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">인증서 비밀번호</span><input id="htCertPw" type="password" class="ht-auth-input" autocomplete="off" placeholder="인증서 비밀번호" /></label>
         <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스 자료 조회를 위해 인증서를 인증 대행사(CODEF)에 제공하는 데 동의합니다. 비밀번호는 저장하지 않아요.</label>
@@ -7252,7 +7262,7 @@ window.addEventListener("DOMContentLoaded", () => {
       <ol class="ht-relay-steps">
         <li>PC에서 피나(<b>같은 계정</b>)에 로그인합니다.</li>
         <li>원클릭 분석 → <b>본인 인증하기</b> → <b>공동인증서</b> 탭을 엽니다.</li>
-        <li><b>📤 휴대폰으로 보내기</b>를 누르고 위 인증번호 12자리를 입력합니다.</li>
+        <li><b>📤 휴대폰으로 인증서 보내기</b>를 누르고 위 인증번호 12자리를 입력합니다.</li>
         <li>보낼 인증서 파일을 선택하고 <b>보내기</b>를 누르면 이 기기에 저장돼요.</li>
       </ol>
       <div style="display:flex;gap:8px;">
@@ -7262,7 +7272,7 @@ window.addEventListener("DOMContentLoaded", () => {
     </div>
     <div id="htAuthStep5" style="display:none;">
       <div class="ht-auth-title">📤 휴대폰으로 인증서 보내기</div>
-      <p class="ht-auth-desc">휴대폰 피나에서 <b>공동인증서 → 📲 PC에서 가져오기</b>를 누르면 나오는 인증번호 12자리를 입력하세요. 휴대폰과 같은 피나 계정으로 로그인되어 있어야 해요.</p>
+      <p class="ht-auth-desc">휴대폰 피나에서 <b>공동인증서 → 📲 PC에 있는 인증서 가져오기</b>를 누르면 나오는 인증번호 12자리를 입력하세요. 휴대폰과 같은 피나 계정으로 로그인되어 있어야 해요.</p>
       <div class="ht-auth-label">인증번호</div>
       <div class="ht-relay-in">
         <input id="htRelayIn1" class="ht-auth-input" inputmode="numeric" maxlength="4" placeholder="0000" />
