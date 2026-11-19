@@ -432,6 +432,21 @@
   .srp-opinion { background: #f0f4f8; border-radius: 8px; padding: 12px; border-left: 3px solid #185FA5; margin-top: 14px; }
   .srp-opinion-item { font-size: 10.5px; color: #2d3748; line-height: 1.7; margin-bottom: 5px; }
   .srp-opinion-item:last-child { margin-bottom: 0; }
+  .ht-auth-bg { position: fixed; inset: 0; z-index: 9000; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .ht-auth { position: relative; width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto; background: var(--surface); border-radius: 16px; padding: 22px 20px 20px; box-shadow: 0 16px 40px rgba(0,0,0,.25); }
+  .ht-auth-x { position: absolute; top: 10px; right: 12px; background: none; border: none; font-size: 24px; color: var(--text3); cursor: pointer; }
+  .ht-auth-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+  .ht-auth-desc { font-size: 13px; color: var(--text2); line-height: 1.6; margin-bottom: 12px; }
+  .ht-auth-label { font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+  .ht-auth-providers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .ht-auth-providers button { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 10px; padding: 9px 4px; font-size: 12.5px; font-weight: 600; cursor: pointer; color: var(--text); font-family: inherit; }
+  .ht-auth-providers button.on { border-color: #185FA5; background: #EBF2FA; color: #185FA5; }
+  .ht-auth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 8px; }
+  .ht-auth-grid label span { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .ht-auth-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 14px; font-family: inherit; background: var(--surface); color: var(--text); }
+  .ht-auth-check { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: var(--text2); line-height: 1.5; margin: 6px 0; }
+  .ht-auth-check input { margin-top: 2px; }
+  .ht-auth .btn-full { margin-top: 10px; }
   .ht-doc-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .ht-doc-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; background: var(--surface); padding: 22px 14px; line-height: 1.45; min-height: 150px; border: 2px dashed #c9d6e6; border-radius: 12px; transition: border-color .15s, background .15s; }
   .ht-doc-btn:hover, .ht-doc-btn.drag { border-color: #185FA5; background: #EBF2FA; }
@@ -798,7 +813,7 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="htStartAuto('direct')">🔐 본인 인증하기</button>
       </div>
-      <p style="font-size:11px;color:var(--text3);margin-top:8px;">※ 자동 연동은 준비 중입니다. 지금은 아래 서류 업로드나 직접 입력으로 채워 주세요.</p>
+      <p style="font-size:11px;color:var(--text3);margin-top:8px;">카카오톡·네이버·토스·PASS 등 간편인증으로 홈택스 자료를 불러옵니다.</p>
       <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
         <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">📄 서류로 채우기</div>
         <p style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px;">서류를 올리면 AI가 읽어서 아래 칸을 채워드려요. 이미 입력한 칸은 서류 내용으로 바뀝니다.</p>
@@ -3564,11 +3579,106 @@ function htMarkMissing(miss) {
   });
 }
 
-// 홈택스 자동 수집 — 아직 연동 전. 수집 업체(CODEF 등)를 붙일 때 이 함수만 채우면 된다.
-// mode: "direct"(상담 중 화면에서 바로 인증) / "link"(고객에게 인증 링크 전송)
-// 반환값은 input 객체와 같은 구조(일부 항목만 있어도 됨) — 빈칸에만 채운다.
+// 홈택스 자동 수집 — CODEF 간편인증 (서버: /codef/hometax/start → 휴대폰 승인 → /codef/hometax/complete)
+const HT_AUTH_PROVIDERS = [["1", "카카오톡"], ["6", "네이버"], ["8", "토스"], ["5", "PASS"], ["3", "삼성패스"], ["4", "KB모바일"], ["7", "신한인증서"], ["10", "NH인증서"], ["11", "우리인증서"]];
+let htAuthState = { provider: "1", pending: null, timer: null };
+
+function htAuthOpen() {
+  if (!token) { showPage("login"); return; }
+  const box = document.getElementById("htAuthProviders");
+  box.innerHTML = HT_AUTH_PROVIDERS.map(([v, n]) => `<button type="button" data-v="${v}" class="${v === htAuthState.provider ? "on" : ""}">${n}</button>`).join("");
+  box.querySelectorAll("button").forEach(b => b.onclick = () => {
+    htAuthState.provider = b.dataset.v;
+    box.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+    document.getElementById("htAuthTelecomRow").style.display = b.dataset.v === "5" ? "" : "none";
+  });
+  document.getElementById("htAuthTelecomRow").style.display = htAuthState.provider === "5" ? "" : "none";
+  const rep = document.getElementById("ht-rep");
+  if (rep && rep.value && !document.getElementById("htAuthName").value) document.getElementById("htAuthName").value = rep.value;
+  htAuthShow(1);
+  document.getElementById("htAuthModal").style.display = "flex";
+}
+function htAuthClose() {
+  clearInterval(htAuthState.timer);
+  document.getElementById("htAuthModal").style.display = "none";
+}
+function htAuthShow(n) {
+  [1, 2, 3].forEach(i => document.getElementById("htAuthStep" + i).style.display = i === n ? "" : "none");
+}
+function htAuthBack() { clearInterval(htAuthState.timer); htAuthState.pending = null; htAuthShow(1); }
+
+async function htAuthStart() {
+  const name = document.getElementById("htAuthName").value.trim();
+  const birth = document.getElementById("htAuthBirth").value.replace(/\D/g, "");
+  const phone = document.getElementById("htAuthPhone").value.replace(/\D/g, "");
+  const telecom = document.getElementById("htAuthTelecom").value;
+  if (!name) return toast("이름을 입력해주세요.");
+  if (birth.length !== 8) return toast("생년월일 8자리를 입력해주세요. (예: 19800101)");
+  if (phone.length < 10) return toast("휴대폰 번호를 확인해주세요.");
+  if (htAuthState.provider === "5" && !telecom) return toast("통신사를 선택해주세요.");
+  if (!document.getElementById("htAuthAgree").checked) return toast("정보 제공에 동의해 주세요.");
+  const btn = document.getElementById("htAuthStartBtn");
+  btn.disabled = true; btn.textContent = "인증 요청 중...";
+  try {
+    const res = await api("POST", "/codef/hometax/start", {
+      user_name: name, birth, phone, provider: htAuthState.provider, telecom,
+      business_number: (document.getElementById("ht-biz") || {}).value || "",
+      member: !document.getElementById("htAuthNonMember").checked,
+    });
+    if (res.status === "done") return htAuthApply(res);
+    htAuthState.pending = { params: res.params, two_way: res.two_way };
+    htAuthShow(2);
+    let left = 270;
+    const tEl = document.getElementById("htAuthTimer");
+    clearInterval(htAuthState.timer);
+    tEl.textContent = "4:30";
+    htAuthState.timer = setInterval(() => {
+      left -= 1;
+      tEl.textContent = `${Math.floor(Math.max(left, 0) / 60)}:${String(Math.max(left, 0) % 60).padStart(2, "0")}`;
+      if (left <= 0) { clearInterval(htAuthState.timer); toast("인증 시간이 지났어요. 다시 요청해 주세요."); htAuthBack(); }
+    }, 1000);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "인증 요청하기";
+  }
+}
+
+async function htAuthComplete() {
+  if (!htAuthState.pending) return htAuthBack();
+  const btn = document.getElementById("htAuthDoneBtn");
+  btn.disabled = true;
+  htAuthShow(3);
+  try {
+    const res = await api("POST", "/codef/hometax/complete", htAuthState.pending);
+    clearInterval(htAuthState.timer);
+    htAuthApply(res);
+  } catch (e) {
+    toast(e.message);
+    htAuthShow(e.message.includes("아직 휴대폰 인증") ? 2 : 1);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function htAuthApply(res) {
+  const f = res.fill || {};
+  const inc = {};
+  ["company_name", "rep_name", "business_number", "industry", "founded", "location", "biz_type"].forEach(k => { if (f[k]) inc[k] = f[k]; });
+  if (f.years) inc.years = f.years;
+  if (f.arrears) inc.arrears = f.arrears;
+  if (f.fin) inc.fin = f.fin;
+  htFillForm(htMergeForm(inc));
+  htAuthState.pending = null;
+  htAuthClose();
+  const got = (res.got || []).join(", ");
+  toast(got ? `${got} 자료로 정보를 채웠어요. 나머지 항목을 확인한 뒤 분석해 주세요.` : "불러온 자료가 없어요. 직접 입력해 주세요.");
+  if (f._business_list && f._business_list.length > 1) toast(`사업장이 ${f._business_list.length}곳이에요. 다른 사업장은 사업자번호를 먼저 입력하고 다시 인증해 주세요.`);
+}
+
 async function fetchHometaxFromProvider(mode) {
-  throw new Error("홈택스 자동 불러오기는 준비 중입니다.");
+  htAuthOpen();
+  return null;
 }
 
 // 자동 수집 결과를 입력창의 "빈칸"에만 채운다 (사용자가 이미 적은 값은 덮어쓰지 않는다)
@@ -3595,14 +3705,8 @@ function htMergeForm(inc) {
   return merged;
 }
 
-async function htStartAuto(mode) {
-  try {
-    const input = await fetchHometaxFromProvider(mode);
-    htFillForm(htMergeForm(input));
-    toast("본인 인증으로 정보를 채웠어요. 나머지 필수 항목을 확인한 뒤 분석해 주세요.");
-  } catch (e) {
-    toast(e.message);
-  }
+function htStartAuto(mode) {
+  htAuthOpen();
 }
 
 async function doHometaxAnalyze() {
@@ -6495,6 +6599,43 @@ window.addEventListener("DOMContentLoaded", () => {
   setTimeout(function () { if (document.visibilityState === "visible") document.getElementById("inAppNotice").style.display = "block"; }, 2500);
 })();
 </script>
+
+<!-- 본인 인증 (홈택스 간편인증) -->
+<div id="htAuthModal" class="ht-auth-bg" style="display:none;">
+  <div class="ht-auth">
+    <button type="button" class="ht-auth-x" onclick="htAuthClose()" aria-label="닫기">×</button>
+    <div id="htAuthStep1">
+      <div class="ht-auth-title">🔐 본인 인증으로 자동 채우기</div>
+      <p class="ht-auth-desc">대표자 본인 명의로 간편인증하면 홈택스 자료로 아래 정보를 채워드려요.</p>
+      <div class="ht-auth-label">인증 방법</div>
+      <div class="ht-auth-providers" id="htAuthProviders"></div>
+      <div id="htAuthTelecomRow" style="display:none;margin-top:8px;">
+        <select id="htAuthTelecom" class="ht-auth-input"><option value="">통신사 선택</option><option value="0">SKT (알뜰폰 포함)</option><option value="1">KT (알뜰폰 포함)</option><option value="2">LG U+ (알뜰폰 포함)</option></select>
+      </div>
+      <div class="ht-auth-grid">
+        <label><span>이름</span><input id="htAuthName" class="ht-auth-input" placeholder="홍길동" autocomplete="name" /></label>
+        <label><span>생년월일 8자리</span><input id="htAuthBirth" class="ht-auth-input" placeholder="19800101" inputmode="numeric" maxlength="8" /></label>
+        <label style="grid-column:1/-1;"><span>휴대폰 번호</span><input id="htAuthPhone" class="ht-auth-input" placeholder="01012345678" inputmode="numeric" maxlength="13" autocomplete="tel" /></label>
+      </div>
+      <label class="ht-auth-check"><input type="checkbox" id="htAuthNonMember" /> 홈택스 회원이 아니에요 (비회원 인증)</label>
+      <label class="ht-auth-check"><input type="checkbox" id="htAuthAgree" /> 홈택스 자료 조회를 위해 위 정보를 인증 대행사(CODEF)에 제공하는 데 동의합니다.</label>
+      <button type="button" class="btn btn-primary btn-full" id="htAuthStartBtn" onclick="htAuthStart()">인증 요청하기</button>
+    </div>
+    <div id="htAuthStep2" style="display:none;text-align:center;">
+      <div style="font-size:40px;margin:6px 0 4px;">📱</div>
+      <div class="ht-auth-title">휴대폰에서 인증을 완료해 주세요</div>
+      <p class="ht-auth-desc" id="htAuthStep2Desc">인증 요청을 보냈어요. 휴대폰 앱에서 인증을 마친 뒤 아래 버튼을 눌러주세요.<br>4분 30초 안에 완료해야 해요.</p>
+      <div id="htAuthTimer" style="font-size:22px;font-weight:800;color:#185FA5;margin:6px 0 12px;">4:30</div>
+      <button type="button" class="btn btn-primary btn-full" id="htAuthDoneBtn" onclick="htAuthComplete()">인증 완료했어요</button>
+      <button type="button" class="btn btn-full" style="margin-top:8px;" onclick="htAuthBack()">처음으로</button>
+    </div>
+    <div id="htAuthStep3" style="display:none;text-align:center;">
+      <div style="font-size:36px;margin:8px 0;">⏳</div>
+      <div class="ht-auth-title">홈택스 자료를 불러오는 중이에요</div>
+      <p class="ht-auth-desc">잠시만 기다려 주세요. 최대 1~2분 걸릴 수 있어요.</p>
+    </div>
+  </div>
+</div>
 
 <!-- 앱 설치 안내 (휴대폰, 아직 설치 안 했을 때만) -->
 <style>

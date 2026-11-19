@@ -1173,6 +1173,232 @@ def _ht_clean(o):
         return [_ht_clean(v) for v in o]
     return o
 
+# ══════════════════════════════════════════════════════════════
+# CODEF — 홈택스 간편인증 자동 불러오기
+#  Render 환경변수: CODEF_CLIENT_ID / CODEF_CLIENT_SECRET / CODEF_PUBLIC_KEY / CODEF_HOST
+#  흐름: ① /codef/hometax/start → 홈택스가 휴대폰으로 인증 요청(CF-03002, 추가인증)
+#        ② 사용자가 휴대폰에서 승인 → /codef/hometax/complete (simpleAuth="1", is2Way=true, twoWayInfo)
+#        ③ 같은 id(로그인 세션)로 나머지 서류를 이어서 조회(다건 요청)
+#  서버에 상태를 저장하지 않는다 — 1차 요청 정보(twoWayInfo 포함)를 화면에 돌려주고 2차 요청 때 그대로 받는다.
+# ══════════════════════════════════════════════════════════════
+import json as _json
+import base64 as _b64
+import time as _time
+import re as _re2
+from urllib.parse import quote as _cq, unquote_plus as _cuq
+
+CODEF_OAUTH_URL = "https://oauth.codef.io/oauth/token"
+_codef_token_cache = {"token": None, "exp": 0}
+
+# 홈택스 상품 (개발가이드 기준). path가 비어 있으면 아직 연결 전.
+CODEF_HOMETAX_PRODUCTS = {
+    "registration": "/v1/kr/public/nt/proof-issue/corporate-registration",   # 사업자등록 증명
+    # "vat": "",          # 부가세과세표준증명 — 개발가이드 확인 후 추가
+    # "tax_payment": "",  # 납세증명서
+    # "financial": "",    # 재무제표(표준재무제표증명)
+}
+
+
+def _codef_host():
+    return (os.getenv("CODEF_HOST") or "https://development.codef.io").rstrip("/")
+
+
+def _codef_ready():
+    return bool(os.getenv("CODEF_CLIENT_ID") and os.getenv("CODEF_CLIENT_SECRET"))
+
+
+async def _codef_token(force=False):
+    if not force and _codef_token_cache["token"] and _time.time() < _codef_token_cache["exp"] - 300:
+        return _codef_token_cache["token"]
+    cid, sec = os.getenv("CODEF_CLIENT_ID", ""), os.getenv("CODEF_CLIENT_SECRET", "")
+    auth = _b64.b64encode(f"{cid}:{sec}".encode()).decode()
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(CODEF_OAUTH_URL, headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"},
+                              data={"grant_type": "client_credentials", "scope": "read"})
+    if r.status_code != 200:
+        print(f"[CODEF] 토큰 발급 실패 {r.status_code}: {r.text[:300]}")
+        raise HTTPException(status_code=502, detail="본인 인증 서비스 연결에 실패했습니다. 잠시 후 다시 시도해주세요.")
+    j = r.json()
+    _codef_token_cache["token"] = j.get("access_token")
+    _codef_token_cache["exp"] = _time.time() + int(j.get("expires_in") or 3600)
+    return _codef_token_cache["token"]
+
+
+def _codef_parse(text):
+    """CODEF 응답은 URL 인코딩된 JSON으로 온다"""
+    t = (text or "").strip()
+    for cand in (t, _cuq(t)):
+        try:
+            return _json.loads(cand)
+        except Exception:
+            continue
+    return {"result": {"code": "PARSE", "message": "응답을 해석하지 못했습니다."}, "data": {}}
+
+
+async def _codef_post(path, body, timeout=310):
+    token = await _codef_token()
+    payload = _cq(_json.dumps(body, ensure_ascii=False))
+    for attempt in (1, 2):
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post(_codef_host() + path, content=payload,
+                                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+        if r.status_code == 401 and attempt == 1:          # 토큰 만료 → 다시 받아서 한 번 더
+            token = await _codef_token(force=True)
+            continue
+        return _codef_parse(r.text)
+    return _codef_parse(r.text)
+
+
+def _codef_code(res):
+    return ((res or {}).get("result") or {}).get("code") or ""
+
+
+def _codef_msg(res):
+    r = (res or {}).get("result") or {}
+    extra = r.get("extraMessage") or ""
+    return (r.get("message") or "알 수 없는 오류") + (f" ({extra})" if extra else "")
+
+
+_SIDO = [("서울", "서울"), ("부산", "부산"), ("대구", "대구"), ("인천", "인천"), ("광주", "광주"), ("대전", "대전"), ("울산", "울산"),
+         ("세종", "세종"), ("경기", "경기"), ("강원", "강원"), ("충청북", "충북"), ("충북", "충북"), ("충청남", "충남"), ("충남", "충남"),
+         ("전라북", "전북"), ("전북", "전북"), ("전라남", "전남"), ("전남", "전남"), ("경상북", "경북"), ("경북", "경북"),
+         ("경상남", "경남"), ("경남", "경남"), ("제주", "제주")]
+
+
+def _sido(addr):
+    a = (addr or "").strip()
+    for k, v in _SIDO:
+        if a.startswith(k):
+            return v
+    return ""
+
+
+def _parse_registration(data, want_biz=""):
+    """사업자등록 증명 → 원클릭 입력값"""
+    rows = data if isinstance(data, list) else [data]
+    rows = [x for x in rows if isinstance(x, dict) and (x.get("resCompanyIdentityNo") or x.get("resCompanyNm"))]
+    if not rows:
+        return {}
+    digits = _re2.sub(r"\D", "", want_biz or "")
+    row = next((x for x in rows if _re2.sub(r"\D", "", x.get("resCompanyIdentityNo") or "") == digits), rows[0]) if digits else rows[0]
+    bn = _re2.sub(r"\D", "", row.get("resCompanyIdentityNo") or "")
+    opened = _re2.sub(r"\D", "", row.get("resOpenDate") or "")
+    types, items = (row.get("resBusinessTypes") or "").strip(), (row.get("resBusinessItems") or "").strip()
+    kind = (row.get("resBusinessmanType") or "") + " " + (row.get("resUserIdentiyNo") or "")
+    out = {
+        "company_name": (row.get("resCompanyNm") or "").strip() or (row.get("resUserNm") or "").strip(),
+        "rep_name": (row.get("resUserNm") or "").strip(),
+        "business_number": f"{bn[:3]}-{bn[3:5]}-{bn[5:]}" if len(bn) == 10 else bn,
+        "founded": f"{opened[:4]}-{opened[4:6]}" if len(opened) >= 6 else "",
+        "industry": " / ".join([v for v in (types, items) if v]),
+        "location": _sido(row.get("resUserAddr")),
+        "biz_type": "corp" if "법인" in kind else "personal",
+    }
+    if len(rows) > 1:
+        out["_business_list"] = [{"business_number": x.get("resCompanyIdentityNo"), "company_name": x.get("resCompanyNm")} for x in rows]
+    return {k: v for k, v in out.items() if v not in ("", None)}
+
+
+class CodefStartBody(BaseModel):
+    user_name: str
+    birth: str                    # YYYYMMDD
+    phone: str
+    provider: str = "1"           # loginTypeLevel: 1 카카오톡, 3 삼성패스, 4 KB모바일, 5 통신사(PASS), 6 네이버, 7 신한, 8 토스, 9 뱅크샐러드, 10 NH, 11 우리
+    telecom: str = ""             # provider=5 일 때: 0 SKT, 1 KT, 2 LG U+
+    business_number: str = ""     # 여러 사업장이면 이 사업자번호로 조회
+    member: bool = True           # 홈택스 회원 여부 (회원: loginType 5 / 비회원: 6)
+
+
+class CodefCompleteBody(BaseModel):
+    params: dict
+    two_way: dict
+
+
+def _hometax_login_params(b: CodefStartBody, user_id: int):
+    birth = _re2.sub(r"\D", "", b.birth)
+    phone = _re2.sub(r"\D", "", b.phone)
+    if len(birth) != 8:
+        raise HTTPException(status_code=400, detail="생년월일 8자리를 입력해주세요. (예: 19800101)")
+    if not (10 <= len(phone) <= 11):
+        raise HTTPException(status_code=400, detail="휴대폰 번호를 확인해주세요.")
+    if not b.user_name.strip():
+        raise HTTPException(status_code=400, detail="이름을 입력해주세요.")
+    if b.provider == "5" and b.telecom not in ("0", "1", "2"):
+        raise HTTPException(status_code=400, detail="통신사를 선택해주세요.")
+    p = {
+        "organization": "0001",
+        "loginType": "5" if b.member else "6",
+        "loginTypeLevel": b.provider,
+        "userName": b.user_name.strip(),
+        "loginIdentity": birth,
+        "phoneNo": phone,
+        "id": f"fina-{user_id}-{uuid.uuid4().hex[:12]}",   # 같은 로그인 세션으로 여러 서류를 이어서 조회
+        "usePurposes": "99",
+        "submitTargets": "99",
+        "isIdentityViewYN": "0",
+        "originDataYN": "0",
+        "applicationType": "01",
+    }
+    if b.provider == "5":
+        p["telecom"] = b.telecom
+    bn = _re2.sub(r"\D", "", b.business_number or "")
+    if len(bn) == 10:
+        p["identity"] = bn
+    return p
+
+
+@app.get("/codef/status")
+def codef_status():
+    return {"ready": _codef_ready(), "products": [k for k, v in CODEF_HOMETAX_PRODUCTS.items() if v]}
+
+
+@app.post("/codef/hometax/start")
+async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(get_current_user)):
+    """1차 요청 — 홈택스가 사용자 휴대폰으로 간편인증 요청을 보낸다"""
+    if not _codef_ready():
+        raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
+    params = _hometax_login_params(body, user.id)
+    res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], params)
+    code = _codef_code(res)
+    data = res.get("data") or {}
+    if code == "CF-03002" and isinstance(data, dict) and data.get("continue2Way"):
+        two_way = {k: data.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}
+        return {"status": "need_approval", "params": params, "two_way": two_way, "method": data.get("method")}
+    if code == "CF-00000":
+        return await _hometax_collect(params, data)
+    print(f"[CODEF] start 실패 {code}: {_codef_msg(res)}")
+    raise HTTPException(status_code=400, detail=f"본인 인증 요청에 실패했습니다: {_codef_msg(res)}")
+
+
+@app.post("/codef/hometax/complete")
+async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = Depends(get_current_user)):
+    """2차 요청 — 사용자가 휴대폰에서 승인한 뒤 호출"""
+    params = dict(body.params or {})
+    if not str(params.get("id", "")).startswith(f"fina-{user.id}-"):
+        raise HTTPException(status_code=400, detail="인증 정보가 올바르지 않습니다. 처음부터 다시 시도해주세요.")
+    req = dict(params, simpleAuth="1", is2Way=True, twoWayInfo=body.two_way or {})
+    res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], req)
+    code = _codef_code(res)
+    if code == "CF-00000":
+        return await _hometax_collect(params, res.get("data"))
+    if code == "CF-03002":
+        raise HTTPException(status_code=409, detail="아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요.")
+    print(f"[CODEF] complete 실패 {code}: {_codef_msg(res)}")
+    raise HTTPException(status_code=400, detail=f"홈택스 자료를 불러오지 못했습니다: {_codef_msg(res)}")
+
+
+async def _hometax_collect(params, reg_data):
+    """인증이 끝난 세션으로 서류를 모아 원클릭 입력값으로 정리"""
+    fill = _parse_registration(reg_data, params.get("identity", ""))
+    got = ["사업자등록증명"] if fill else []
+    missing = []
+    # 다른 서류(부가세과세표준증명·납세증명서·재무제표)는 개발가이드 확인 후 같은 id로 이어서 조회한다
+    for key, label in (("vat", "부가세과세표준증명"), ("tax_payment", "납세증명서"), ("financial", "재무제표")):
+        if not CODEF_HOMETAX_PRODUCTS.get(key):
+            missing.append(label)
+    return {"status": "done", "fill": fill, "got": got, "pending": missing}
+
+
 class HometaxLimitBody(BaseModel):
     input: dict
     consume: bool = False     # True = 새 분석(이용 횟수 기록), False = 분석이력 다시 보기
