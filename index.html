@@ -340,6 +340,10 @@
   .plan-price { font-size:22px; font-weight:700; letter-spacing:-0.02em; }
   .plan-price small { font-size:12px; font-weight:500; color:var(--text2); margin-left:2px; }
   .plan-seats { font-size:13px; color:var(--text2); margin-top:6px; }
+  .plan-cycle { display:inline-flex; background:var(--bg2, #f1f3f6); border:1px solid var(--border); border-radius:999px; padding:3px; gap:2px; }
+  .plan-cycle button { border:none; background:transparent; font-size:13px; font-weight:600; color:var(--text2); padding:6px 14px; border-radius:999px; cursor:pointer; white-space:nowrap; }
+  .plan-cycle button.on { background:var(--surface); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.12); }
+  .plan-cycle .cyc-off { color:#e5267a; font-size:11.5px; font-weight:700; margin-left:2px; }
   .plan-feats { margin:8px 0 0; padding-left:17px; font-size:12.5px; color:var(--text2); line-height:1.7; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
   .fa-lock-body { position: relative; }
@@ -1566,7 +1570,7 @@
         <span class="badge safe" id="sub-cur-badge"></span>
       </div>
       <div class="diag-list" style="display:flex;flex-direction:column;gap:8px;margin-top:1rem;">
-        <div class="diag-item"><div><div class="di-label">월 결제금액</div></div><span id="sub-cur-amount" style="font-size:14px;font-weight:500;"></span></div>
+        <div class="diag-item"><div><div class="di-label" id="sub-cur-amount-label">월 결제금액</div></div><span id="sub-cur-amount" style="font-size:14px;font-weight:500;"></span></div>
         <div class="diag-item"><div><div class="di-label" id="sub-cur-date-label">다음 결제일</div></div><span id="sub-cur-date" style="font-size:14px;font-weight:500;"></span></div>
         <div class="diag-item"><div><div class="di-label">사용자 수</div></div><span id="sub-cur-seats" style="font-size:14px;font-weight:500;"></span></div>
       </div>
@@ -1597,7 +1601,10 @@
     <!-- 구독 신청 -->
     <div id="sub-buy-wrap" class="hidden">
       <div class="card">
-        <div class="card-title">구독 요금제</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <div class="card-title" style="margin:0;">구독 요금제</div>
+          <div class="plan-cycle" id="plan-cycle" style="display:none;"></div>
+        </div>
         <div class="plan-grid" id="plan-grid"></div>
         <ul class="plan-common">
           <li><strong>월 분석 횟수 제한 없음</strong> · 인증 한 번으로 자동 입력</li>
@@ -1609,7 +1616,7 @@
 
       <div class="card" style="font-size:12px;color:var(--text2);line-height:1.75;">
         <div style="font-weight:600;color:var(--text);margin-bottom:.4rem;">정기결제(자동결제) 안내</div>
-        · 구독을 시작하면 등록하신 카드로 <strong id="sub-notice-first">선택한 요금제</strong>가 <strong>즉시 결제</strong>되고, 이후 <strong>매월 같은 날 자동 결제</strong>됩니다.<br>
+        · 구독을 시작하면 등록하신 카드로 <strong id="sub-notice-first">선택한 요금제</strong>가 <strong>즉시 결제</strong>되고, 이후 <strong id="sub-notice-every">매월 같은 날 자동 결제</strong>됩니다.<br>
         · 구독은 이 화면에서 <strong>언제든 해지</strong>할 수 있으며, 해지하면 이미 결제한 이용기간 종료일까지 이용할 수 있고 그 이후에는 결제되지 않습니다.<br>
         · 결제 후 분석을 <strong>1회 이상 이용하면 환불 및 부분환불이 불가</strong>합니다. 자세한 내용은 <a href="#" onclick="showPage('terms')" style="color:var(--accent);">이용약관</a> 제4조를 확인해주세요.<br>
         · 카드는 결제대행사(포트원·KPN)에 등록되며 피나 서버에는 카드번호가 저장되지 않습니다.
@@ -1644,17 +1651,17 @@
       <br/>
       <p><strong>제2조 (구독 요금제)</strong><br/>
       ① 서비스는 월 단위 구독(정기결제) 방식으로 제공되며, 월 분석 횟수는 제한하지 않습니다(제7조의 공정사용 원칙 적용).<br/>
-      &nbsp;&nbsp;· Basic: 사용자 1명, <strong>월 39,900원</strong> — 처음 분석한 사업자 1곳에 한해 분석할 수 있으며, 예상 한도와 신청 가능 기관을 제공합니다(기관별 예상 금액·해당 자금 정보 제외).<br/>
-      &nbsp;&nbsp;· Pro: 사용자 1명, <strong>월 399,000원</strong> — 분석할 수 있는 업체 수에 제한이 없으며, 기관별 예상 금액과 해당 자금 정보를 함께 제공합니다.<br/>
+      &nbsp;&nbsp;· Basic: 사용자 1명, <strong>월 39,900원</strong>(연간 구독 시 월 29,000원, 연 348,000원 일시 결제) — 처음 분석한 사업자 1곳에 한해 분석할 수 있으며, 예상 한도와 신청 가능 기관을 제공합니다(기관별 예상 금액·해당 자금 정보 제외).<br/>
+      &nbsp;&nbsp;· Pro: 사용자 1명, <strong>월 399,000원</strong>(연간 구독 시 월 330,000원, 연 3,960,000원 일시 결제) — 분석할 수 있는 업체 수에 제한이 없으며, 기관별 예상 금액과 해당 자금 정보를 함께 제공합니다.<br/>
       &nbsp;&nbsp;· 이전 요금제(피나 구독, 월 59,000원)를 이용 중인 회원은 해지 전까지 같은 금액으로 Pro와 같은 내용을 이용할 수 있습니다.<br/>
-      ② 표시된 금액은 부가가치세를 포함한 금액이며, 매월 같은 금액이 결제됩니다. Basic의 분석 대상 사업자 변경은 [문의하기]로 요청할 수 있습니다.<br/>
+      ② 표시된 금액은 부가가치세를 포함한 금액이며, 월간 구독은 매월, 연간 구독은 매년 같은 금액이 결제됩니다. Basic의 분석 대상 사업자 변경은 [문의하기]로 요청할 수 있습니다.<br/>
       ③ 할인가는 회사의 정책에 따라 변경될 수 있으며, 변경하는 경우 제3조 ④에 따라 사전에 안내합니다.<br/>
       ④ 사용자 수에는 요금제를 결제한 대표 계정이 포함되며, 팀 초대는 초대받은 회원이 수락하여 팀에 합류한 시점에 사용자 수에 포함됩니다. 요금제의 사용자 수를 초과하여 합류할 수 없습니다.<br/>
       ⑤ 요금제 변경이 필요한 경우 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.<br/>
       ⑥ 구독하지 않은 회원도 매월 30회까지 무료로 분석할 수 있으며, 이 경우 분석 결과의 일부(기업 정보·종합 요약 등)만 제공되고 예상 한도·신청 가능 기관 등 나머지 결과는 구독 후 확인할 수 있습니다.</p>
       <br/>
       <p><strong>제3조 (결제 및 자동결제)</strong><br/>
-      ① 구독을 시작하면 선택한 요금제의 첫 달 요금이 즉시 결제되고, 이후 이용기간이 끝나는 날(최초 결제일과 같은 날짜)에 매월 등록된 카드로 자동 결제됩니다. 해당 월에 같은 날짜가 없는 경우 그 달의 말일에 결제됩니다.<br/>
+      ① 구독을 시작하면 선택한 요금제의 첫 이용기간 요금(월간 구독은 1개월분, 연간 구독은 1년분)이 즉시 결제되고, 이후 이용기간이 끝나는 날(최초 결제일과 같은 날짜)에 월간 구독은 매월, 연간 구독은 매년 등록된 카드로 자동 결제됩니다. 해당 월에 같은 날짜가 없는 경우 그 달의 말일에 결제됩니다.<br/>
       ② 이용자는 구독 시작 시 자동결제 내용을 확인하고 동의한 것으로 하며, 카드 정보는 결제대행사(포트원·한국결제네트웍스)에 등록되고 회사의 서버에는 카드번호를 저장하지 않습니다.<br/>
       ③ 자동결제가 카드 한도 초과·유효기간 만료·잔액 부족 등으로 실패하면 회사는 일정 간격으로 최대 3회 재결제를 시도하며, 일정 유예기간 동안은 서비스를 계속 이용할 수 있습니다. 재결제까지 모두 실패하면 구독이 종료되고 서비스 이용이 제한됩니다. 카드 정보 변경이 필요한 경우 [문의하기]로 요청해 주시기 바랍니다.<br/>
       ④ 회사가 요금을 변경하는 경우 변경 적용일 30일 전까지 서비스 화면 또는 이메일로 안내하며, 변경된 요금은 다음 결제부터 적용됩니다. 요금 변경에 동의하지 않는 이용자는 적용일 전까지 구독을 해지할 수 있습니다.<br/>
@@ -7441,7 +7448,8 @@ function renderSubscription(d) {
 
 function renderCurrentSubscription(sub) {
   document.getElementById("sub-cur-name").textContent = sub.plan_label;
-  document.getElementById("sub-cur-amount").textContent = "월 " + won(sub.amount);
+  document.getElementById("sub-cur-amount").textContent = (sub.cycle === "year" ? "연 " : "월 ") + won(sub.amount);
+  document.getElementById("sub-cur-amount-label").textContent = sub.cycle === "year" ? "연 결제금액 (연간 구독)" : "월 결제금액";
   document.getElementById("sub-cur-seats").textContent = sub.seats + "명";
   const badge = document.getElementById("sub-cur-badge");
   const msg = document.getElementById("sub-cur-msg");
@@ -7476,21 +7484,38 @@ function renderCurrentSubscription(sub) {
   }
 }
 
+let subCycle = "month";     // month / year — 구독 화면 스위치
+function htYearOff(p) { return p.year_month ? Math.floor((1 - p.year_month / p.price) * 100) : 0; }
+function setSubCycle(c) {
+  subCycle = c === "year" ? "year" : "month";
+  renderPlanCards(subState && subState.plans);
+}
 function renderPlanCards(plans) {
   const grid = document.getElementById("plan-grid");
   plans = plans || [];
   if (plans.length === 1 && !selectedPlan) selectedPlan = plans[0].id;   // 요금제가 하나면 바로 선택
+  // 월간/연간 스위치
+  const sw = document.getElementById("plan-cycle");
+  const maxOff = Math.max(0, ...plans.map(htYearOff));
+  if (sw) {
+    sw.style.display = plans.some(p => p.year_month) ? "" : "none";
+    sw.innerHTML = `<button type="button" class="${subCycle === "month" ? "on" : ""}" onclick="setSubCycle('month')">월간</button>
+      <button type="button" class="${subCycle === "year" ? "on" : ""}" onclick="setSubCycle('year')">연간${maxOff ? ` <span class="cyc-off">최대 ${maxOff}% 할인</span>` : ""}</button>`;
+  }
   grid.innerHTML = plans.map(p => {
     const per = p.seats > 1 ? `1인당 월 ${won(Math.round(p.price / p.seats))}` : "";
-    const listPrice = p.list_price || (p.id === "starter" ? 330000 : 0);   // 정가 (백엔드 값이 없을 때 대비)
-    const disc = listPrice > p.price;
-    const offPct = disc ? Math.floor((1 - p.price / listPrice) * 100) : 0;
+    const year = subCycle === "year" && p.year_month;
+    const listPrice = year ? p.price : (p.list_price || (p.id === "starter" ? 330000 : 0));   // 정가 (백엔드 값이 없을 때 대비)
+    const monthly = year ? p.year_month : p.price;
+    const disc = listPrice > monthly;
+    const offPct = disc ? Math.floor((1 - monthly / listPrice) * 100) : 0;
     return `<div class="plan-card${selectedPlan === p.id ? " selected" : ""}" data-plan="${p.id}" onclick="selectPlan('${p.id}')">
-      <div class="plan-badge"${disc || p.tier ? '' : ' style="visibility:hidden"'}>${disc ? "특별 할인가" : p.tier === "pro" ? "컨설턴트" : p.tier === "basic" ? "사장님" : "추천"}</div>
+      ${disc && !year ? `<div class="plan-badge">특별 할인가</div>` : ""}
       <div class="plan-name">${escapeHtml(p.label)}</div>
-      ${disc ? `<div class="plan-was">정가 ${won(listPrice)}/월</div>` : ''}
-      <div class="plan-price">${won(p.price)}<small>/월</small></div>
-      ${disc ? `<div class="plan-save"><span class="off">${offPct}% 할인</span><span class="won">매월 ${won(listPrice - p.price)} 절약</span></div>` : ''}
+      ${disc ? `<div class="plan-was">${year ? "" : "정가 "}${won(listPrice)}/월</div>` : ''}
+      <div class="plan-price">${won(monthly)}<small>/월${year ? ", 연간 결제" : ""}</small></div>
+      ${year ? `<div class="plan-per">연 ${won(p.year_price)} 한 번에 결제</div>` : ""}
+      ${disc ? `<div class="plan-save"><span class="off">${offPct}% 할인</span><span class="won">${year ? `매년 ${won((listPrice - monthly) * 12)}` : `매월 ${won(listPrice - monthly)}`} 절약</span></div>` : ''}
       ${p.desc ? `<div class="plan-seats" style="font-weight:600;color:var(--text);">${escapeHtml(p.desc)}</div>` : ''}
       ${(p.features || []).length ? `<ul class="plan-feats">${p.features.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : `<div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>`}
       ${per ? `<div class="plan-per">${per}</div>` : ''}
@@ -7505,14 +7530,23 @@ function selectPlan(id) {
   updateSubButton();
 }
 
+// 선택한 요금제의 결제 1회 금액·문구
+function htSubCharge(plan) {
+  const year = subCycle === "year" && plan.year_month;
+  return { cycle: year ? "year" : "month", amount: year ? plan.year_price : plan.price, text: year ? `연 ${won(plan.year_price)}` : `월 ${won(plan.price)}` };
+}
+
 function updateSubButton() {
   const btn = document.getElementById("subBtn");
   if (!btn) return;
   const plan = subState && subState.plans ? subState.plans.find(p => p.id === selectedPlan) : null;
   const agreed = document.getElementById("sub-agree").checked;
-  document.getElementById("sub-notice-first").textContent = plan ? `${plan.label} 요금제 월 ${won(plan.price)}` : "선택한 요금제";
+  const ch = plan ? htSubCharge(plan) : null;
+  document.getElementById("sub-notice-first").textContent = plan ? `${plan.label} 요금제 ${ch.text}` : "선택한 요금제";
+  const every = document.getElementById("sub-notice-every");
+  if (every) every.textContent = ch && ch.cycle === "year" ? "매년 같은 날 자동 결제" : "매월 같은 날 자동 결제";
   if (!plan) { btn.textContent = "요금제를 선택하세요"; btn.disabled = true; return; }
-  btn.textContent = `${plan.label} · 월 ${won(plan.price)} 구독 시작하기 →`;
+  btn.textContent = `${plan.label} · ${ch.text} 구독 시작하기 →`;
   btn.disabled = !agreed;
 }
 
@@ -7547,7 +7581,7 @@ async function startSubscription() {
   btn.disabled = true; btn.textContent = "카드 등록 창을 여는 중...";
   try {
     if (!(await ensurePortOne())) return;
-    try { localStorage.setItem("fa_pending_sub", JSON.stringify({ plan: plan.id, ts: Date.now() })); } catch (e) {}
+    try { localStorage.setItem("fa_pending_sub", JSON.stringify({ plan: plan.id, cycle: htSubCharge(plan).cycle, ts: Date.now() })); } catch (e) {}
     const issueId = "BK" + Date.now() + Math.random().toString(36).slice(2, 7).toUpperCase();
     const res = await window.PortOne.requestIssueBillingKey({
       storeId: PORTONE_STORE_ID,
@@ -7563,7 +7597,7 @@ async function startSubscription() {
       if (res.code !== "USER_CANCEL" && !/cancel/i.test(res.code)) alertError("카드 등록 실패: " + (res.message || res.code));
       return;
     }
-    await finishSubscription(res.billingKey, plan.id);
+    await finishSubscription(res.billingKey, plan.id, htSubCharge(plan).cycle);
   } catch (e) {
     alertError("카드 등록 중 오류: " + e.message);
   } finally {
@@ -7573,11 +7607,11 @@ async function startSubscription() {
 }
 
 // 빌링키를 서버에 보내 첫 결제 + 구독 시작
-async function finishSubscription(billingKey, planId) {
+async function finishSubscription(billingKey, planId, cycle) {
   const btn = document.getElementById("subBtn");
   if (btn) { btn.disabled = true; btn.textContent = "결제 중... 창을 닫지 마세요"; }
   try {
-    await api("POST", "/subscription/start", { plan: planId, billing_key: billingKey });
+    await api("POST", "/subscription/start", { plan: planId, billing_key: billingKey, cycle: cycle === "year" ? "year" : "month" });
     try { localStorage.removeItem("fa_pending_sub"); } catch (e) {}
     userHasSub = true;
     updateCreditBadges();
@@ -7610,7 +7644,7 @@ async function handleBillingCallback() {
     alertError("카드 등록 결과를 확인하지 못했습니다. 다시 시도해주세요.");
     return;
   }
-  await finishSubscription(billingKey, pending.plan);
+  await finishSubscription(billingKey, pending.plan, pending.cycle);
 }
 
 async function cancelSubscription() {

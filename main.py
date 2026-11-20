@@ -41,6 +41,7 @@ def run_auto_migration():
         "terms_agreed_at": "TIMESTAMP",
         "nickname": "VARCHAR DEFAULT ''",
     })
+    add_missing_columns("subscriptions", {"cycle": "VARCHAR DEFAULT 'month'"})
     add_missing_columns("teams", {"plan_expires_at": "TIMESTAMP", "basic_biz": "VARCHAR DEFAULT ''"})
     # 커뮤니티 글/댓글 수정 기능을 위한 updated_at 컬럼 추가
     add_missing_columns("community_posts", {"updated_at": "TIMESTAMP"})
@@ -138,10 +139,11 @@ CREDIT_PACKAGES = {
 # list_price = 정가(할인 표시용). hidden = 새로 가입은 받지 않는 이전 요금제(기존 팀·관리자 부여용으로만 유지)
 # tier: "basic" = 소상공인용(본인 사업자 1개, 예상한도 + 기관명만) / "pro" = 컨설턴트용(전체 결과)
 SUBSCRIPTION_PLANS = {
-    "basic":    {"label": "Basic",     "seats": 1,  "price": 39900,  "tier": "basic",
-                 "desc": "소상공인 사장님용", "features": ["내 사업자 1곳 분석", "총 예상한도 + 신청 가능 기관", "재신청 가능 시점 알림"]},
-    "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "tier": "pro",
-                 "desc": "컨설턴트용", "features": ["업체 수 제한 없이 분석", "기관별 예상 한도 + 해당 자금", "재신청 가능 시점 알림"]},
+    # year_month: 연간 구독 시 월 환산 금액 (연 결제금액 = year_month × 12)
+    "basic":    {"label": "Basic",     "seats": 1,  "price": 39900,  "year_month": 29000,  "tier": "basic",
+                 "desc": "소상공인 사장님용", "features": ["내 사업자 1곳 분석", "총 예상한도 + 신청 가능 기관", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
+    "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "year_month": 330000, "tier": "pro",
+                 "desc": "컨설턴트용", "features": ["업체 수 제한 없이 분석", "기관별 예상 한도 + 해당 자금", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
     "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 330000, "tier": "pro", "hidden": True},   # 이전 요금제 — 기존 구독자는 Pro와 같은 권한
     "standard": {"label": "스탠다드",  "seats": 3,  "price": 550000, "tier": "pro", "hidden": True},
     "pro":      {"label": "프로",      "seats": 10, "price": 1100000, "tier": "pro", "hidden": True},
@@ -149,6 +151,7 @@ SUBSCRIPTION_PLANS = {
 
 def _public_plans():
     return [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"], "list_price": v.get("list_price"),
+             "year_month": v.get("year_month"), "year_price": v["year_month"] * 12 if v.get("year_month") else None,
              "tier": v.get("tier", "pro"), "desc": v.get("desc", ""), "features": v.get("features", [])}
             for k, v in SUBSCRIPTION_PLANS.items() if not v.get("hidden")]
 TEAM_INVITE_VALID_DAYS = 14   # 초대 유효기간 (지나면 수락 불가)
@@ -5799,20 +5802,35 @@ def sub_add_month(dt: datetime, anchor_day: int) -> datetime:
     d = min(anchor_day or dt.day, calendar.monthrange(y, m)[1])
     return dt.replace(year=y, month=m, day=d)
 
+def sub_add_period(dt: datetime, anchor_day: int, cycle: str = "month") -> datetime:
+    """다음 결제 시각 — 월간은 다음 달 같은 날, 연간은 내년 같은 날(2/29 → 2/28)"""
+    if cycle == "year":
+        import calendar
+        y = dt.year + 1
+        return dt.replace(year=y, day=min(dt.day, calendar.monthrange(y, dt.month)[1]))
+    return sub_add_month(dt, anchor_day)
+
+def sub_cycle_amount(plan: dict, cycle: str) -> int:
+    """결제 1회 금액 — 월간은 월 요금, 연간은 월 환산 금액 × 12"""
+    if cycle == "year" and plan.get("year_month"):
+        return int(plan["year_month"]) * 12
+    return int(plan["price"])
+
 def _sub_customer(user) -> dict:
     name = (user.rep_name or user.company_name or user.nickname or "피나회원").strip()
     return {"id": f"fa-{user.id}", "name": {"full": name}, "email": user.email}
 
-def _sub_order_name(plan_id: str) -> str:
+def _sub_order_name(plan_id: str, cycle: str = "month") -> str:
     label = SUBSCRIPTION_PLANS[plan_id]['label']
-    return f"{label} 월 구독" if label.startswith("피나") else f"피나 {label} 월 구독"
+    kind = "연 구독" if cycle == "year" else "월 구독"
+    return f"{label} {kind}" if label.startswith("피나") else f"피나 {label} {kind}"
 
-def _sub_charge(billing_key: str, payment_id: str, plan_id: str, amount: int, user):
+def _sub_charge(billing_key: str, payment_id: str, plan_id: str, amount: int, user, cycle: str = "month"):
     """빌링키로 즉시 결제 후, 포트원 조회로 PAID·금액을 확인. (성공여부, 결제정보 또는 오류메시지)"""
     st, data = _pt_call("POST", f"/payments/{_urlquote(payment_id, safe='')}/billing-key", {
         "storeId": PORTONE_STORE_ID,
         "billingKey": billing_key,
-        "orderName": _sub_order_name(plan_id),
+        "orderName": _sub_order_name(plan_id, cycle),
         "customer": _sub_customer(user),
         "amount": {"total": amount},
         "currency": "KRW",
@@ -5836,7 +5854,7 @@ def _sub_schedule(sub, user, when: datetime) -> str:
         "payment": {
             "storeId": PORTONE_STORE_ID,
             "billingKey": sub.billing_key,
-            "orderName": _sub_order_name(sub.plan),
+            "orderName": _sub_order_name(sub.plan, sub.cycle or "month"),
             "customer": _sub_customer(user),
             "amount": {"total": sub.amount},
             "currency": "KRW",
@@ -5911,7 +5929,7 @@ def _sub_try_renew(db: Session, sub, owner, now: datetime) -> bool:
         if sub.last_failed_at and now - sub.last_failed_at < timedelta(hours=SUB_RETRY_GAP_HOURS):
             return False
         pid = _new_sub_payment_id()
-        ok, info = _sub_charge(sub.billing_key, pid, sub.plan, sub.amount, owner)
+        ok, info = _sub_charge(sub.billing_key, pid, sub.plan, sub.amount, owner, sub.cycle or "month")
         if not ok:
             sub.fail_count = (sub.fail_count or 0) + 1
             sub.last_failed_at = now
@@ -5927,7 +5945,7 @@ def _sub_try_renew(db: Session, sub, owner, now: datetime) -> bool:
     _sub_record_payment(db, sub.user_id, paid_id, sub.amount, sub.plan, pg_tx)
     old_end = sub.period_end
     sub.period_start = old_end
-    sub.period_end = sub_add_month(old_end, sub.anchor_day)
+    sub.period_end = sub_add_period(old_end, sub.anchor_day, sub.cycle or "month")
     sub.status = "active"
     sub.fail_count = 0
     sub.last_failed_at = None
@@ -6044,6 +6062,7 @@ def _sub_view(sub) -> dict:
         "seats": plan.get("seats", 0),
         "status": sub.status,
         "amount": sub.amount,
+        "cycle": sub.cycle or "month",
         "period_start": sub.period_start.isoformat() if sub.period_start else None,
         "period_end": sub.period_end.isoformat() if sub.period_end else None,
         "cancel_scheduled": sub.status == "cancel_scheduled",
@@ -6080,6 +6099,7 @@ def subscription_me(user: models.User = Depends(get_current_user), db: Session =
 class SubscriptionStartBody(BaseModel):
     plan: str
     billing_key: str
+    cycle: str = "month"      # month / year
 
 @app.post("/subscription/start")
 def subscription_start(body: SubscriptionStartBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -6100,10 +6120,12 @@ def subscription_start(body: SubscriptionStartBody, user: models.User = Depends(
     if user.id in _SUB_BUSY:
         raise HTTPException(status_code=409, detail="처리 중입니다. 잠시 후 다시 확인해주세요.")
 
+    cycle = "year" if (body.cycle == "year" and plan.get("year_month")) else "month"
+    amount = sub_cycle_amount(plan, cycle)
     _SUB_BUSY.add(user.id)
     try:
         pid = _new_sub_payment_id()
-        ok, info = _sub_charge(billing_key, pid, body.plan, plan["price"], user)
+        ok, info = _sub_charge(billing_key, pid, body.plan, amount, user, cycle)
         if not ok:
             _pt_call("DELETE", f"/billing-keys/{_urlquote(billing_key, safe='')}")   # 결제 안 된 빌링키는 정리
             raise HTTPException(status_code=400, detail=f"결제에 실패했습니다: {info}")
@@ -6114,10 +6136,11 @@ def subscription_start(body: SubscriptionStartBody, user: models.User = Depends(
             sub.plan = body.plan
             sub.status = "active"
             sub.billing_key = billing_key
-            sub.amount = plan["price"]
+            sub.amount = amount
+            sub.cycle = cycle
             sub.anchor_day = now.day
             sub.period_start = now
-            sub.period_end = sub_add_month(now, now.day)
+            sub.period_end = sub_add_period(now, now.day, cycle)
             sub.last_payment_id = pid
             sub.fail_count = 0
             sub.last_failed_at = None
@@ -6126,7 +6149,7 @@ def subscription_start(body: SubscriptionStartBody, user: models.User = Depends(
             sub.next_payment_id = ""
             if not existing:
                 db.add(sub)
-            _sub_record_payment(db, user.id, pid, plan["price"], body.plan, info.get("pgTxId", ""))
+            _sub_record_payment(db, user.id, pid, amount, body.plan, info.get("pgTxId", ""))
             db.commit()
             sub.next_payment_id = _sub_schedule(sub, user, sub.period_end)
             db.commit()
@@ -6135,12 +6158,12 @@ def subscription_start(body: SubscriptionStartBody, user: models.User = Depends(
             raise
         except Exception as e:
             db.rollback()
-            notify_admin(f"[피나] 구독 결제는 되었으나 기록 실패 — {user.email}", f"결제번호 {pid}, 금액 {plan['price']}원, 플랜 {body.plan}. DB 기록 중 오류: {e}\n포트원 콘솔에서 확인 후 수동 처리가 필요합니다.")
+            notify_admin(f"[피나] 구독 결제는 되었으나 기록 실패 — {user.email}", f"결제번호 {pid}, 금액 {amount}원, 플랜 {body.plan}({cycle}). DB 기록 중 오류: {e}\n포트원 콘솔에서 확인 후 수동 처리가 필요합니다.")
             raise HTTPException(status_code=500, detail=f"결제는 완료되었으나 처리 중 오류가 발생했습니다. 결제번호 {pid} 로 문의해주세요.")
     finally:
         _SUB_BUSY.discard(user.id)
 
-    notify_admin(f"[피나] 새 구독 시작 — {user.email}", f"{user.email} ({user.company_name}) 님이 {plan['label']} 구독을 시작했습니다. 월 {plan['price']:,}원 / 결제번호 {pid}")
+    notify_admin(f"[피나] 새 구독 시작 — {user.email}", f"{user.email} ({user.company_name}) 님이 {plan['label']} {'연간' if cycle == 'year' else '월간'} 구독을 시작했습니다. {'연' if cycle == 'year' else '월'} {amount:,}원 / 결제번호 {pid}")
     db.refresh(sub)
     return {"message": "구독이 시작되었습니다.", "subscription": _sub_view(sub)}
 

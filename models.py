@@ -179,7 +179,8 @@ class Subscription(Base):
     plan                = Column(String, default="")        # starter / standard / pro
     status              = Column(String, default="active")
     billing_key         = Column(String, default="")        # 포트원 빌링키 (카드 등록 정보 — 외부에 노출 금지)
-    amount              = Column(Integer, default=0)        # 월 결제금액
+    amount              = Column(Integer, default=0)        # 결제 1회 금액 (월간 = 월 요금, 연간 = 1년치)
+    cycle               = Column(String, default="month")   # month(월간) / year(연간)
     anchor_day          = Column(Integer, default=1)        # 매월 결제일(처음 결제한 날의 '일')
     period_start        = Column(DateTime, nullable=True)   # 현재 이용기간 시작 (UTC)
     period_end          = Column(DateTime, nullable=True)   # 현재 이용기간 끝 = 다음 결제 시각 (UTC)
