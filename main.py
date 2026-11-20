@@ -961,6 +961,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
+#  · 대출 후 부채비율 상한: 신보·기보 550%, 소진공 700%·중진공 업종별(업력 7년 이상만) → 기관 한도 ≤ 자본×기준 − 현재 부채
 #  · 완전자본잠식: 소진공(업력 7년 이상)·재단 불가, 중진공은 업력 5년 초과 + 당기 적자(모르면 적자로 봄)면 불가, 신보·기보 불가
 #  · 신용점수(NICE, 없으면 KCB) 700 미만이면 한도는 줄이고(신용 조정), 종합 평가에 '금융거래가 어려울 수 있음' 안내
 #  · 청년 대표(만 39세 이하) 50%는 소진공·재단·신보만 — 중진공·기보는 30%
@@ -1177,6 +1178,7 @@ def ht_limit_context(inp, today=None):
     fin = inp.get("fin") or None
     eroded = False
     debt_ratio = None
+    equity = liab = None
     net_income = _ht_num((fin or {}).get("net_income")) if fin else None
     if fin:
         a, li = _ht_num(fin.get("assets")), _ht_num(fin.get("liabilities"))
@@ -1184,6 +1186,7 @@ def ht_limit_context(inp, today=None):
             eroded = (a - li) <= 0
             if not eroded:
                 debt_ratio = li / (a - li) * 100
+                equity, liab = a - li, li
     loans = [l for l in (inp.get("loans") or []) if isinstance(l, dict) and (l.get("org") or l.get("date") or _ht_num(l.get("amount")) is not None)]
     cr = inp.get("credit") or {}
     nice, kcb = _ht_num(cr.get("nice")), _ht_num(cr.get("kcb"))
@@ -1194,7 +1197,7 @@ def ht_limit_context(inp, today=None):
         if mo >= 0: months = mo
     return {"vat_latest": vat_latest["vat"] if vat_latest else None, "ytd_annual": ytd_annual, "eroded": eroded,
             "loans": loans, "nice": nice, "kcb": kcb, "credit_score": nice if nice is not None else kcb, "biz_age_months": months,
-            "debt_ratio": debt_ratio, "net_income": net_income}
+            "debt_ratio": debt_ratio, "net_income": net_income, "equity": equity, "liabilities": liab}
 
 
 def ht_estimate_limit(inp, today=None):
@@ -1301,6 +1304,31 @@ def ht_estimate_limit(inp, today=None):
         block("jaedan")
     if dr is not None and dr > 550:
         block("kodit"); block("kibo")
+    # 대출 후에도 기관 부채비율 기준을 넘지 않는 금액까지만 (대출금만큼 부채 증가, 자본은 그대로)
+    #   최대 = 자본 × 기준비율 − 현재 부채
+    capped = False
+    E, Lb = ctx["equity"], ctx["liabilities"]
+    if E is not None and Lb is not None and E > 0:
+        lim = {"kodit": 550.0, "kibo": 550.0}
+        if mature:
+            lim["sojin"] = 700.0
+            if not _ht_simple_book(inp, sales) and "협동조합" not in _ht_s(inp.get("company_name")):
+                lim["jungjin"] = _jj_dr_limit(inp)
+        for o in orgs:
+            r_ = lim.get(o["key"])
+            if r_ is None or o["status"] != "ok":
+                continue
+            room = max(0, E * r_ / 100 - Lb)
+            if room >= o["high"]:
+                continue
+            hi = _fund_round(room) if o["key"] in ("kodit", "kibo") else floor_u(room)
+            capped = True
+            if hi < R["minAmount"]:
+                o["status"] = "exhausted"; o["low"] = 0; o["high"] = 0
+                continue
+            lo = min(o["low"], hi)
+            if lo == hi and hi >= 200000000: lo = hi - 100000000
+            o["low"], o["high"] = max(lo, R["minAmount"]), hi
 
     kcb, nice = ctx["kcb"], ctx["nice"]
     miso_ok = (kcb is not None and kcb <= R["misoKcb"]) or (nice is not None and nice <= R["misoNice"])
@@ -1326,14 +1354,16 @@ def ht_estimate_limit(inp, today=None):
     # 총 예상한도 최대 10억 (기대출은 이 안에서 차감)
     t_per = per if any(o["status"] == "ok" and o["key"] in ("sojin", "jaedan", "kodit") for o in orgs) else per_std
     t_low = max(0, min(floor_u(t_per["low"] * tf), R["totalMax"]) - loan_sum); t_high = max(0, min(floor_u(t_per["high"] * tf), R["totalMax"]) - loan_sum)
-    if any(o["status"] == "blocked" for o in orgs):
+    if capped or any(o["status"] in ("blocked", "exhausted") for o in orgs):
         okd = {o["key"]: o for o in orgs if o["status"] == "ok"}
+        if not okd and not any(o["status"] == "blocked" for o in orgs):
+            return {**base, "status": "low", "low": 0, "high": 0, "text": "부채 규모가 커 추가 한도 여력이 부족합니다." if capped else "기대출이 많아 추가 한도 여력이 부족합니다."}
         if not okd:
             return {**base, "status": "blocked", "low": 0, "high": 0, "text": "완전자본잠식 상태라 현재는 신청이 어렵습니다." if ctx["eroded"] else "현재 재무 상태로는 신청 가능한 기관이 없습니다."}
         grp = [okd[k] for k in ("jaedan", "kodit", "kibo") if k in okd]
         pick = [okd[k] for k in ("sojin", "jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
         t_low = min(t_low, sum(o["low"] for o in pick)); t_high = min(t_high, sum(o["high"] for o in pick))
-    if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "기대출이 많아 추가 한도 여력이 부족합니다."}
+    if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "부채 규모가 커 추가 한도 여력이 부족합니다." if capped else "기대출이 많아 추가 한도 여력이 부족합니다."}
     t_low = max(t_low, R["minAmount"])
     if t_low == t_high and t_high >= 200000000: t_low = t_high - 100000000                       # 한 금액이면 1억 아래까지 범위로
     return {**base, "status": "ok", "low": t_low, "high": t_high, "text": ""}
