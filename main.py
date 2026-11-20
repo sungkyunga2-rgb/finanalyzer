@@ -1045,8 +1045,8 @@ def _ht_small_sales_cap(inp):
 
 
 def _ht_semas_grad(inp, ys, sales=None):
-    """소상공인 졸업후보기업 — 평균매출액이 소기업 기준의 30% 이상 + 상시근로자가 소상공인 상한보다 1~2명 적음"""
-    emp = _ht_num(inp.get("employees"))
+    """소상공인 졸업후보기업 — 평균매출액이 소기업 기준의 30% 이상 + 상시근로자(매월 말일 평균)가 소상공인 상한보다 최대 2명 적음"""
+    emp = _ht_emp_avg(inp)
     if emp is None:
         return False
     lim = 10 if _re.search(r"제조|건설|운수|광업", _ht_ind_text(inp)) else 5
@@ -1262,8 +1262,14 @@ def _ht_ind_text(inp):
     return " ".join(_ht_s(inp.get(k)) for k in ("industry", "item", "industry2", "item2") if _ht_s(inp.get(k))).strip()
 
 
+def _ht_emp_avg(inp):
+    """상시근로자 수 — 매월 말일 인원 평균(산정 기준)이 있으면 그것, 없으면 직원 수"""
+    v = _ht_num(inp.get("emp_avg"))
+    return v if v is not None else _ht_num(inp.get("employees"))
+
+
 def _ht_small_biz(inp):
-    emp = _ht_num(inp.get("employees"))
+    emp = _ht_emp_avg(inp)
     if emp is None:
         return True
     mfg = bool(_re.search(r"제조|건설|운수|광업", _ht_ind_text(inp)))
@@ -1717,6 +1723,116 @@ def _wh_body(now):
     """원천징수이행상황신고서 — 최근 1년 신고분(신고일 기준 최대 1년)"""
     st_ = (now - timedelta(days=364)).strftime("%Y%m%d")
     return {"organization": "0005", "startDate": st_, "endDate": now.strftime("%Y%m%d"), "inquiryType": "0", "infoViewYn": "0"}
+
+
+def _emp_month_ends(today, founded=None):
+    """상시근로자 수 산정 기준일들 (소상공인기본법 시행령 — 매월 말일)
+    · 직전 사업연도가 12개월 이상: 직전 사업연도 1~12월 말일
+    · 창업 12개월 이상(직전 사업연도 12개월 미만): 이번 달부터 거꾸로 12개월
+    · 창업 12개월 미만: 창업한 달부터 이번 달까지 / 이번 달 창업: 오늘
+    이번 달은 아직 말일이 안 됐으므로 오늘로 본다"""
+    if hasattr(today, "date"):
+        today = today.date()
+    def month_end(y, m):
+        if (y, m) == (today.year, today.month):
+            return today
+        return datetime(y + (m == 12), m % 12 + 1, 1).date() - timedelta(days=1)
+    fm = _re.match(r"^(\d{4})-(\d{1,2})", _ht_s(founded))
+    fy, fmo = (int(fm[1]), int(fm[2])) if fm else (None, None)
+    if fy is None or (fy, fmo) <= (today.year - 1, 1):
+        return [month_end(today.year - 1, m) for m in range(1, 13)]
+    gone = (today.year - fy) * 12 + today.month - fmo           # 창업 후 지난 개월 수
+    if gone <= 0:
+        return [today]
+    out, y, m = [], today.year, today.month
+    for _ in range(12 if gone >= 12 else gone + 1):
+        out.append(month_end(y, m))
+        y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+    return out[::-1]
+
+
+def _emp_avg_spans(spans, today, founded=None):
+    """[(입사일, 퇴사일 또는 None)] (date) → 상시근로자 수(매월 말일 인원의 평균, 소수 1자리)"""
+    ends = _emp_month_ends(today, founded)
+    tot = sum(sum(1 for a, l in spans if a and a <= d and (l is None or l > d)) for d in ends)
+    return round(tot / len(ends), 1) if ends else None
+
+
+def _d8(v):
+    v = _re2.sub(r"\D", "", str(v or ""))[:8]
+    try:
+        return datetime(int(v[:4]), int(v[4:6]), int(v[6:8])).date() if len(v) == 8 else None
+    except ValueError:
+        return None
+
+
+def _emp_spans(data):
+    """근로자고용정보현황 → [(입사일, 퇴사일)] 고용보험 기준(없으면 산재)"""
+    out, seen = [], set()
+    for r in _codef_rows(data, ("resUserNm",)):
+        key = (r.get("resUserNm"), r.get("resUserIdentiyNo"), r.get("resOriginalNumber"), r.get("resJoinCompanyDate1"), r.get("resJoinCompanyDate"))
+        if key in seen:
+            continue
+        seen.add(key)
+        j1 = _d8(r.get("resJoinCompanyDate1"))
+        j = j1 or _d8(r.get("resJoinCompanyDate"))
+        q = _d8(r.get("resResignDate1")) if j1 else _d8(r.get("resResignDate"))
+        if j:
+            out.append((j, q))
+    return out
+
+
+def _wh_months(data):
+    """원천징수이행상황신고서 → {귀속연월 'YYYYMM': 근로소득(A01) 인원}. 같은 달 수정신고가 있으면 나중 신고분"""
+    by = {}
+    for r in _codef_rows(data, ("resYearMonth",)):
+        if str(r.get("resIssueYN") or "1") == "0" or str(r.get("resDocumentType") or "0") not in ("0", ""):
+            continue
+        ym = _re2.sub(r"\D", "", str(r.get("resYearMonth") or ""))[:6]
+        if len(ym) != 6:
+            continue
+        lst = r.get("resTaxAmtSpecList") or []
+        lst = lst if isinstance(lst, list) else [lst]
+        n = 0
+        for it in lst:
+            if isinstance(it, dict) and str(it.get("resCodeNo") or "").upper() == "A01":
+                n = int(_codef_amt(it.get("resPersonnel")) or 0)
+                break
+        rd = str(r.get("resReportingDate") or "")
+        if ym not in by or rd >= by[ym][0]:
+            by[ym] = (rd, n)
+    return {k: v[1] for k, v in by.items()}
+
+
+def _wh_avg(data, today, founded=None):
+    """원천세 월별 인원 → 상시근로자 수. 산정 기간 중 절반 이상 신고분이 있으면 그 달들의 평균,
+    아니면(조회가 최근 1년까지라 직전 사업연도가 다 안 잡힐 때) 조회된 최근 12개월 평균"""
+    by = _wh_months(data)
+    if not by:
+        return None
+    want = [d.strftime("%Y%m") for d in _emp_month_ends(today, founded)]
+    have = [by[k] for k in want if k in by]
+    vals = have if len(have) * 2 >= len(want) else [by[k] for k in sorted(by)[-12:]]
+    return round(sum(vals) / len(vals), 1) if vals else None
+
+
+def _emp_fill_avg(fill, emp_datas, wh_datas, now):
+    """직원 수를 채웠으면 상시근로자 수(월말 평균)도 — 고용보험 입사·퇴사일 우선, 없으면 원천세 월별 인원"""
+    if fill.get("employees") is None:
+        return
+    fd = fill.get("founded")
+    av = None
+    for d in emp_datas:
+        sp = _safe(_emp_spans, d, default=[]) or []
+        if sp:
+            av = _emp_avg_spans(sp, now, fd)
+            break
+    if av is None:
+        av = next((v for v in (_safe(_wh_avg, d, now, fd) for d in wh_datas) if v is not None), None)
+    if av is None and fill.get("employees") == 0:
+        av = 0
+    if av is not None:
+        fill["emp_avg"] = av
 
 
 def _parse_withholding(data):
@@ -2217,6 +2333,7 @@ def _ht_assemble(st, now, final):
             failed.append("직원 수(고용보험) — 0명으로 채움")
     elif final:
         fill["employees_default"] = 0
+    _emp_fill_avg(fill, list(ok("employees")), list(ok("withholding")), now)
     dis = next((v for v in (_dis_result({"result": {"code": c, "message": m}, "data": d}) for c, d, m in R.get("disability", []) if c not in ("SKIP", "TIMEOUT")) if v is not None), None)
     if dis is not None:
         fill["rep_disabled"] = dis
@@ -2917,10 +3034,12 @@ async def _hometax_collect(params, reg_data, progress=None):
     elif corp:                                # 개인사업자는 재무제표가 없는 경우가 많아 안내하지 않음
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     # ③-2 원천징수이행상황신고서 — 근로소득 인원(직원 수)과 최근 1년 추세 (기관코드 0005, 사업자번호 필수)
-    wh_n = wh_tr = wh_df = None
+    wh_n = wh_tr = wh_df = wh_data = None
+    res = {}
     if bizno and params.get("loginType") == "0":
         data, err = await call("withholding", dict(_wh_body(now), identity=bizno))
         if data is not None:
+            wh_data = data
             wh_n, wh_tr, wh_df = _safe(_parse_withholding, data, default=(None, None, None))
     # ④ 직원 수 — 근로복지공단 근로자고용정보현황 (인증서는 추가 승인 없음)
     cw = _cw_body(params, corp=corp, bizno=bizno)
@@ -2971,6 +3090,7 @@ async def _hometax_collect(params, reg_data, progress=None):
                 fill["emp_increase"] = wh_df
     else:
         fill["employees_default"] = 0
+    _emp_fill_avg(fill, [res.get("data")] if _codef_code(res) == "CF-00000" else [], [wh_data] if wh_data is not None else [], now)
     # ⑤ 대표자 장애인 여부(장애인기업) — 정부24 장애인 증명서 (개인사업자 대표 주민번호가 있을 때). 해당 여부만 남기고 세부 내용은 버림
     if params.get("loginType") == "0" and not corp:
         rrn_d = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
@@ -3456,8 +3576,8 @@ JSON으로만 답하세요:
 {"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":..,"ytd":..,"kcb":..,"nice":..,"loans":..,"members":..,"employees":..,"export_amount":..,"certs":..,"smart_tech":..,"woman":..}"""
 
 
-def _ht_members_count(members, today):
-    """가입자 명부(취득·상실일) → (현재 직원 수, 1년 전 대비 증감). 대표자 제외"""
+def _ht_members_count(members, today, founded=None):
+    """가입자 명부(취득·상실일) → (현재 직원 수, 1년 전 대비 증감, 상시근로자 수(월말 평균)). 대표자 제외"""
     def d(v):
         m = _re.match(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})", _ht_s(v))
         try:
@@ -3466,15 +3586,17 @@ def _ht_members_count(members, today):
             return None
     ago = today.replace(year=today.year - 1) if not (today.month == 2 and today.day == 29) else today.replace(year=today.year - 1, day=28)
     now_n = ago_n = 0
+    spans = []
     for r in members:
         if not isinstance(r, dict) or r.get("rep") is True:
             continue
         a, l = d(r.get("acq")), d(r.get("loss"))
         if not a:
             continue
+        spans.append((a, l))
         if a <= today and (l is None or l > today): now_n += 1
         if a <= ago and (l is None or l > ago): ago_n += 1
-    return now_n, now_n - ago_n
+    return now_n, now_n - ago_n, _emp_avg_spans(spans, today, founded)
 
 
 @app.post("/extract/general")
@@ -3490,8 +3612,9 @@ async def extract_general(body: IncomeDocExtractRequest, user: models.User = Dep
     data = data if isinstance(data, dict) else {}
     members = data.pop("members", None)
     if isinstance(members, list) and members:
-        emp, diff = _ht_members_count(members, now.date())
+        emp, diff, avg = _ht_members_count(members, now.date(), data.get("founded"))
         data["employees"] = emp
+        data["emp_avg"] = avg
         data["emp_increase"] = diff if diff >= 0 else None      # 줄었으면 유지·증가 아님
         data["emp_keep"] = diff >= 0
     return {"data": data}

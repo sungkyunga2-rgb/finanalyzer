@@ -1108,6 +1108,7 @@
         <div class="ht-body">
           <div class="ht-line">
             <label class="ht-f"><span>직원 수 (4대보험)</span><input type="number" inputmode="numeric" id="ht-employees" placeholder="5" /></label>
+            <label class="ht-f"><span>상시근로자 수 (월평균)</span><input type="number" inputmode="decimal" step="0.1" id="ht-emp-avg" placeholder="비우면 직원 수" /></label>
             <label class="ht-f"><span>내일채움공제</span><input type="text" id="ht-naeil" placeholder="가입 2명" /></label>
             <label class="ht-f"><span>노란우산공제</span><select id="ht-umbrella"><option value="">-</option><option value="yes">가입</option><option value="no">미가입</option></select></label>
           </div>
@@ -2676,6 +2677,7 @@ function htFillFromIncall(d, generalName) {   // generalName: 일반 서류(파�
   if (d.restart === true) { cur.retry = Object.assign({}, cur.retry, { restart: true }); filled++; }
   if (d.smart_tech === true) { cur.smart_tech = true; filled++; }
   if (n(d.emp_increase) !== null) set("emp_increase", n(d.emp_increase));
+  if (n(d.emp_avg) !== null) set("emp_avg", n(d.emp_avg));
   if (typeof d.emp_keep === "boolean") { cur.emp_keep = d.emp_keep; filled++; }
   const addCerts = htCertsFromText(t(d.certs)).filter(c => !(cur.cert_list || []).some(x => x.type === c.type));
   if (addCerts.length) { cur.cert_list = (cur.cert_list || []).concat(addCerts); filled++; }
@@ -3740,7 +3742,7 @@ const HT_FIELDS = [
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"], ["rep.disabled", "ht-disabled", "check"],
   ["smart_tech", "ht-smart", "check"], ["retry.restart", "ht-rt-restart", "check"], ["retry.edu", "ht-rt-edu", "check"], ["retry.revival", "ht-rt-revival", "check"], ["retry.debt", "ht-rt-debt", "check"],
-  ["employees", "ht-employees", "int"], ["emp_keep", "ht-emp-keep", "check"], ["emp_increase", "ht-emp-inc", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
+  ["employees", "ht-employees", "int"], ["emp_avg", "ht-emp-avg", "num"], ["emp_keep", "ht-emp-keep", "check"], ["emp_increase", "ht-emp-inc", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
   ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
   ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
@@ -4961,6 +4963,7 @@ function htAuthApply(res) {
   if (f.emp_trend === "up" || f.emp_trend === "keep") inc.emp_keep = true;       // 고용보험 입사·퇴사일로 본 최근 1년
   else if (f.emp_trend === "down") inc.emp_keep = false;
   if (typeof f.emp_increase === "number") inc.emp_increase = f.emp_increase;
+  if (typeof f.emp_avg === "number") inc.emp_avg = f.emp_avg;
   if (typeof f.rep_disabled === "boolean") inc.rep_disabled = f.rep_disabled;
   if ((f.employees === undefined || f.employees === null) && f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
@@ -5031,6 +5034,7 @@ function htOverwriteForm(inc) {
   if (inc.ytd) cur.ytd = Object.assign({}, cur.ytd, inc.ytd);
   if (typeof inc.emp_keep === "boolean") cur.emp_keep = inc.emp_keep;
   if (typeof inc.emp_increase === "number") cur.emp_increase = inc.emp_increase;
+  if (typeof inc.emp_avg === "number") cur.emp_avg = inc.emp_avg;
   if (typeof inc.rep_disabled === "boolean") { cur.rep = cur.rep || {}; cur.rep.disabled = inc.rep_disabled; }
   if (inc.arrears && inc.arrears.status) cur.arrears = Object.assign({}, cur.arrears, inc.arrears);
   if (inc.loans && inc.loans.length) { cur.loans = inc.loans; cur.loans_none = false; }
