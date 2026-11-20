@@ -41,7 +41,7 @@ def run_auto_migration():
         "terms_agreed_at": "TIMESTAMP",
         "nickname": "VARCHAR DEFAULT ''",
     })
-    add_missing_columns("teams", {"plan_expires_at": "TIMESTAMP"})
+    add_missing_columns("teams", {"plan_expires_at": "TIMESTAMP", "basic_biz": "VARCHAR DEFAULT ''"})
     # 커뮤니티 글/댓글 수정 기능을 위한 updated_at 컬럼 추가
     add_missing_columns("community_posts", {"updated_at": "TIMESTAMP"})
     add_missing_columns("community_comments", {"updated_at": "TIMESTAMP"})
@@ -136,14 +136,20 @@ CREDIT_PACKAGES = {
 # 구독 요금제 — 월 분석 건수는 제한하지 않고 '사용자 수(seats)'로만 구분한다.
 # price = 월 구독료(원). 이 금액 그대로 카드에 청구된다.
 # list_price = 정가(할인 표시용). hidden = 새로 가입은 받지 않는 이전 요금제(기존 팀·관리자 부여용으로만 유지)
+# tier: "basic" = 소상공인용(본인 사업자 1개, 예상한도 + 기관명만) / "pro" = 컨설턴트용(전체 결과)
 SUBSCRIPTION_PLANS = {
-    "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 330000},
-    "standard": {"label": "스탠다드",  "seats": 3,  "price": 550000, "hidden": True},
-    "pro":      {"label": "프로",      "seats": 10, "price": 1100000, "hidden": True},
+    "basic":    {"label": "Basic",     "seats": 1,  "price": 39900,  "tier": "basic",
+                 "desc": "소상공인 사장님용", "features": ["내 사업자 1곳 분석", "총 예상한도 + 신청 가능 기관", "재신청 가능 시점 알림"]},
+    "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "tier": "pro",
+                 "desc": "컨설턴트용", "features": ["업체 수 제한 없이 분석", "기관별 예상 한도 + 해당 자금", "재신청 가능 시점 알림"]},
+    "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 330000, "tier": "pro", "hidden": True},   # 이전 요금제 — 기존 구독자는 Pro와 같은 권한
+    "standard": {"label": "스탠다드",  "seats": 3,  "price": 550000, "tier": "pro", "hidden": True},
+    "pro":      {"label": "프로",      "seats": 10, "price": 1100000, "tier": "pro", "hidden": True},
 }
 
 def _public_plans():
-    return [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"], "list_price": v.get("list_price")}
+    return [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"], "list_price": v.get("list_price"),
+             "tier": v.get("tier", "pro"), "desc": v.get("desc", ""), "features": v.get("features", [])}
             for k, v in SUBSCRIPTION_PLANS.items() if not v.get("hidden")]
 TEAM_INVITE_VALID_DAYS = 14   # 초대 유효기간 (지나면 수락 불가)
 TEAM_MAX_PENDING_INVITES = 20 # 수락 대기 초대 상한 (초대 남발 방지용 — 사용자 수 한도와는 별개)
@@ -372,12 +378,14 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
         "company_name": user.company_name, "rep_name": user.rep_name, "nickname": user.nickname,
         "business_number": user.business_number,
         "subscribed": user_has_subscription_access(db, user),
+        "tier": user_plan_tier(db, user),
     }
 
 # 내 크레딧 조회
 @app.get("/me")
 def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return {"email": user.email, "credits": user.credits, "subscribed": user_has_subscription_access(db, user)}
+    tier = user_plan_tier(db, user)
+    return {"email": user.email, "credits": user.credits, "subscribed": bool(tier), "tier": tier}
 
 # 비밀번호 재확인 후 상세 정보 조회
 class PasswordVerify(BaseModel):
@@ -933,6 +941,9 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
     # 구독 → 전체 공개 / 예전 충전분이 있으면 1건 차감 후 전체 공개 / 둘 다 없으면 무료(일부 공개)
     if not consume:
         return {"data": data}
+    if subscribed and isinstance(data, dict) and _biz_digits(data.get("business_number")):
+        if await run_in_threadpool(user_plan_tier, db, user) == "basic":       # Basic은 등록된 사업자만
+            await run_in_threadpool(_basic_bind_check, db, user, data.get("business_number"))
     used, full = _consume_analysis(db, user, subscribed)
     return {"data": data, "credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed, "full": full}
 
@@ -1081,7 +1092,7 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
     rt = inp.get("retry") or {}
     E, Lb = ctx.get("equity"), ctx.get("liabilities")
 
-    def make(key, name, cap):
+    def make(key, name, cap, fund=None):
         o = mk("sojin", name, per["low"], per["high"])
         hi, lo = o["high"], o["low"]
         if mature and E is not None and Lb is not None and E > 0:          # 대출 후 부채비율 700% 상한 (업력 7년 이상)
@@ -1091,6 +1102,8 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
             return
         lo = min(max(lo, R["minAmount"]), hi)
         if lo == hi and hi >= 200000000: lo = hi - 100000000
+        fund = fund or (name.split("(", 1)[1].rstrip(") ") if "(" in name else name)
+        sj.setdefault("funds", []).append(fund)               # 요건에 맞는 자금 (Pro 화면용)
         if sj["status"] != "ok" or hi > sj["high"]:          # 같은 소진공 자금으로 묶어서 — 더 크면 소진공 줄을 그 금액으로
             sj.update(low=lo, high=hi, status="ok")
 
@@ -1120,7 +1133,8 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
     elif inp.get("smart_tech") or _re.search(r"협동조합|사회적\s*(예비)?\s*기업|마을기업|자활기업|백년(가게|소공인|소상공인)|창업사관학교", tags):
         innov_cap = 100000000
     if innov_cap:
-        make("sojin_innov", "소상공인시장진흥공단 (혁신성장촉진자금)", innov_cap)
+        make("sojin_innov", "소상공인시장진흥공단 (혁신성장촉진자금)", innov_cap,
+             f"혁신성장촉진자금({'혁신형' if innov_cap >= 200000000 else '일반형'})")
 
 
 def _ht_jaedan_recent(inp, loans, today):
@@ -1553,11 +1567,15 @@ def _ht_estimate_limit_core(inp, today=None):
         fixed = _math.floor(amt / R["unit"]) * R["unit"]
         if sj:
             sj["weak"] = True
+            sj.setdefault("funds", []).append("신용취약소상공인자금")
             if fixed < R["minAmount"]: sj["low"] = 0; sj["high"] = 0; sj["status"] = "exhausted"
             else: sj["high"] = fixed; sj["low"] = max(R["minAmount"], fixed - 10000000); sj["status"] = "ok"
 
+    sj0 = next((o for o in orgs if o["key"] == "sojin"), None)
     # 소진공 특별자금 — 요건에 맞으면 줄 추가 (금액은 같은 산식, 자금별 최대 한도로만 상한)
     _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u)
+    if sj0 and sj0.get("funds"):              # 요건에 맞는 소진공 자금 이름 (Pro에서만 보여줌)
+        sj0["funds"] = list(dict.fromkeys(sj0["funds"]))
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if jd_recent:
@@ -3356,9 +3374,12 @@ class HometaxLimitBody(BaseModel):
 @app.post("/hometax/limit")
 def hometax_limit(body: HometaxLimitBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """원클릭 분석의 예상 한도. 구독(전체 공개)일 때만 금액·기관을 내려주고, 아니면 신청 가능 기관 수만 알려준다."""
-    subscribed = user_has_subscription_access(db, user)
+    tier = user_plan_tier(db, user)
+    subscribed = bool(tier)
     used = 0
     if body.consume:
+        if tier == "basic":
+            _basic_bind_check(db, user, (body.input or {}).get("business_number"))
         if not subscribed:
             _check_free_quota(db, user)
         used, full = _consume_analysis(db, user, subscribed)
@@ -3370,7 +3391,9 @@ def hometax_limit(body: HometaxLimitBody, user: models.User = Depends(get_curren
         print(f"[hometax_limit] 계산 오류: {e}")
         L = {"available": False, "status": "none", "low": 0, "high": 0, "orgs": [], "text": "예상 한도를 계산하지 못했습니다. 입력값을 확인해 주세요."}
     ok_orgs = sum(1 for o in (L.get("orgs") or []) if o.get("status") == "ok")
-    return {"full": full, "limit": L if full else None, "ok_orgs": ok_orgs,
+    if full and tier == "basic":
+        L = _ht_mask_basic(L)
+    return {"full": full, "limit": L if full else None, "ok_orgs": ok_orgs, "tier": tier,
             "credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed}
 
 
@@ -4331,6 +4354,8 @@ def admin_team_info(db: Session, user):
         "seat_limit": team_seat_limit(team),
         "members_count": members_n,
         "pending_count": pending_n,
+        "tier": SUBSCRIPTION_PLANS.get(team.plan or "", {}).get("tier", "") if team.plan else "",
+        "basic_biz": _biz_fmt(team.basic_biz or ""),
     }
 
 def admin_subscription_info(db: Session, user):
@@ -4544,6 +4569,28 @@ def team_leave(user: models.User = Depends(get_current_user), db: Session = Depe
     db.delete(membership)
     db.commit()
     return {"message": "팀에서 탈퇴했습니다."}
+
+class AdminBasicBizBody(BaseModel):
+    email: str
+    business_number: str = ""     # 빈 값 = 고정 해제 (다음 분석한 사업자로 다시 고정)
+
+@app.post("/admin/team/basic-biz")
+def admin_set_basic_biz(body: AdminBasicBizBody, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    """Basic 요금제의 고정 사업자번호 변경·해제"""
+    from sqlalchemy import func
+    u = db.query(models.User).filter(func.lower(models.User.email) == _norm_email(body.email)).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="해당 이메일의 회원을 찾을 수 없습니다.")
+    team, _m = get_membership(db, u)
+    if not team:
+        raise HTTPException(status_code=400, detail="구독(팀) 정보가 없는 회원입니다.")
+    biz = _biz_digits(body.business_number)
+    if body.business_number.strip() and not biz:
+        raise HTTPException(status_code=400, detail="사업자등록번호 10자리를 입력해 주세요.")
+    team.basic_biz = biz
+    db.commit()
+    return {"email": u.email, "basic_biz": _biz_fmt(biz)}
+
 
 class AdminSetPlanBody(BaseModel):
     email: str
@@ -5927,6 +5974,48 @@ def user_has_subscription_access(db: Session, user) -> bool:
     _expire_admin_plan(db, team)
     return bool(team.plan)
 
+def user_plan_tier(db: Session, user) -> str:
+    """요금제 등급 — "pro" / "basic" / ""(구독 없음)"""
+    if not user_has_subscription_access(db, user):
+        return ""
+    team, _m = get_membership(db, user)
+    return SUBSCRIPTION_PLANS.get((team.plan or "") if team else "", {}).get("tier", "pro")
+
+
+def _biz_digits(v) -> str:
+    d = _re.sub(r"\D", "", str(v or ""))
+    return d if len(d) == 10 else ""
+
+
+def _biz_fmt(d: str) -> str:
+    return f"{d[:3]}-{d[3:5]}-{d[5:]}" if len(d) == 10 else d
+
+
+def _basic_bind_check(db: Session, user, business_number):
+    """Basic은 사업자 1곳만 — 처음 분석한 사업자번호로 고정하고, 다른 번호는 막는다 (팀 대표 기준)"""
+    team, _m = get_membership(db, user)
+    if not team:
+        return
+    biz = _biz_digits(business_number)
+    if not biz:
+        raise HTTPException(status_code=400, detail="Basic 요금제는 사업자등록번호를 입력해야 분석할 수 있어요.")
+    if not team.basic_biz:
+        team.basic_biz = biz
+        db.commit()
+    elif team.basic_biz != biz:
+        raise HTTPException(status_code=403, detail=f"Basic 요금제는 등록된 사업자({_biz_fmt(team.basic_biz)})만 분석할 수 있어요. 여러 업체를 분석하시려면 Pro 요금제를 이용해 주세요.")
+
+
+def _ht_mask_basic(L):
+    """Basic 응답 — 총 예상한도와 기관명·신청 가능 여부만 남기고 기관별 금액·자금은 서버에서 지운다"""
+    if not isinstance(L, dict):
+        return L
+    L = dict(L)
+    L["orgs"] = [{"key": o.get("key"), "name": o.get("name"), "status": o.get("status")} for o in (L.get("orgs") or []) if isinstance(o, dict)]
+    L["tier"] = "basic"
+    return L
+
+
 def _expire_admin_plan(db: Session, team):
     """관리자가 기간을 정해 지정한 요금제가 만료됐으면 해제"""
     if team and team.plan and team.plan_expires_at and datetime.utcnow() >= team.plan_expires_at:
@@ -5977,6 +6066,8 @@ def subscription_me(user: models.User = Depends(get_current_user), db: Session =
         "is_team_member": is_member,
         "team_plan_label": _plan_label(team.plan) if is_member else None,
         "access": bool(team and team.plan),
+        "tier": SUBSCRIPTION_PLANS.get(team.plan or "", {}).get("tier", "pro") if (team and team.plan) else "",
+        "basic_biz": _biz_fmt(team.basic_biz or "") if team else "",
         "subscription": _sub_view(sub) if live else None,
         # 결제 없이 관리자가 요금제를 부여한 경우
         "admin_plan_label": _plan_label(team.plan) if (team and team.owner_id == user.id and team.plan and not live) else None,

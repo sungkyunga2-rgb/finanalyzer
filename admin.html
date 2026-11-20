@@ -1213,7 +1213,9 @@ function renderResult(d) {
          </p>
          <div class="row" style="margin-bottom:8px;">
            <select id="plan-select" style="flex:1;padding:10px 12px;border:1px solid #d6dde8;border-radius:8px;font-size:14px;">
-             <option value="starter" ${!d.team || !d.team.plan || d.team.plan === "starter" ? "selected" : ""}>피나 구독 — 1명</option>
+             <option value="fina_pro" ${!d.team || !d.team.plan || d.team.plan === "fina_pro" ? "selected" : ""}>Pro — 1명 (컨설턴트)</option>
+             <option value="basic" ${d.team && d.team.plan === "basic" ? "selected" : ""}>Basic — 1명 (사업자 1곳)</option>
+             <option value="starter" ${d.team && d.team.plan === "starter" ? "selected" : ""}>피나 구독 — 1명 (이전 요금제, Pro 권한)</option>
              <option value="standard" ${d.team && d.team.plan === "standard" ? "selected" : ""}>스탠다드 — 3명 (이전 요금제)</option>
              <option value="pro" ${d.team && d.team.plan === "pro" ? "selected" : ""}>프로 — 10명 (이전 요금제)</option>
            </select>
@@ -1233,6 +1235,15 @@ function renderResult(d) {
            <button class="btn-primary" onclick="setTeamPlan()">${d.team && d.team.plan ? "구독 수정" : "구독 지정"}</button>
            ${d.team && d.team.plan ? `<button class="btn-ghost" style="color:#A32D2D;" onclick="clearTeamPlan()">구독 해지</button>` : ""}
          </div>`}
+
+    ${d.team && d.team.role === "owner" && d.team.tier === "basic" ? `
+    <div class="section-title">🏢 Basic 분석 사업자</div>
+    <p style="font-size:12px;color:#7a8ca3;margin-bottom:10px;line-height:1.7;">
+      현재 고정된 사업자: <b>${d.team.basic_biz || "아직 없음 (처음 분석한 사업자로 고정)"}</b><br>Basic은 이 사업자만 분석할 수 있습니다. 비우면 다음에 분석한 사업자로 다시 고정됩니다.</p>
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="basic-biz" placeholder="000-00-00000 (비우면 해제)" value="${d.team.basic_biz || ""}" style="flex:1;padding:10px 12px;border:1px solid #d6dde8;border-radius:8px;font-size:14px;" />
+      <button class="btn-primary" onclick="setBasicBiz()">변경</button>
+    </div>` : ""}
 
     <div class="section-title">✏️ 회원정보 수정</div>
     <div class="field">
@@ -1341,6 +1352,15 @@ async function adminResumeSub() {
   try {
     await api("POST", "/admin/subscription/resume", { email: currentEmail });
     toast("해지 예약을 취소했습니다. 구독이 계속됩니다.");
+    searchUser();
+  } catch (e) { toast("오류: " + e.message); }
+}
+async function setBasicBiz() {
+  const v = document.getElementById("basic-biz").value.trim();
+  if (!confirm(v ? `${currentEmail} 회원의 Basic 분석 사업자를 ${v}로 바꿀까요?` : `${currentEmail} 회원의 Basic 분석 사업자 고정을 해제할까요?`)) return;
+  try {
+    const d = await api("POST", "/admin/team/basic-biz", { email: currentEmail, business_number: v });
+    toast(d.basic_biz ? `분석 사업자를 ${d.basic_biz}로 바꿨습니다.` : "고정을 해제했습니다. 다음 분석한 사업자로 고정됩니다.");
     searchUser();
   } catch (e) { toast("오류: " + e.message); }
 }

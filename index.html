@@ -340,6 +340,7 @@
   .plan-price { font-size:22px; font-weight:700; letter-spacing:-0.02em; }
   .plan-price small { font-size:12px; font-weight:500; color:var(--text2); margin-left:2px; }
   .plan-seats { font-size:13px; color:var(--text2); margin-top:6px; }
+  .plan-feats { margin:8px 0 0; padding-left:17px; font-size:12.5px; color:var(--text2); line-height:1.7; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
   .fa-lock-body { position: relative; }
   .fa-lock-blur { filter: blur(5px); opacity: .75; pointer-events: none; user-select: none; }
@@ -1537,7 +1538,7 @@
   <div class="main" style="max-width:720px;">
     <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">구독</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
-      월 구독으로 기업분석·평가를 <strong>횟수 제한 없이</strong> 이용하세요. 정가 대비 <strong>82% 할인</strong>된 가격으로 시작하세요.
+      월 구독으로 기업분석·평가를 <strong>횟수 제한 없이</strong> 이용하세요. 내 사업장을 확인하는 사장님은 <strong>Basic</strong>, 여러 업체를 분석하는 컨설턴트는 <strong>Pro</strong>가 맞아요.
     </p>
 
     <div id="sub-loading" class="card" style="text-align:center;color:var(--text3);font-size:13px;">불러오는 중...</div>
@@ -1586,9 +1587,10 @@
         <div class="card-title">구독 요금제</div>
         <div class="plan-grid" id="plan-grid"></div>
         <ul class="plan-common">
-          <li><strong>월 분석 횟수 제한 없음</strong></li>
+          <li><strong>월 분석 횟수 제한 없음</strong> · 인증 한 번으로 자동 입력</li>
           <li>재무제표 분석 · 원클릭 분석 모두 포함</li>
           <li>분석이력 30일 보관 · 리포트 출력 1회</li>
+          <li>Basic은 처음 분석한 사업자 1곳만 분석할 수 있어요</li>
         </ul>
       </div>
 
@@ -1629,8 +1631,10 @@
       <br/>
       <p><strong>제2조 (구독 요금제)</strong><br/>
       ① 서비스는 월 단위 구독(정기결제) 방식으로 제공되며, 월 분석 횟수는 제한하지 않습니다(제7조의 공정사용 원칙 적용).<br/>
-      &nbsp;&nbsp;· 피나 구독: 사용자 1명, 정가 월 330,000원 → 할인가 <strong>월 59,000원</strong><br/>
-      ② 표시된 금액은 부가가치세를 포함한 금액이며, 매월 결제되는 금액은 할인가(월 59,000원)입니다.<br/>
+      &nbsp;&nbsp;· Basic: 사용자 1명, <strong>월 39,900원</strong> — 처음 분석한 사업자 1곳에 한해 분석할 수 있으며, 예상 한도와 신청 가능 기관을 제공합니다(기관별 예상 금액·해당 자금 정보 제외).<br/>
+      &nbsp;&nbsp;· Pro: 사용자 1명, <strong>월 399,000원</strong> — 분석할 수 있는 업체 수에 제한이 없으며, 기관별 예상 금액과 해당 자금 정보를 함께 제공합니다.<br/>
+      &nbsp;&nbsp;· 이전 요금제(피나 구독, 월 59,000원)를 이용 중인 회원은 해지 전까지 같은 금액으로 Pro와 같은 내용을 이용할 수 있습니다.<br/>
+      ② 표시된 금액은 부가가치세를 포함한 금액이며, 매월 같은 금액이 결제됩니다. Basic의 분석 대상 사업자 변경은 [문의하기]로 요청할 수 있습니다.<br/>
       ③ 할인가는 회사의 정책에 따라 변경될 수 있으며, 변경하는 경우 제3조 ④에 따라 사전에 안내합니다.<br/>
       ④ 사용자 수에는 요금제를 결제한 대표 계정이 포함되며, 팀 초대는 초대받은 회원이 수락하여 팀에 합류한 시점에 사용자 수에 포함됩니다. 요금제의 사용자 수를 초과하여 합류할 수 없습니다.<br/>
       ⑤ 요금제 변경이 필요한 경우 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.<br/>
@@ -1829,6 +1833,7 @@ let userRepName = localStorage.getItem("fa_rep") || "";
 let userBizNumber = localStorage.getItem("fa_biz") || "";
 let uploadedImages = []; // {data, mime, name, isPdf} — 최대 10장
 let selectedPkg = null;
+let userTier = "";          // "pro" / "basic" / "" — 서버가 알려줌 (화면 안내용, 실제 가림은 서버가 함)
 let userHasSub = false;   // 구독(팀 요금제)이 유효한지 — 서버가 로그인·/me 응답으로 알려줌
 
 // ── 유틸 ──────────────────────────────────────────────────────
@@ -1986,7 +1991,7 @@ function fmt(n) {
 
 function updateCreditBadges() {
   document.querySelectorAll(".credit-badge").forEach(el => {
-    el.textContent = userHasSub ? "✓ 구독 이용 중" : "무료 이용 중";
+    el.textContent = userHasSub ? (userTier === "basic" ? "✓ Basic 이용 중" : userTier === "pro" ? "✓ Pro 이용 중" : "✓ 구독 이용 중") : "무료 이용 중";
     el.classList.toggle("is-sub", !!userHasSub);
     el.classList.toggle("is-free", !userHasSub);
     el.title = userHasSub ? "" : "구독하면 전체 결과를 볼 수 있어요";
@@ -2058,7 +2063,7 @@ async function doRegister() {
       company_name: company, rep_name: name, nickname, phone, business_number: biz,
       terms_agreed: true
     });
-    token = d.token; userEmail = d.email; userCredits = d.credits; userHasSub = !!d.subscribed;
+    token = d.token; userEmail = d.email; userCredits = d.credits; userHasSub = !!d.subscribed; userTier = d.tier || "";
     userCompanyName = company;
     userRepName = d.rep_name || name;
     userBizNumber = d.business_number || biz;
@@ -2125,7 +2130,7 @@ async function doLogin() {
   try {
     const d = await api("POST", "/auth/login", { email, password: pw });
     try { localStorage.setItem("fa_last_email", email); } catch (e) {}
-    token = d.token; userEmail = d.email; userCredits = d.credits; userHasSub = !!d.subscribed;
+    token = d.token; userEmail = d.email; userCredits = d.credits; userHasSub = !!d.subscribed; userTier = d.tier || "";
     userCompanyName = d.company_name || "";
     userRepName = d.rep_name || "";
     userBizNumber = d.business_number || "";
@@ -2188,7 +2193,7 @@ async function doFindPw() {
 }
 
 function doLogout() {
-  token = userEmail = null; userCredits = 0; userHasSub = false; userCompanyName = ""; userRepName = ""; userBizNumber = "";
+  token = userEmail = null; userCredits = 0; userHasSub = false; userTier = ""; userCompanyName = ""; userRepName = ""; userBizNumber = "";
   localStorage.removeItem("fa_token");
   localStorage.removeItem("fa_email");
   localStorage.removeItem("fa_credits");
@@ -5202,6 +5207,23 @@ async function htRenderSaved(input, adminPw) {
 }
 
 // ── 결과창 ────────────────────────────────────────────────────────
+// 기관별 금액 — Basic은 서버가 금액을 빼고 보내므로 "신청 가능"으로
+function htOrgAmt(o, maxWord) {
+  if (o.status !== "ok") return o.status === "blocked" ? "신청 불가" : "추가 한도 없음";
+  if (o.high === undefined || o.high === null) return "신청 가능";
+  return o.low === o.high ? htKwon(o.high) : (o.low <= 0 && maxWord) ? "최대 " + htKwon(o.high) : htKwon(o.low) + " ~ " + htKwon(o.high);
+}
+// Pro — 요건에 맞는 자금 이름
+function htOrgFunds(o) {
+  return o && o.funds && o.funds.length ? o.funds.join(" · ") : "";
+}
+// Basic 안내 — 기관별 금액·자금은 상담으로
+function htBasicNote(L, printable) {
+  if (!L || L.tier !== "basic") return "";
+  return `<div style="margin-top:10px;background:#F4F7FB;border:1px solid #dbe4ef;border-radius:10px;padding:11px 13px;font-size:12.5px;color:#3d4b5c;line-height:1.6;">
+    기관별 예상 금액과 해당 자금은 전문가 상담으로 정확하게 확인할 수 있어요.
+    ${printable ? "" : `<button type="button" class="btn btn-primary" style="margin-top:8px;width:100%;padding:9px;font-size:13px;" onclick="openContactUs()">전문가 상담 신청하기</button>`}</div>`;
+}
 function htWon(n) { return n === null || n === undefined ? "-" : Math.round(n).toLocaleString("ko-KR") + "원"; }
 function htPctText(n) { return n === null || n === undefined ? "-" : (n > 0 ? "+" : "") + n.toFixed(1) + "%"; }
 
@@ -5275,9 +5297,9 @@ function htLimitCard(L) {
     <div style="margin-top:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 기관</div>
       <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
-        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}</span>
-        ${o.status === "ok" ? `<span style="font-weight:600;color:#185FA5;white-space:nowrap;">${o.low === o.high ? htKwon(o.high) : o.low <= 0 ? "최대 " + htKwon(o.high) : htKwon(o.low) + " ~ " + htKwon(o.high)}</span>`
-          : `<span style="font-weight:600;color:#9b9a95;white-space:nowrap;">${o.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</span>`}</div>`).join("")}</div>
+        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}${o.status === "ok" && htOrgFunds(o) ? `<span style="display:block;font-size:11.5px;font-weight:500;color:#6b7a8d;margin-top:2px;">${escapeHtml(htOrgFunds(o))}</span>` : ""}</span>
+        <span style="font-weight:600;color:${o.status === "ok" ? "#185FA5" : "#9b9a95"};white-space:nowrap;">${htOrgAmt(o, true)}</span></div>`).join("")}</div>
+      ${htBasicNote(L)}
     </div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
       <div style="font-size:12px;color:var(--text3);">필요자금</div>
@@ -5400,7 +5422,8 @@ function htReportBody(r, input) {
   }
   if (L.available && (L.orgs || []).length) {
     limHTML += `<table class="fin-table"><thead><tr><th>신청 가능 기관</th><th style="text-align:right;">예상 금액</th></tr></thead><tbody>${L.orgs.map(g =>
-      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${g.status === "ok" ? (g.low === g.high ? htKwon(g.high) : g.low <= 0 ? "최대 " + htKwon(g.high) : htKwon(g.low) + " ~ " + htKwon(g.high)) : g.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</td></tr>`).join("")}</tbody></table>`;
+      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">${e(htOrgFunds(g))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
+    limHTML += htBasicNote(L, true);
   }
   if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;
   html += sh("예상 한도 · 신청 가능 기관 (Expected Funding)") + limHTML;
@@ -5627,7 +5650,8 @@ function htResultCardHTML(r, input, full, opts) {
     let lim = "";
     if (L.available && L.status === "ok") {
       lim += `<div class="ht-rp-total">약 ${htKwon(L.low)} ~ ${htKwon(L.high)}</div>`;
-      lim += (L.orgs || []).map(g => `<div class="ht-rp-row"><span>${e(g.name)}</span><b>${g.status === "ok" ? (g.low === g.high ? htKwon(g.high) : htKwon(g.low) + " ~ " + htKwon(g.high)) : g.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</b></div>`).join("");
+      lim += (L.orgs || []).map(g => `<div class="ht-rp-row"><span>${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<span style="display:block;font-size:11px;font-weight:500;color:#6b7a8d;">${e(htOrgFunds(g))}</span>` : ""}</span><b>${htOrgAmt(g)}</b></div>`).join("");
+      lim += htBasicNote(L, !!opts.sample);
     } else lim += `${L.status === "blocked" || L.status === "low" ? `<div class="ht-rp-total" style="color:${L.status === "blocked" ? "#A32D2D" : "#B8860B"};font-size:18px;">${L.status === "blocked" ? "현재 신청 어려움" : "추가 한도 여력 부족"}</div>` : ""}<div class="srp-opinion-item">${e(L.text || "")}</div>`;
     const f = r.financial, q = r.ratios;
     const kpi = (label, value, lvl) => `<div class="srp-kpi" style="border-left-color:${LC[lvl] || "#185FA5"};"><div class="srp-kpi-label">${label}</div><div class="srp-kpi-value" style="color:${LC[lvl] || "#185FA5"};">${value}</div></div>`;
@@ -7250,7 +7274,7 @@ async function refreshMe() {
   try {
     const d = await api("GET", "/me");
     userCredits = d.credits;
-    userHasSub = !!d.subscribed;
+    userHasSub = !!d.subscribed; userTier = d.tier || "";
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
   } catch (e) { /* 토큰 만료 등은 무시 — 다음 동작에서 로그인 안내 */ }
@@ -7263,7 +7287,7 @@ async function loadSubscription() {
   try {
     const d = await api("GET", "/subscription/me");
     subState = d;
-    userHasSub = !!d.access;
+    userHasSub = !!d.access; userTier = d.tier || "";
     updateCreditBadges();
     renderSubscription(d);
   } catch (e) {
@@ -7340,12 +7364,13 @@ function renderPlanCards(plans) {
     const disc = listPrice > p.price;
     const offPct = disc ? Math.floor((1 - p.price / listPrice) * 100) : 0;
     return `<div class="plan-card${selectedPlan === p.id ? " selected" : ""}" data-plan="${p.id}" onclick="selectPlan('${p.id}')">
-      <div class="plan-badge"${disc ? '' : ' style="visibility:hidden"'}>${disc ? "특별 할인가" : "추천"}</div>
+      <div class="plan-badge"${disc || p.tier ? '' : ' style="visibility:hidden"'}>${disc ? "특별 할인가" : p.tier === "pro" ? "컨설턴트" : p.tier === "basic" ? "사장님" : "추천"}</div>
       <div class="plan-name">${escapeHtml(p.label)}</div>
       ${disc ? `<div class="plan-was">정가 ${won(listPrice)}/월</div>` : ''}
       <div class="plan-price">${won(p.price)}<small>/월</small></div>
       ${disc ? `<div class="plan-save"><span class="off">${offPct}% 할인</span><span class="won">매월 ${won(listPrice - p.price)} 절약</span></div>` : ''}
-      <div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>
+      ${p.desc ? `<div class="plan-seats" style="font-weight:600;color:var(--text);">${escapeHtml(p.desc)}</div>` : ''}
+      ${(p.features || []).length ? `<ul class="plan-feats">${p.features.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : `<div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>`}
       ${per ? `<div class="plan-per">${per}</div>` : ''}
     </div>`;
   }).join("");

@@ -145,6 +145,7 @@ class Team(Base):
     plan            = Column(String, default="")      # starter / standard / pro / "" (요금제 없음)
     plan_updated_at = Column(DateTime, nullable=True)
     plan_expires_at = Column(DateTime, nullable=True)   # 관리자가 지정한 요금제의 만료 시각(UTC). None = 만료 없음 (결제 구독은 항상 None)
+    basic_biz       = Column(String, default="")        # Basic 요금제 — 분석할 수 있는 사업자번호(숫자 10자리). 처음 분석한 번호로 고정
     created_at      = Column(DateTime, default=datetime.utcnow)
 
 
