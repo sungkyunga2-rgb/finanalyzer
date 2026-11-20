@@ -4785,7 +4785,7 @@ function htAuthApply(res) {
   if (f.emp_trend === "up" || f.emp_trend === "keep") inc.emp_keep = true;       // 고용보험 입사·퇴사일로 본 최근 1년
   else if (f.emp_trend === "down") inc.emp_keep = false;
   if (typeof f.emp_increase === "number") inc.emp_increase = f.emp_increase;
-  else if (f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
+  if ((f.employees === undefined || f.employees === null) && f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
   htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
   htAuthState.pending = null;
@@ -4805,7 +4805,33 @@ function htAuthApply(res) {
   if (bankFailed.length) notes.push(`일부 은행은 대출을 불러오지 못했어요.\n${bankFailed.join("\n")}\n\n공동인증서는 은행마다 따로 등록해야 조회돼요. 거래하는 은행 인터넷뱅킹에서 '타행/타기관 인증서 등록'을 한 뒤 다시 시도해 주세요.`);
   if (notes.length) alertError(notes.join("\n\n"));
   else toast("인증 정보로 입력 칸을 채웠어요. 확인한 뒤 분석해 주세요.");
-  if (f._business_list && f._business_list.length > 1) alertError(`사업장이 ${f._business_list.length}곳이에요. ${f.company_name || "첫 번째 사업장"} 기준으로 채웠어요.\n다른 사업장으로 하려면 그 사업자번호를 입력한 뒤 다시 인증해 주세요.`);
+  if (f._business_list && f._business_list.length > 1 && !htAuthState.bizChosen) htBizPickOpen(f._business_list, f.business_number);
+  htAuthState.bizChosen = false;
+}
+
+// 사업장이 여러 곳 — 목록에서 골라 그 사업장으로 다시 불러오기 (다시 인증 필요)
+function htBizPickOpen(list, current) {
+  const cur = String(current || "").replace(/\D/g, "");
+  const box = document.getElementById("htBizPickList");
+  box.innerHTML = list.map((b, i) => {
+    const on = String(b.business_number || "").replace(/\D/g, "") === cur;
+    return `<label class="ht-biz-opt${on ? " on" : ""}"><input type="radio" name="htBizPick" value="${escapeHtml(b.business_number || "")}" ${on ? "checked" : ""} />
+      <span><b>${escapeHtml(b.company_name || "상호 없음")}</b>${on ? ' <em>지금 채운 사업장</em>' : ""}<br><small>${escapeHtml(b.business_number || "")}${b.industry ? " · " + escapeHtml(b.industry) : ""}</small></span></label>`;
+  }).join("");
+  document.getElementById("htBizPick").style.display = "flex";
+}
+function htBizPickClose() { document.getElementById("htBizPick").style.display = "none"; }
+function htBizPickGo() {
+  const sel = document.querySelector('input[name="htBizPick"]:checked');
+  if (!sel) return alertError("사업장을 선택해 주세요.");
+  const cur = String(htReadForm().business_number || "").replace(/\D/g, "");
+  htBizPickClose();
+  if (sel.value.replace(/\D/g, "") === cur) return;          // 지금 채운 사업장 그대로
+  const el = document.getElementById("ht-biz");
+  el.value = sel.value; el.dispatchEvent(new Event("input"));
+  htAuthState.bizChosen = true;
+  htAuthOpen();                                               // 같은 인증 방법으로 다시 (휴대폰 승인·인증서 비밀번호 다시 필요)
+  toast("선택한 사업장으로 다시 인증해 주세요.");
 }
 
 async function fetchHometaxFromProvider(mode) {
@@ -7797,6 +7823,24 @@ window.addEventListener("DOMContentLoaded", () => {
     </div>
   </div>
 </div>
+<div id="htBizPick" class="ht-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:3000;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;max-width:440px;width:100%;padding:22px 20px;box-shadow:0 12px 40px rgba(0,0,0,.2);">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px;">사업장을 선택해 주세요</div>
+    <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px;line-height:1.6;">사업장이 여러 곳이에요. 분석할 사업장을 고르면 그 사업장 자료로 다시 불러와요. (인증을 한 번 더 해야 해요)</p>
+    <div id="htBizPickList" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto;"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button type="button" class="btn" style="flex:1;" onclick="htBizPickClose()">지금 사업장으로 두기</button>
+      <button type="button" class="btn btn-primary" style="flex:1;" onclick="htBizPickGo()">이 사업장으로 불러오기</button>
+    </div>
+  </div>
+</div>
+<style>
+  .ht-biz-opt { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--border-strong); border-radius:10px; cursor:pointer; font-size:13.5px; line-height:1.5; }
+  .ht-biz-opt input { margin-top:4px; }
+  .ht-biz-opt:has(input:checked) { border-color:#185FA5; background:#EBF2FA; }
+  .ht-biz-opt em { font-style:normal; font-size:11px; color:#185FA5; font-weight:600; }
+  .ht-biz-opt small { color:var(--text3); }
+</style>
 <div id="htAuthModal" class="ht-auth-bg" style="display:none;">
   <div class="ht-auth">
     <button type="button" class="ht-auth-x" onclick="htAuthClose()" aria-label="닫기">×</button>

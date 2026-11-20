@@ -1733,7 +1733,11 @@ def _parse_registration(data, want_biz=""):
         "biz_type": "corp" if "법인" in kind else "personal",
     }
     if len(rows) > 1:
-        out["_business_list"] = [{"business_number": x.get("resCompanyIdentityNo"), "company_name": x.get("resCompanyNm")} for x in rows]
+        def _fmt(v):
+            d = _re2.sub(r"\D", "", v or "")
+            return f"{d[:3]}-{d[3:5]}-{d[5:]}" if len(d) == 10 else (v or "")
+        out["_business_list"] = [{"business_number": _fmt(x.get("resCompanyIdentityNo")), "company_name": (x.get("resCompanyNm") or "").strip() or (x.get("resUserNm") or "").strip(),
+                                  "industry": " / ".join(t for t in (x.get("resBusinessTypes"), x.get("resBusinessItems")) if t)[:60]} for x in rows]
     return {k: v for k, v in out.items() if v not in ("", None)}
 
 
@@ -2032,7 +2036,7 @@ def _ht_assemble(st, now, final):
         got.append("재무제표")
     if revs:
         _merge_fin_years(fill, revs, now.year)                          # 매출은 최근 3년 모두
-    if not fins and final:
+    if not fins and final and fill.get("biz_type") != "personal":     # 개인사업자는 재무제표가 없는 경우가 많아 안내하지 않음
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     wh_n, wh_tr, wh_df = next((v for v in (_safe(_parse_withholding, d, default=(None, None, None)) for d in ok("withholding")) if v[0] is not None), (None, None, None))
     if "employees" in st.get("keys", ()) or wh_n is not None:
@@ -2670,7 +2674,7 @@ async def _hometax_collect(params, reg_data, progress=None):
         fin.pop("_year", None)
         fill["fin"] = fin
         got.append("재무제표")
-    else:
+    elif corp:                                # 개인사업자는 재무제표가 없는 경우가 많아 안내하지 않음
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     # ③-2 원천징수이행상황신고서 — 근로소득 인원(직원 수)과 최근 1년 추세 (기관코드 0005, 사업자번호 필수)
     wh_n = wh_tr = wh_df = None
