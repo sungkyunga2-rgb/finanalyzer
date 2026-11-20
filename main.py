@@ -3153,8 +3153,9 @@ INCALL_PROMPT = """아래는 정책자금 컨설팅 회사의 '인콜일지(상�
 - recovery: 신용회복 {"type":"종류·회차 문구","faithful":"yes"(성실납부)|"no"(연체)} — 없으면 null
 - arrears: 국세 체납 {"status":"has"|"none","amount":금액,"note":"세목·기간"} — '없음/x'면 status "none", 아예 안 적혀 있으면 null
 - arrears_other: 기타 연체·체납·가압류 문구 ('x'·없음이면 null)
+- ※ 추가사항(상담 메모)도 반드시 함께 읽으세요. 메모에 나온 대출·승인 내역(예: '6월 신용취약 2500만원 승인 완료', '11월 미소 500만원')은 loans에, 대표자 보유 자산(토지·건물·지분·차량 등)은 assets_note에 합칩니다.
 - loans: 기대출 목록 [{"org":"기관(예: 지역신용보증재단, 땅 담보대출)","date":"YYYY.MM 또는 원문","amount":금액,"kind":"personal"(개인 명의·개인 담보)|"business"(사업자·정책자금)}] — 기대출이 '없음'이면 []
-- age: 대표자 만 나이(숫자) / career: 동종업계 경력(년, 숫자) / assets_note: 보유 자산 문구 / marital: "married"|"single" / woman: 여성 대표면 true
+- age: 대표자 만 나이(숫자) / career: 동종업계 경력(년, 숫자) / assets_note: 보유 자산 — 표의 보유 자산 칸 + 추가사항에 나온 자산을 한 줄로 요약 (예: "차량 8,000,000원 · 토지 3천평 30% 지분(평당 30만원) · 본인 토지 180평"). 금액은 콤마로 표기 / marital: "married"|"single" / woman: 여성 대표면 true
 - employees: 직원 수(4대보험 기준, 'x'·없음이면 0) / hire: 추가 채용 예정 인원
 - naeil: 내일채움공제 문구 / umbrella: 노란우산공제 가입이면 "yes", 미가입이면 "no"
 - export_amount: 수출 실적 금액 / factory: 공장 "own"(자가)|"rent"(임차)|"none"

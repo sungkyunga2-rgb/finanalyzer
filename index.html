@@ -1085,9 +1085,9 @@
         <div class="ht-head">대표자</div>
         <div class="ht-body">
           <div class="ht-line">
-            <label class="ht-f"><span>나이 (만)</span><span class="ht-age-wrap" style="display:flex;gap:6px;align-items:center;"><input type="text" inputmode="numeric" id="ht-age-birth" placeholder="출생 (1987 · 870315)" maxlength="10" oninput="htAgeCalc(this)" style="flex:1.4;min-width:0;" /><span style="color:var(--text3);font-size:12px;">→</span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" style="flex:1;min-width:0;" /></span><small id="ht-age-note" style="font-size:11px;color:var(--text3);font-weight:400;"></small></label>
+            <label class="ht-f"><span>나이 (만)</span><span class="ht-age-wrap" style="display:flex;gap:6px;align-items:center;"><input type="text" inputmode="numeric" id="ht-age-birth" placeholder="출생연도" maxlength="10" oninput="htAgeCalc(this)" style="flex:1.4;min-width:0;" /><span style="color:var(--text3);font-size:12px;">→</span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" style="flex:1;min-width:0;" /></span><small id="ht-age-note" style="font-size:11px;color:var(--text3);font-weight:400;"></small></label>
             <label class="ht-f"><span>동종업계 경력 (년)</span><input type="number" inputmode="decimal" id="ht-career" placeholder="10" step="0.5" /></label>
-            <label class="ht-f"><span>보유 자산 (집, 차량)</span><input type="text" id="ht-rep-assets" placeholder="아파트 자가" /></label>
+            <label class="ht-f"><span>보유 자산 (집, 차량)</span><input oninput="htCommaText(this)" type="text" id="ht-rep-assets" placeholder="아파트 자가" /></label>
             <label class="ht-f"><span>혼인 여부</span><select id="ht-marital"><option value="">-</option><option value="married">기혼</option><option value="single">미혼</option></select></label>
           </div>
           <label class="ht-chk"><input type="checkbox" id="ht-woman" /> 여성 대표</label>
@@ -2643,7 +2643,7 @@ function htFillFromIncall(d) {
   cur.rep = cur.rep || {};
   if (n(d.age) !== null) { cur.rep.age = n(d.age); filled++; }
   if (n(d.career) !== null) { cur.rep.career = n(d.career); filled++; }
-  if (t(d.assets_note)) { cur.rep.assets_note = t(d.assets_note); filled++; }
+  if (t(d.assets_note)) { cur.rep.assets_note = htCommaNums(t(d.assets_note)); filled++; }
   if (["married", "single"].includes(d.marital)) { cur.rep.marital = d.marital; filled++; }
   if (d.woman === true) { cur.rep.woman = true; filled++; }
   if (n(d.employees) !== null) set("employees", n(d.employees));
@@ -3920,6 +3920,24 @@ function htAgeCalc(el) {
   if (m !== null) { if (tm < m || (tm === m && td < dd)) a -= 1; if (note) note.textContent = ""; }
   else if (note) note.textContent = `생일 전 > 만 ${a - 1}세`;
   age.value = a; age.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// 글자 칸 안의 숫자에 천 단위 콤마 (예: "차량 8000000" → "차량 8,000,000")
+function htCommaNums(v) {
+  return String(v || "").replace(/\d[\d,]{3,}/g, (x, off, all) => {
+    const n = x.replace(/,/g, ""), next = all.slice(off + x.length, off + x.length + 1);
+    if (!/^\d{4,}$/.test(n) || (n.length === 4 && /[년.\-\/]/.test(next))) return x;     // 연도(2026년·2026.04)는 그대로
+    return Number(n).toLocaleString("ko-KR");
+  });
+}
+function htCommaText(el) {
+  const before = el.value, pos = el.selectionStart;
+  const after = htCommaNums(before);
+  if (after === before) return;
+  const digitsLeft = before.slice(0, pos).replace(/,/g, "").length;      // 커서 위치 유지
+  el.value = after;
+  let i = 0, c = 0; while (i < after.length && c < digitsLeft) { if (after[i] !== ",") c++; i++; }
+  try { el.setSelectionRange(i, i); } catch (e) {}
 }
 
 function htFinAuto() {
