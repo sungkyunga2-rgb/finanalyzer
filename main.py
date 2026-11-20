@@ -962,6 +962,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
+#  · 개인대출(구분 '개인')은 한도에서 빼지 않음 / 카드론·현금서비스·대부업이 합쳐서 3건 이상이면 신청 어려움(전체)
 #  · 재무제표 차입금이 있으면 기관 미상 기대출 대신 '단기차입금 전액 + 장기차입금(담보로 봄) 30%'를 차감
 #    (최근 1년 고용 유지·증가면 장기 25%). 정책기관 기대출은 그 기관에서 전액 차감하고, 차입금 차감분에서는 그만큼 뺌
 #  · 대출 후 부채비율 상한: 신보·기보 550%, 소진공 700%·중진공 업종별(업력 7년 이상만) → 기관 한도 ≤ 자본×기준 − 현재 부채
@@ -988,6 +989,9 @@ HT_LIMIT_RULE = {
     "jungjinMax": 500000000, "jungjinExportMax": 1000000000,
     "collateralRate": 0.30, "collateralRateEmp": 0.25,      # 장기차입금(담보로 봄)은 30%만 차감 (최근 1년 고용 유지·증가면 25%)
 }
+
+
+_HT_RISKY_LOAN = _re.compile(r"카드|현금\s*서비스|대부|러시앤캐시|산와|리드코프")
 
 
 def _ht_loan_amt(l, inp=None):
@@ -1210,7 +1214,9 @@ def ht_limit_context(inp, today=None):
             if not eroded:
                 debt_ratio = li / (a - li) * 100
                 equity, liab = a - li, li
-    loans = [l for l in (inp.get("loans") or []) if isinstance(l, dict) and (l.get("org") or l.get("date") or _ht_num(l.get("amount")) is not None)]
+    all_loans = [l for l in (inp.get("loans") or []) if isinstance(l, dict) and (l.get("org") or l.get("date") or _ht_num(l.get("amount")) is not None)]
+    loans = [l for l in all_loans if l.get("kind") != "personal"]          # 개인대출은 한도에서 빼지 않음
+    risky = sum(1 for l in all_loans if _HT_RISKY_LOAN.search(_ht_s(l.get("org"))))   # 카드론·현금서비스·대부업 건수
     cr = inp.get("credit") or {}
     nice, kcb = _ht_num(cr.get("nice")), _ht_num(cr.get("kcb"))
     months = None
@@ -1220,7 +1226,7 @@ def ht_limit_context(inp, today=None):
         if mo >= 0: months = mo
     return {"vat_latest": vat_latest["vat"] if vat_latest else None, "ytd_annual": ytd_annual, "eroded": eroded,
             "loans": loans, "nice": nice, "kcb": kcb, "credit_score": nice if nice is not None else kcb, "biz_age_months": months,
-            "debt_ratio": debt_ratio, "net_income": net_income, "equity": equity, "liabilities": liab}
+            "debt_ratio": debt_ratio, "net_income": net_income, "risky_loans": risky, "equity": equity, "liabilities": liab}
 
 
 def ht_estimate_limit(inp, today=None):
@@ -1237,6 +1243,7 @@ def ht_estimate_limit(inp, today=None):
             return {"available": False, "status": "none", "low": 0, "high": 0, "orgs": [], "text": "매출을 입력하면 예상 한도를 계산합니다."}
         base0 = {"available": True, "sales": 0}
         if ar == "has": return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [], "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
+        if ctx["risky_loans"] >= 3: return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [], "text": "카드론·현금서비스·대부업 이용이 많아 현재는 신청이 어렵습니다."}
         k = _ht_startup_kibo(ctx, inp)
         if ctx["eroded"]:                    # 기보는 자본잠식이면 신청 불가
             k.update(status="blocked", low=0, high=0)
@@ -1377,6 +1384,9 @@ def ht_estimate_limit(inp, today=None):
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if ar == "has": return {**base, "status": "blocked", "low": 0, "high": 0, "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
+    if ctx["risky_loans"] >= 3:
+        for o in orgs: o["status"] = "blocked"; o["low"] = 0; o["high"] = 0
+        return {**base, "status": "blocked", "low": 0, "high": 0, "text": "카드론·현금서비스·대부업 이용이 많아 현재는 신청이 어렵습니다."}
     loan_sum = sum(used.values()) + other
     ok_keys = [o["key"] for o in orgs if o["status"] == "ok" and o["key"] != "miso"]
     tf = max(factors.get(k, 1) or 1 for k in ok_keys) if ok_keys else 1

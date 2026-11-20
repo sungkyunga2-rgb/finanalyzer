@@ -3488,10 +3488,13 @@ function analyzeHometax(input, opts) {
 
   // 7) 기대출
   const loans = (input.loans || []).filter(l => l && (l.org || l.date || htNum(l.amount) !== null));
+  if (loans.filter(l => /카드|현금\s*서비스|대부|러시앤캐시|산와|리드코프/.test(l.org || "")).length >= 3)
+    flags.push({ level: "danger", title: "카드론·현금서비스·대부업 이용", text: "카드론·현금서비스·대부업 이용이 많아 정책자금 신청이 어렵습니다." });
   const loansTotal = loans.reduce((a, l) => a + (htNum(l.amount) || 0), 0);
+  const bizLoansTotal = loans.filter(l => l.kind !== "personal").reduce((a, l) => a + (htNum(l.amount) || 0), 0);   // 개인대출 제외
   const loanInfo = { none: !!input.loans_none, list: loans, total: loansTotal,
-                     salesRatio: (lv && lv.vat > 0 && loansTotal > 0) ? loansTotal / lv.vat * 100 : null };
-  if (loanInfo.salesRatio !== null && loanInfo.salesRatio >= 50) flags.push({ level: "warn", title: "기대출 많음", text: `기대출 합계가 최근 매출의 ${loanInfo.salesRatio.toFixed(1)}%입니다. 추가 한도가 크게 줄어들 수 있습니다.` });
+                     salesRatio: (lv && lv.vat > 0 && bizLoansTotal > 0) ? bizLoansTotal / lv.vat * 100 : null };
+  if (loanInfo.salesRatio !== null && loanInfo.salesRatio >= 50) flags.push({ level: "warn", title: "기대출 많음", text: `사업자 기대출 합계가 최근 매출의 ${loanInfo.salesRatio.toFixed(1)}%입니다. 추가 한도가 크게 줄어들 수 있습니다.` });
 
   // 8) 업체 개요
   let bizAge = null;
@@ -3647,7 +3650,7 @@ function htRenderLoans(list) {
   const rows = (list && list.length) ? list : [{ org: "", date: "", amount: null }];
   box.innerHTML = rows.map((l, i) => `
     <div class="ht-loan-row">
-      <input type="text" id="ht-loan-${i}-org" placeholder="기관 (예: 신용보증기금)" />
+      <input type="text" id="ht-loan-${i}-org" placeholder="기관·종류 (예: 신용보증기금, ○○카드 카드론)" />
       <input type="text" id="ht-loan-${i}-date" placeholder="시기 (예: 2024.03)" />
       <input type="text" inputmode="numeric" class="ht-loan-amt" id="ht-loan-${i}-amount" placeholder="금액 (원)" oninput="formatMoneyInput(this)" />
       <select id="ht-loan-${i}-kind" class="ht-loan-kind"><option value="">구분</option><option value="personal">개인대출</option><option value="business">사업자대출</option></select>
