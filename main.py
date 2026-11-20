@@ -1053,7 +1053,9 @@ def _ht_semas_grad(inp, ys, sales=None):
     if not (lim - 2 <= emp < lim):
         return False
     cap = _ht_small_sales_cap(inp)
-    vals = [_ht_num(y["vat"]) for y in ys[-3:]]
+    fm = _re.match(r"^(\d{4})-(\d{1,2})", _ht_s(inp.get("founded")))
+    full = [y for y in ys if not (fm and int(fm[2]) > 1 and _ht_num(y.get("year")) == int(fm[1]))]   # 창업 연도(12개월 안 됨)는 평균에서 뺌
+    vals = [_ht_num(y["vat"]) for y in full[-3:]]
     avg = sum(vals) / len(vals) if vals else sales
     return bool(cap and avg is not None and cap * 0.3 <= avg <= cap)
 
