@@ -4423,6 +4423,10 @@ function htNpkiShowFiles() {
   document.getElementById("htNpkiBox").style.display = "none";
   document.getElementById("htCertFileBox").style.display = "";
 }
+async function htCopyText(t) {
+  try { await navigator.clipboard.writeText(t); toast("경로를 복사했어요. 파일 선택 창 주소창에 붙여넣으세요."); }
+  catch (e) { alertError("경로를 직접 입력해 주세요: " + t); }
+}
 async function htNpkiCopyPath() {
   const t = document.getElementById("htNpkiPath").textContent;
   try { await navigator.clipboard.writeText(t); toast("경로를 복사했어요. 폴더 선택 창 주소창에 붙여넣으세요."); }
@@ -8063,7 +8067,9 @@ window.addEventListener("DOMContentLoaded", () => {
             <div class="ht-cert-ic">📁</div>
             <div class="ht-cert-main" id="htCertMain">signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요</div>
           </label>
-          <p class="ht-cert-hint">인증서 위치 (Windows): <code>C:\Users\사용자\AppData\LocalLow\NPKI\yessign\USER\…</code><br>Mac: <code>~/Library/Preferences/NPKI/…</code> (파일 선택 창에서 <b>⌘ Cmd + Shift + G</b> 후 붙여넣기) · 인증서 폴더 안의 두 파일을 함께 선택하세요.</p>
+          <div class="ht-cert-hint" style="margin-top:8px;">인증서 위치 — 복사해서 파일 선택 창 주소창에 붙여넣으세요 (Mac은 <b>⌘ Cmd + Shift + G</b> 후 붙여넣기) · 인증서 폴더 안의 두 파일을 함께 선택하세요.</div>
+          <div class="ht-npki-path" style="margin-top:4px;"><span style="font-size:11px;color:var(--text3);width:56px;flex:none;">Windows</span><code>%USERPROFILE%\AppData\LocalLow\NPKI</code><button type="button" onclick="htCopyText('%USERPROFILE%\\AppData\\LocalLow\\NPKI')">경로 복사</button></div>
+      <div class="ht-npki-path" style="margin-top:4px;"><span style="font-size:11px;color:var(--text3);width:56px;flex:none;">Mac</span><code>~/Library/Preferences/NPKI</code><button type="button" onclick="htCopyText('~/Library/Preferences/NPKI')">경로 복사</button></div>
           </div>
           <label class="ht-auth-check"><input type="checkbox" id="htCertKeep" checked /> 이 기기에 인증서 보관하기 (다음부터 비밀번호만 입력)</label>
         </div>
@@ -8117,7 +8123,10 @@ window.addEventListener("DOMContentLoaded", () => {
         <div class="ht-cert-ic">📁</div>
         <div class="ht-cert-main" id="htRelayMain">signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요</div>
       </label>
-      <p class="ht-cert-hint">인증서 위치 (Windows): <code>C:\Users\사용자\AppData\LocalLow\NPKI\yessign\USER\…</code> · Mac: <code>~/Library/Preferences/NPKI/…</code><br>인증서는 이 PC에서 인증번호로 잠근 뒤 보내져요. 서버는 내용을 볼 수 없고, 휴대폰이 받으면 바로 지워져요.</p>
+      <div class="ht-cert-hint" style="margin-top:8px;">인증서 위치 — 복사해서 파일 선택 창 주소창에 붙여넣으세요 (Mac은 <b>⌘ Cmd + Shift + G</b> 후 붙여넣기)</div>
+      <div class="ht-npki-path" style="margin-top:4px;"><span style="font-size:11px;color:var(--text3);width:56px;flex:none;">Windows</span><code>%USERPROFILE%\AppData\LocalLow\NPKI</code><button type="button" onclick="htCopyText('%USERPROFILE%\\AppData\\LocalLow\\NPKI')">경로 복사</button></div>
+      <div class="ht-npki-path" style="margin-top:4px;"><span style="font-size:11px;color:var(--text3);width:56px;flex:none;">Mac</span><code>~/Library/Preferences/NPKI</code><button type="button" onclick="htCopyText('~/Library/Preferences/NPKI')">경로 복사</button></div>
+      <p class="ht-cert-hint">인증서는 이 기기에서 인증번호로 잠근 뒤 보내져요. 서버는 내용을 볼 수 없고, 받는 기기가 받으면 바로 지워져요.</p>
       <div style="display:flex;gap:8px;">
         <button type="button" class="btn" style="flex:1;" onclick="htAuthShow(1)">취소</button>
         <button type="button" class="btn btn-primary" style="flex:2;" id="htRelaySendBtn" onclick="htRelaySend()">보내기</button>
