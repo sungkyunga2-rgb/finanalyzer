@@ -76,6 +76,10 @@
   .header-right { display: flex; align-items: center; gap: 12px; }
   .credit-badge { background: var(--accent-bg); color: var(--accent); font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 20px; display: none; }
   .credit-badge.is-sub { background: #0F6E56; color: #fff; font-weight: 700; box-shadow: 0 2px 6px rgba(15,110,86,.3); }
+  .credit-badge.is-up { background: linear-gradient(135deg, #123f7a 0%, #1f6fbf 100%); color: #fff; font-weight: 700; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(24,95,165,.35); display: inline-flex !important; align-items: center; gap: 6px; transition: transform .15s, box-shadow .15s; }
+  .credit-badge.is-up:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(24,95,165,.45); }
+  .credit-badge .cb-up { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; background: #FFD166; color: #123f7a; flex-shrink: 0; }
   .credit-badge.is-free { background: #FFF4D6; color: #8a5a00; font-weight: 700; border: 1px solid #F2D27A; cursor: pointer; }
 
   /* ── 핵심 지표 큰 숫자: 단위(%, 배)와 줄바꿈되어 끊기지 않도록 처리 ── */
@@ -2054,11 +2058,15 @@ function fmt(n) {
 
 function updateCreditBadges() {
   document.querySelectorAll(".credit-badge").forEach(el => {
-    el.textContent = userHasSub ? (userTier === "basic" ? "✓ Basic 이용 중" : userTier === "pro" ? "✓ Pro 이용 중" : "✓ 구독 이용 중") : "무료 이용 중";
-    el.classList.toggle("is-sub", !!userHasSub);
+    const up = userHasSub && userTier === "basic";        // Basic → Pro 전환 버튼으로
+    el.innerHTML = up ? `<span class="cb-up" aria-hidden="true"><svg viewBox="0 0 16 16" width="11" height="11"><path d="M8 2.5 3 8h3.2v5.5h3.6V8H13z" fill="currentColor"/></svg></span>Pro로 전환하기`
+      : userHasSub ? (userTier === "pro" ? "✓ Pro 이용 중" : "✓ 구독 이용 중") : "무료 이용 중";
+    el.classList.toggle("is-sub", !!userHasSub && !up);
+    el.classList.toggle("is-up", up);
     el.classList.toggle("is-free", !userHasSub);
-    el.title = userHasSub ? "" : "구독하면 전체 결과를 볼 수 있어요";
-    el.onclick = userHasSub ? null : () => showPage("charge");
+    el.title = up ? "Basic 이용 중 — Pro로 전환하면 여러 업체와 기관별 한도·자금을 볼 수 있어요" : userHasSub ? "" : "구독하면 전체 결과를 볼 수 있어요";
+    el.onclick = up ? () => { showPage("charge"); setTimeout(() => { const b = document.getElementById("sub-upgrade-box"); if (b) b.scrollIntoView({ behavior: "smooth", block: "center" }); }, 700); }
+      : userHasSub ? null : () => showPage("charge");
     el.style.display = "inline-block";
   });
 }
