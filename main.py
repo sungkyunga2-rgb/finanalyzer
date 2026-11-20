@@ -960,6 +960,8 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #    - 중진공: 업력 7년 이상이면 업종별 제한부채비율(2026 융자계획 별표5) 초과 → 신청 불가
 #              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
+#    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
+#  · 신보·기보: 신용점수(NICE, 없으면 KCB) 700 미만이면 불가는 아니지만 '승인이 어려울 수 있음' 표시
 #    - 2~3년 연속 조건(연속 적자·이자보상배수 등)은 1년치 재무로 판단할 수 없어 보지 않는다. 신보·기보는 공개 기준 없음
 # ══════════════════════════════════════════════════════════════
 import math as _math
@@ -1283,6 +1285,12 @@ def ht_estimate_limit(inp, today=None):
         block("jungjin")
     if over_borrow:
         block("jaedan")
+    if dr is not None and dr > 550:
+        block("kodit"); block("kibo")
+    if c_score is not None and c_score < 700:
+        for o in orgs:
+            if o["key"] in ("kodit", "kibo") and o["status"] == "ok":
+                o["caution"] = True
     kcb, nice = ctx["kcb"], ctx["nice"]
     miso_ok = (kcb is not None and kcb <= R["misoKcb"]) or (nice is not None and nice <= R["misoNice"])
     if inp.get("biz_type") != "corp" and miso_ok: orgs.append(mk("miso", "미소금융", R["miso"]["min"], R["miso"]["max"]))
