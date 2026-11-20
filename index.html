@@ -348,6 +348,17 @@
   .plan-hot { display:inline-block; vertical-align:2px; margin-left:4px; font-size:11px; font-weight:700; color:#fff; background:#185FA5; padding:2px 8px; border-radius:999px; }
   .plan-feats { margin:8px 0 0; padding-left:17px; font-size:12.5px; color:var(--text2); line-height:1.7; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
+  .plan-feats li.hi { color:#185FA5; font-weight:700; }
+  /* Pro(인기) 카드 — 배경색으로 구분, 차별 기능은 강조색 */
+  .plan-card.featured { background:linear-gradient(160deg, #123f7a 0%, #185FA5 100%); border-color:#185FA5; color:#fff; }
+  .plan-card.featured:hover { border-color:#5fa3e8; }
+  .plan-card.featured.selected { border-color:#7bb8f2; box-shadow:0 0 0 3px rgba(55,138,221,.35); }
+  .plan-card.featured .plan-price small, .plan-card.featured .plan-per, .plan-card.featured .plan-seats { color:rgba(255,255,255,.75); }
+  .plan-card.featured .plan-was { color:rgba(255,255,255,.55); }
+  .plan-card.featured .plan-feats { color:rgba(255,255,255,.85); }
+  .plan-card.featured .plan-feats li.hi { color:#FFD166; }
+  .plan-card.featured .plan-hot { background:#FFD166; color:#123f7a; }
+  .plan-card.featured .plan-save .won { background:rgba(255,255,255,.16); color:#fff; }
   .fa-lock-body { position: relative; }
   .fa-lock-blur { filter: blur(5px); opacity: .75; pointer-events: none; user-select: none; }
   .fa-lock-cta { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(92%, 380px);
@@ -7517,13 +7528,13 @@ function renderPlanCards(plans) {
     const monthly = year ? p.year_month : p.price;
     const disc = listPrice > monthly;
     const offPct = disc ? Math.floor((1 - monthly / listPrice) * 100) : 0;
-    return `<div class="plan-card${selectedPlan === p.id ? " selected" : ""}" data-plan="${p.id}" onclick="selectPlan('${p.id}')">
+    return `<div class="plan-card${p.popular ? " featured" : ""}${selectedPlan === p.id ? " selected" : ""}" data-plan="${p.id}" onclick="selectPlan('${p.id}')">
       <div class="plan-name">${escapeHtml(p.label)}${p.popular ? ` <span class="plan-hot">✦ 인기</span>` : ""}</div>
       ${disc ? `<div class="plan-was">월간 ${won(listPrice)}/월</div>` : ''}
       <div class="plan-price">${won(monthly)}<small>/월${year ? ", 연간 결제" : ""}</small></div>
       ${year ? `<div class="plan-per">연 ${won(p.year_price)} 한 번에 결제</div>` : ""}
       ${disc ? `<div class="plan-save"><span class="off">월간 대비 ${offPct}% 할인</span><span class="won">${year ? `매년 ${won((listPrice - monthly) * 12)}` : `매월 ${won(listPrice - monthly)}`} 절약</span></div>` : ''}
-      ${(p.features || []).length ? `<ul class="plan-feats">${p.features.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : `<div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>`}
+      ${(p.features || []).length ? `<ul class="plan-feats">${p.features.map(x => typeof x === "string" ? `<li>${escapeHtml(x)}</li>` : `<li class="hi">${escapeHtml(x.t)}</li>`).join("")}</ul>` : `<div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>`}
       ${per ? `<div class="plan-per">${per}</div>` : ''}
     </div>`;
   }).join("");
