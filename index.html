@@ -955,6 +955,7 @@
       #hometaxSection .ht-line { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:8px; align-items:end; }
       #hometaxSection .ht-f { display:flex; flex-direction:column; gap:3px; min-width:0; }
       #hometaxSection .ht-f > span { font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      #hometaxSection .ht-f > span.ht-age-wrap { color:var(--text); font-size:14px; overflow:visible; }
       #hometaxSection .ht-f input, #hometaxSection .ht-f select, #hometaxSection textarea {
         width:100%; padding:8px 10px; border:1px solid var(--border-strong); border-radius:8px; font-size:14px; font-family:inherit;
         background:var(--surface, #fff); color:inherit; box-sizing:border-box; min-width:0; }
@@ -1081,7 +1082,7 @@
         <div class="ht-head">대표자</div>
         <div class="ht-body">
           <div class="ht-line">
-            <label class="ht-f"><span>나이 (만)</span><span style="display:flex;gap:6px;align-items:center;"><input type="text" inputmode="numeric" id="ht-age-birth" placeholder="출생 (1987 · 870315)" maxlength="10" oninput="htAgeCalc(this)" style="flex:1.4;min-width:0;" /><span style="color:var(--text3);font-size:12px;">→</span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" style="flex:1;min-width:0;" /></span><small id="ht-age-note" style="font-size:11px;color:var(--text3);font-weight:400;"></small></label>
+            <label class="ht-f"><span>나이 (만)</span><span class="ht-age-wrap" style="display:flex;gap:6px;align-items:center;"><input type="text" inputmode="numeric" id="ht-age-birth" placeholder="출생 (1987 · 870315)" maxlength="10" oninput="htAgeCalc(this)" style="flex:1.4;min-width:0;" /><span style="color:var(--text3);font-size:12px;">→</span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" style="flex:1;min-width:0;" /></span><small id="ht-age-note" style="font-size:11px;color:var(--text3);font-weight:400;"></small></label>
             <label class="ht-f"><span>동종업계 경력 (년)</span><input type="number" inputmode="decimal" id="ht-career" placeholder="10" step="0.5" /></label>
             <label class="ht-f"><span>보유 자산 (집, 차량)</span><input type="text" id="ht-rep-assets" placeholder="아파트 자가" /></label>
             <label class="ht-f"><span>혼인 여부</span><select id="ht-marital"><option value="">-</option><option value="married">기혼</option><option value="single">미혼</option></select></label>
