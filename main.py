@@ -1379,7 +1379,26 @@ def ht_limit_context(inp, today=None):
             "debt_ratio": debt_ratio, "net_income": net_income, "risky_loans": risky, "equity": equity, "liabilities": liab}
 
 
+def _ht_round10m(v):
+    """예상한도 표시 단위 — 천만원 단위로 반올림 (100만원 자리에서 반올림). 1천만원 미만 금액은 그대로"""
+    if not isinstance(v, (int, float)) or v < 10000000:
+        return v
+    return int(_math.floor(v / 10000000 + 0.5) * 10000000)
+
+
 def ht_estimate_limit(inp, today=None):
+    """예상한도 — 계산은 100만원 단위, 결과 금액은 천만원 단위로 반올림"""
+    L = _ht_estimate_limit_core(inp, today)
+    if isinstance(L, dict):
+        for o in [L] + [x for x in (L.get("orgs") or []) if isinstance(x, dict)]:
+            if "low" in o and "high" in o:
+                o["low"], o["high"] = _ht_round10m(o["low"]), _ht_round10m(o["high"])
+                if isinstance(o["low"], (int, float)) and isinstance(o["high"], (int, float)) and o["low"] > o["high"]:
+                    o["low"] = o["high"]
+    return L
+
+
+def _ht_estimate_limit_core(inp, today=None):
     R = HT_LIMIT_RULE
     ctx = ht_limit_context(inp, today)
     lv = ctx["vat_latest"]
