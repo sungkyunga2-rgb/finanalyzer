@@ -1099,7 +1099,10 @@
             <label class="ht-f"><span>내일채움공제</span><input type="text" id="ht-naeil" placeholder="가입 2명" /></label>
             <label class="ht-f"><span>노란우산공제</span><select id="ht-umbrella"><option value="">-</option><option value="yes">가입</option><option value="no">미가입</option></select></label>
           </div>
-          <label class="ht-check-line" style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);margin-top:8px;cursor:pointer;"><input type="checkbox" id="ht-emp-keep" style="width:auto;margin:0;" />최근 1년 고용 유지 또는 증가</label>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;">
+            <label class="ht-check-line" style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);cursor:pointer;"><input type="checkbox" id="ht-emp-keep" style="width:auto;margin:0;" />최근 1년 고용 유지 또는 증가</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);">최근 1년 고용 증감<input type="number" inputmode="numeric" id="ht-emp-inc" placeholder="예: 3" style="width:80px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px;" />명</label>
+          </div>
         </div>
       </div>
 
@@ -3557,6 +3560,9 @@ function analyzeHometax(input, opts) {
   if (profile.woman) prefs.push({ tag: "여성 대표", text: "여성기업 우대 대상 (여성기업 확인서 발급 여부 확인)" });
   if (profile.career !== null && profile.career >= 10) prefs.push({ tag: "업계 경력", text: `동종업계 경력 ${profile.career}년` });
   if (profile.employees !== null && profile.employees < 5) prefs.push({ tag: "소상공인", text: `상시근로자 ${profile.employees}명 — 소상공인 해당 가능` });
+  const empInc = htNum(input.emp_increase);
+  if (empInc !== null && empInc > 0) prefs.push({ tag: "고용 증가", text: `최근 1년 고용 ${empInc}명 증가 — 고용 창출 우대 대상` });
+  else if (empInc === 0 || (empInc === null && input.emp_keep)) prefs.push({ tag: "고용 유지", text: "최근 1년 고용 유지 — 고용 유지 우대 대상" });
   if (profile.hire !== null && profile.hire > 0) prefs.push({ tag: "고용 창출", text: `추가 채용 예정 ${profile.hire}명 — 고용 연계 우대 가능` });
   if (input.naeil) prefs.push({ tag: "내일채움공제", text: String(input.naeil) });
   if (input.umbrella === "yes") prefs.push({ tag: "노란우산공제", text: "노란우산공제 가입" });
@@ -3611,7 +3617,7 @@ const HT_FIELDS = [
 
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"],
-  ["employees", "ht-employees", "int"], ["emp_keep", "ht-emp-keep", "check"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
+  ["employees", "ht-employees", "int"], ["emp_keep", "ht-emp-keep", "check"], ["emp_increase", "ht-emp-inc", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
   ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
   ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
@@ -4778,6 +4784,7 @@ function htAuthApply(res) {
   if (f.employees !== undefined && f.employees !== null) inc.employees = f.employees;
   if (f.emp_trend === "up" || f.emp_trend === "keep") inc.emp_keep = true;       // 고용보험 입사·퇴사일로 본 최근 1년
   else if (f.emp_trend === "down") inc.emp_keep = false;
+  if (typeof f.emp_increase === "number") inc.emp_increase = f.emp_increase;
   else if (f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
   htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
@@ -4820,6 +4827,7 @@ function htOverwriteForm(inc) {
   }
   if (inc.ytd) cur.ytd = Object.assign({}, cur.ytd, inc.ytd);
   if (typeof inc.emp_keep === "boolean") cur.emp_keep = inc.emp_keep;
+  if (typeof inc.emp_increase === "number") cur.emp_increase = inc.emp_increase;
   if (inc.arrears && inc.arrears.status) cur.arrears = Object.assign({}, cur.arrears, inc.arrears);
   if (inc.loans && inc.loans.length) { cur.loans = inc.loans; cur.loans_none = false; }
   if (inc.fin) cur.fin = Object.assign({}, cur.fin || {}, Object.fromEntries(Object.entries(inc.fin).filter(([, v]) => v !== null && v !== undefined)));

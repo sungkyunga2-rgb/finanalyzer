@@ -945,7 +945,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #  · 기대출은 같은 기관 한도에서 차감. 기관을 특정할 수 없는 대출은 미소금융을 뺀 모든 기관에서 차감
 #  · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업 10인 이상) 소진공 제외
 #  · 업력 1년 미만 + (제조 · 콘텐츠 제작 · 특허) → 매출이 없어도 기보 5천만 ~ 1억
-#  · 중진공 최대 5억(운전자금 연 5억, 수출기업 10억) / 신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
+#  · 중진공 최대 5억(운전자금 연 5억, 수출기업·최근 1년 10명 이상 고용 증가 10억) / 신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
 #  · 1천만 원 미만은 한도 없음 (미소금융만 500만 원)
 #  · 총 예상한도 = 기준 매출 × 25% ~ 30%(청년 50%) × 신용 조정 − 기대출 합계 (최대 10억)
 #  · 소진공 신용취약소상공인자금: 소상공인 + 업력 3개월 이상 + 개인신용평점 839 이하 → 최대 3천만 원 (소진공 줄을 이 금액으로)
@@ -1281,7 +1281,7 @@ def ht_estimate_limit(inp, today=None):
         if key == "jaedan": lo = min(lo, R["jaedanMax"]); hi = min(hi, R["jaedanMax"])
         if key in ("kodit", "kibo"): lo = min(lo, R["fundMax"]); hi = min(hi, R["fundMax"])
         if key == "jungjin":                  # 중진공 운전자금 연 5억 (수출기업 10억) — 2026 융자계획
-            jm = R["jungjinExportMax"] if exporter else R["jungjinMax"]
+            jm = R["jungjinExportMax"] if (exporter or emp_up10) else R["jungjinMax"]
             lo = min(lo, jm); hi = min(hi, jm)
         if big_enough and key in ("jungjin", "kodit", "kibo"): lo = max(lo, R["fundMinAmount"]); hi = max(hi, R["fundMinAmount"])
         ded = used[key] + (0 if key == "miso" else other)
@@ -1296,6 +1296,7 @@ def ht_estimate_limit(inp, today=None):
 
     orgs = []
     exporter = (_ht_num(inp.get("export_amount")) or 0) > 0 or bool(_ht_s(inp.get("export")).strip())
+    emp_up10 = (_ht_num(inp.get("emp_increase")) or 0) >= 10          # 최근 1년 10명 이상 고용 증가 → 중진공 운전자금 연 10억
     kodit_ok = (not ind["restricted"]) and (exporter or (big_enough and ((not ind["priority"]) or sales >= R["koditPriorityException"])))
     kibo_ok = exporter or (big_enough and ind["kibo"])
     if small or exporter: orgs.append(mk("sojin", "소상공인시장진흥공단", per["low"], per["high"]))
@@ -1549,7 +1550,15 @@ def _parse_emp_trend(data, today=None):
         if j <= ago_s and (not q or q > ago_s): ago_n += 1
     if now_n == 0:
         return None
+    _parse_emp_trend.last_diff = now_n - ago_n          # 최근 1년 증감 인원 (바로 뒤에서 읽음)
     return "up" if now_n > ago_n else "keep" if now_n == ago_n else "down"
+
+
+def _parse_emp_change(data, today=None):
+    """(추세, 최근 1년 증감 인원)"""
+    _parse_emp_trend.last_diff = None
+    tr = _parse_emp_trend(data, today)
+    return tr, (_parse_emp_trend.last_diff if tr else None)
 
 
 def _wh_body(now):
@@ -1559,7 +1568,7 @@ def _wh_body(now):
 
 
 def _parse_withholding(data):
-    """원천징수이행상황신고서(최근 1년) → (최근 달 근로소득 인원, 최근 1년 추세 'up'/'keep'/'down' 또는 None)
+    """원천징수이행상황신고서(최근 1년) → (최근 달 근로소득 인원, 최근 1년 추세 'up'/'keep'/'down' 또는 None, 증감 인원)
     귀속연월별 A01(근로소득 간이세액) 인원. 같은 달 수정신고가 있으면 나중 신고분"""
     by = {}
     for r in _codef_rows(data, ("resYearMonth",)):
@@ -1579,16 +1588,17 @@ def _parse_withholding(data):
         if ym not in by or rd >= by[ym][0]:
             by[ym] = (rd, n)
     if not by:
-        return None, None
+        return None, None, None
     months = sorted(by)
     last = by[months[-1]][1]
     first = months[0]
     gap = (int(months[-1][:4]) - int(first[:4])) * 12 + int(months[-1][4:]) - int(first[4:])
-    trend = None
+    trend = diff = None
     if gap >= 10 and last > 0:                       # 1년 가까이 떨어진 두 달을 비교
         old = by[first][1]
         trend = "up" if last > old else "keep" if last == old else "down"
-    return last, trend
+        diff = last - old
+    return last, trend, diff
 
 
 def _codef_host():
@@ -2024,12 +2034,12 @@ def _ht_assemble(st, now, final):
         _merge_fin_years(fill, revs, now.year)                          # 매출은 최근 3년 모두
     if not fins and final:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
-    wh_n, wh_tr = next((v for v in (_safe(_parse_withholding, d, default=(None, None)) for d in ok("withholding")) if v[0] is not None), (None, None))
+    wh_n, wh_tr, wh_df = next((v for v in (_safe(_parse_withholding, d, default=(None, None, None)) for d in ok("withholding")) if v[0] is not None), (None, None, None))
     if "employees" in st.get("keys", ()) or wh_n is not None:
         n = next((v for v in (_safe(_parse_employees, d) for d in ok("employees")) if v is not None), None)
         if n is None and any(_cw_no_data(c, m) for c, d, m in R.get("employees", [])):
             n = 0                      # 고용보험 근로자 내역 없음 → 0명
-        tr = next((v for v in (_safe(_parse_emp_trend, d) for d in ok("employees")) if v), None) if n else None
+        tr, df = next((v for v in (_safe(_parse_emp_change, d, default=(None, None)) for d in ok("employees")) if v[0]), (None, None)) if n else (None, None)
         if (n is None or n == 0) and wh_n:                    # 근로복지공단이 안 되면 원천세 신고 인원
             n = wh_n
         if n is None and wh_n == 0 and final:
@@ -2037,9 +2047,12 @@ def _ht_assemble(st, now, final):
         if n is not None:
             fill["employees"] = n
             got.append("직원 수(고용보험)")
-            tr = tr or wh_tr
+            if not tr:
+                tr, df = wh_tr, wh_df
             if tr:
                 fill["emp_trend"] = tr
+                if df is not None:
+                    fill["emp_increase"] = df
         elif final:
             fill["employees_default"] = 0      # 조회 못 함 → 칸이 비어 있으면 0명으로
             failed.append("직원 수(고용보험) — 0명으로 채움")
@@ -2075,17 +2088,22 @@ def _ht_settle(job_id, key, res):
     if st["left"][key] <= 0:
         st["done_keys"].add(key)
     st["pending"] -= 1
-    if key == "registration" and st.get("cw_body") and not st.get("cw_fired"):
+    # 근로복지공단(두 번째 승인)은 사업자등록증명 + 원천세 신고서 결과를 본 뒤에 — 원천세로 직원 수가 나오면 건너뛰어 승인 한 번으로 끝냄
+    reg_rows = st["res"].get("registration", [])
+    wh_wait = "withholding" in st["keys"] and "withholding" not in st["done_keys"]
+    if key in ("registration", "withholding") and st.get("cw_body") and not st.get("cw_fired") and reg_rows and not wh_wait:
         st["cw_fired"] = True
-        if code == "CF-00000":
-            data = res.get("data")
-            rrn = _safe(_reg_rrn, data, st.get("identity", ""), default="") or ""
-            reg = _safe(_parse_registration, data, st.get("identity", ""), default={}) or {}
+        reg_code, reg_data, _m = reg_rows[0]
+        wh_ok = any(c == "CF-00000" and (_safe(_parse_withholding, d, default=(None, None, None)) or (None,))[0] is not None
+                    for c, d, m in st["res"].get("withholding", []))
+        if reg_code == "CF-00000" and not wh_ok:
+            rrn = _safe(_reg_rrn, reg_data, st.get("identity", ""), default="") or ""
+            reg = _safe(_parse_registration, reg_data, st.get("identity", ""), default={}) or {}
             biz = _re2.sub(r"\D", "", reg.get("business_number", ""))
             cw = dict(st["cw_body"], identity=rrn or biz)       # 대표자 개인명의 → 주민번호 (서버 안에서만)
             _spawn(_ht_fire(job_id, "employees", cw))
         else:
-            st["res"].setdefault("employees", []).append(("SKIP", None, "사업자등록증명 실패"))
+            st["res"].setdefault("employees", []).append(("SKIP", None, "원천세 신고서로 확인" if wh_ok else "사업자등록증명 실패"))
             st["left"]["employees"] = 0
             st["done_keys"].add("employees")
             st["pending"] -= 1
@@ -2655,11 +2673,11 @@ async def _hometax_collect(params, reg_data, progress=None):
     else:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     # ③-2 원천징수이행상황신고서 — 근로소득 인원(직원 수)과 최근 1년 추세 (기관코드 0005, 사업자번호 필수)
-    wh_n = wh_tr = None
+    wh_n = wh_tr = wh_df = None
     if bizno and params.get("loginType") == "0":
         data, err = await call("withholding", dict(_wh_body(now), identity=bizno))
         if data is not None:
-            wh_n, wh_tr = _safe(_parse_withholding, data, default=(None, None))
+            wh_n, wh_tr, wh_df = _safe(_parse_withholding, data, default=(None, None, None))
     # ④ 직원 수 — 근로복지공단 근로자고용정보현황 (인증서는 추가 승인 없음)
     cw = _cw_body(params, corp=corp, bizno=bizno)
     if cw:
@@ -2683,7 +2701,7 @@ async def _hometax_collect(params, reg_data, progress=None):
         n = _safe(_parse_employees, res.get("data")) if _codef_code(res) == "CF-00000" else (0 if _cw_no_data(_codef_code(res), _codef_msg(res)) else None)
         if _codef_code(res) not in ("", "CF-00000"):
             print(f"[CODEF] employees 실패 {_codef_code(res)}: {_codef_msg(res)}")
-        tr = _safe(_parse_emp_trend, res.get("data")) if (_codef_code(res) == "CF-00000" and n) else None
+        tr, df = _safe(_parse_emp_change, res.get("data"), default=(None, None)) if (_codef_code(res) == "CF-00000" and n) else (None, None)
         if (n is None or n == 0) and wh_n:                    # 근로복지공단이 안 되면 원천세 신고 인원
             n = wh_n
         if n is None and wh_n == 0:
@@ -2691,9 +2709,12 @@ async def _hometax_collect(params, reg_data, progress=None):
         if n is not None:
             fill["employees"] = n
             got.append("직원 수(고용보험)")
-            tr = tr or wh_tr
+            if not tr:
+                tr, df = wh_tr, wh_df
             if tr:
                 fill["emp_trend"] = tr
+                if df is not None:
+                    fill["emp_increase"] = df
         else:
             fill["employees_default"] = 0
             failed.append("직원 수(고용보험) — 0명으로 채움")
@@ -2702,6 +2723,8 @@ async def _hometax_collect(params, reg_data, progress=None):
         got.append("직원 수(고용보험)")
         if wh_tr:
             fill["emp_trend"] = wh_tr
+            if wh_df is not None:
+                fill["emp_increase"] = wh_df
     else:
         fill["employees_default"] = 0
     return {"status": "done", "fill": fill, "got": got, "pending": failed}
