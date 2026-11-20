@@ -964,6 +964,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
 #  · 소진공 특별자금(2026 신청 안내): 일시적경영애로(연매출 1.04억 미만·업력 7년 미만·매출 15%↓, 최대 7천만),
 #    재도전특별자금(재창업·희망리턴 교육·채무조정 성실 → 7천만 / 재기사업화 → 1억 / 재창업 2~7년+성장+소진공 성실상환 → 2억). 금액은 같은 산식, 최대 한도로 상한.
+#    혁신성장촉진자금(일반형 1억: 스마트기술·협동조합 등 / 혁신형 2억: 수출·2년 연속 10% 신장·소진공 성실상환 등)도 같은 방식
 #    따로 표시하지 않고 소진공 한 줄로 묶음 (소진공 줄이 신용취약자금 등으로 작으면 이 금액까지)
 #  · 재단 재이용 제한: 서울은 최근 1년, 그 외 지역은 최근 6개월 안에 재단 자금을 받았으면 재단 불가(시기가 있을 때만)
 #  · 개인대출(구분 '개인')은 한도에서 빼지 않음 / 카드론·현금서비스·대부업이 합쳐서 3건 이상이면 신청 어려움(전체)
@@ -1058,6 +1059,19 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
         cap = max(cap, 70000000)
     if cap:
         make("sojin_retry", "소상공인시장진흥공단 (재도전특별자금)", cap)
+    # 혁신성장촉진자금(운전): 일반형 1억 — 스마트기술·사회연대경제(협동조합·사회적기업)·백년소상공인·신사업창업사관학교
+    #                       혁신형 2억 — 수출·2년 연속 매출 10%↑(첫해 5천만 이상)·스마트공장·강한소상공인/로컬크리에이터·소진공 직접대출 성실상환
+    ys3 = [_ht_num(y["vat"]) for y in ys[-3:]]
+    grow2 = len(ys3) == 3 and ys3[0] >= 50000000 and ys3[1] >= ys3[0] * 1.1 and ys3[2] >= ys3[1] * 1.1
+    tags = f"{_ht_s(inp.get('company_name'))} {_ht_s(inp.get('certs'))} {_ht_s(inp.get('innov_note'))}"
+    exporter = (_ht_num(inp.get("export_amount")) or 0) > 0 or bool(_ht_s(inp.get("export")).strip())
+    innov_cap = 0
+    if exporter or grow2 or used.get("sojin", 0) > 0 or _re.search(r"스마트공장|강한\s*소상공인|로컬\s*크리에이터", tags):
+        innov_cap = 200000000
+    elif inp.get("smart_tech") or _re.search(r"협동조합|사회적\s*(예비)?\s*기업|마을기업|자활기업|백년(가게|소공인|소상공인)|창업사관학교", tags):
+        innov_cap = 100000000
+    if innov_cap:
+        make("sojin_innov", "소상공인시장진흥공단 (혁신성장촉진자금)", innov_cap)
 
 
 def _ht_jaedan_recent(inp, loans, today):
@@ -3312,11 +3326,12 @@ INCALL_PROMPT = """아래는 정책자금 컨설팅 회사의 '인콜일지(상�
 - employees: 직원 수(4대보험 기준, 'x'·없음이면 0) / hire: 추가 채용 예정 인원
 - naeil: 내일채움공제 문구 / umbrella: 노란우산공제 가입이면 "yes", 미가입이면 "no"
 - export_amount: 수출 실적 금액 / factory: 공장 "own"(자가)|"rent"(임차)|"none"
+- smart_tech: 스마트기술을 쓰고 있으면 true — 키오스크, 테이블오더·QR오더, 서빙·조리로봇, 무인판매기, 스마트미러, AI CCTV, 디지털 메뉴보드, 3D프린터, 예약·매출분석·재고관리 S/W 등 (예: '테이블오더o'). 없으면 null
 - restart: 메모에 예전 사업을 폐업하고 다시 창업했다는 내용(재창업, '폐업o' 등)이 있으면 true, 없으면 null
 - memo: ※ 추가사항에 적힌 상담 메모를 핵심만 3줄 이내로 요약 (분석에 참고할 사실 위주)
 
 JSON으로만 답하세요:
-{"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":[..],"ytd":..,"kcb":..,"nice":..,"co_kcb":..,"co_nice":..,"recovery":..,"arrears":..,"arrears_other":..,"loans":[..] 또는 null,"age":..,"career":..,"assets_note":..,"marital":..,"woman":..,"employees":..,"hire":..,"naeil":..,"umbrella":..,"export_amount":..,"factory":..,"restart":..,"memo":..}"""
+{"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":[..],"ytd":..,"kcb":..,"nice":..,"co_kcb":..,"co_nice":..,"recovery":..,"arrears":..,"arrears_other":..,"loans":[..] 또는 null,"age":..,"career":..,"assets_note":..,"marital":..,"woman":..,"employees":..,"hire":..,"naeil":..,"umbrella":..,"export_amount":..,"factory":..,"smart_tech":..,"restart":..,"memo":..}"""
 
 
 def _docx_text(b64):

@@ -1128,6 +1128,7 @@
           <div class="ht-line">
             <label class="ht-f"><span>공장 보유</span><select id="ht-factory"><option value="">-</option><option value="own">자가</option><option value="rent">임차</option><option value="none">없음</option></select></label>
           </div>
+          <label class="ht-chk"><input type="checkbox" id="ht-smart" /> 스마트기술 활용 (키오스크·테이블오더·서빙로봇 등)</label>
         </div>
       </div>
 
@@ -2664,6 +2665,7 @@ function htFillFromIncall(d) {
   if (["own", "rent", "none"].includes(d.factory)) set("factory", d.factory);
   if (n(d.export_amount) !== null) set("export_amount", n(d.export_amount));
   if (d.restart === true) { cur.retry = Object.assign({}, cur.retry, { restart: true }); filled++; }
+  if (d.smart_tech === true) { cur.smart_tech = true; filled++; }
   if (!filled) return alertError("인콜일지에서 채울 내용을 찾지 못했어요. 표가 잘 보이는 파일로 다시 올려 주세요.");
   htFillForm(cur);
   toast("인콜일지 내용으로 입력 칸을 채웠어요. 값을 확인해 주세요.");
@@ -3724,7 +3726,7 @@ const HT_FIELDS = [
 
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"], ["rep.disabled", "ht-disabled", "check"],
-  ["retry.restart", "ht-rt-restart", "check"], ["retry.edu", "ht-rt-edu", "check"], ["retry.revival", "ht-rt-revival", "check"], ["retry.debt", "ht-rt-debt", "check"],
+  ["smart_tech", "ht-smart", "check"], ["retry.restart", "ht-rt-restart", "check"], ["retry.edu", "ht-rt-edu", "check"], ["retry.revival", "ht-rt-revival", "check"], ["retry.debt", "ht-rt-debt", "check"],
   ["employees", "ht-employees", "int"], ["emp_keep", "ht-emp-keep", "check"], ["emp_increase", "ht-emp-inc", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
   ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
