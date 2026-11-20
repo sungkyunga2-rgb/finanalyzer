@@ -3023,6 +3023,35 @@ def _credit_clean(data):
     return out
 
 
+DOC_CLASSIFY_PROMPT = """위에 [파일 1], [파일 2] … 순서로 한국 서류(이미지 또는 PDF)가 첨부돼 있습니다. 각 파일이 어떤 서류인지 아래 중 하나로 분류하세요.
+- "financial": 재무제표 — 표준재무제표증명, 재무상태표(대차대조표), 손익계산서, 결산서
+- "income": 사업자등록증·사업자등록증명, 부가가치세 과세표준증명, 부가가치세 면세사업자 수입금액증명, 소득금액증명
+- "credit": 신용정보조회서(올크레딧·나이스지키미·크레딧포유), 신용점수 화면 캡처, 대출 내역 화면(은행·토스·카카오뱅크 등 앱 캡처 포함)
+- "other": 위에 해당하지 않음
+한 파일 안에 여러 서류가 있으면 가장 많은 부분을 차지하는 서류로 고르세요. 내용은 옮겨 적지 말고 분류만 하세요.
+JSON으로만 답하세요: {"types": ["financial", "income", ...]}  (파일 순서대로, 파일 수만큼)"""
+
+
+@app.post("/extract/classify")
+async def extract_classify(body: IncomeDocExtractRequest, user: models.User = Depends(get_current_user)):
+    """서류 올리기 칸 하나로 — 파일별 서류 종류만 판별 (재무제표 / 사업자·매출 서류 / 신용정보). 저장하지 않는다."""
+    if not body.images:
+        raise HTTPException(status_code=400, detail="분석할 서류가 없습니다.")
+    if len(body.images) > 15:
+        raise HTTPException(status_code=400, detail="서류는 한 번에 최대 15개까지 올릴 수 있습니다.")
+    parts = []
+    for i, img in enumerate(body.images):
+        parts.append({"text": f"[파일 {i + 1}]"})
+        parts.append({"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}})
+    data, err = await _gemini_json(parts, DOC_CLASSIFY_PROMPT, max_tokens=500)
+    if data is None:
+        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+    types = data.get("types") if isinstance(data, dict) else None
+    types = [t if t in ("financial", "income", "credit") else "other" for t in (types or [])][:len(body.images)]
+    types += ["other"] * (len(body.images) - len(types))
+    return {"types": types}
+
+
 @app.post("/extract/credit-doc")
 async def extract_credit_doc(body: IncomeDocExtractRequest, user: models.User = Depends(get_current_user)):
     """신용정보조회서·신용점수 화면 → 신용점수(KCB·NICE)·기대출 목록. 문서·결과는 저장하지 않는다."""

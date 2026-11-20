@@ -549,6 +549,7 @@
   .ht-doc-btn b { font-size: 13px; color: var(--text); }
   .ht-doc-btn span { font-size: 11px; color: var(--text2); font-weight: 400; }
   .ht-doc-btn:disabled { opacity: .6; }
+  .ht-doc-all { width: 100%; min-height: 130px; }
   @media (max-width: 560px) { .ht-doc-btns { grid-template-columns: 1fr; } .ht-doc-btn { min-height: 0; padding: 12px; } .ht-doc-btn .ht-doc-drop { display: none; } }
   /* 원클릭 분석 결과 — 리포트 형태 */
   .ht-rp { padding: 0; overflow: hidden; }
@@ -917,7 +918,11 @@
         <input type="file" id="finDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <input type="file" id="creditDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <input type="file" id="incomeDocInput" accept="image/*,application/pdf" multiple style="display:none" />
-        <div class="ht-doc-btns">
+        <input type="file" id="allDocInput" accept="image/*,application/pdf" multiple style="display:none" />
+        <button type="button" class="btn ht-doc-btn ht-doc-all" id="allDocBtn" onclick="document.getElementById('allDocInput').click()">
+          <span class="ht-doc-ic">📂</span><b>서류 올리기</b><span>재무제표 · 사업자등록증 · 부가세과세표준증명 · 면세사업자 수입금액증명 · 소득금액증명원 · 신용정보조회서(신용점수·대출 화면 캡처)<br>여러 서류를 한 번에 올려도 AI가 서류별로 알아서 읽어요</span>
+          <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
+        <div class="ht-doc-btns" style="display:none;">
           <button type="button" class="btn ht-doc-btn" id="finDocBtn" onclick="document.getElementById('finDocInput').click()">
             <span class="ht-doc-ic">📊</span><b>재무제표</b><span>재무상태표·손익계산서 (최대 10장)<br>→ 회사 정보·매출·재무 수치</span>
             <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
@@ -2527,7 +2532,7 @@ async function htHandleIncomeFile(files) {
   const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
   try { incomeDocImage = await Promise.all(files.map(read)); } catch (e) { return alertError("파일을 읽지 못했어요."); }
   document.getElementById("incomeDocFileName").textContent = "📎 " + files.map(f => f.name).join(", ");
-  extractIncomeDoc();
+  await extractIncomeDoc();
 }
 
 // ── 서류로 채우기: 재무제표 (재무상태표·손익계산서) ──
@@ -2536,8 +2541,41 @@ document.getElementById("finDocInput").addEventListener("change", e => {
   e.target.value = "";
   htHandleFinFiles(files);
 });
+// ── 서류 올리기 (하나로): 파일별 서류 종류를 AI로 판별 → 재무제표 / 사업자·매출 서류 / 신용정보 순서로 읽기 ──
+document.getElementById("allDocInput").addEventListener("change", e => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = "";
+  htHandleAllDocs(files);
+});
+async function htHandleAllDocs(all) {
+  const files = (all || []).slice(0, 15);
+  if (!files.length) return;
+  if (!token) { showPage("login"); return; }
+  if (files.some(f => !(f.type.startsWith("image/") || f.type === "application/pdf"))) return alertError("JPG, PNG, PDF 파일만 업로드 가능합니다.");
+  const btn = document.getElementById("allDocBtn");
+  const btnHtml = btn.innerHTML;
+  const busy = (t, sub) => { btn.innerHTML = `<b>⏳ ${t}</b><span>${sub || "잠시만 기다려 주세요"}</span>`; };
+  btn.disabled = true; busy("서류 종류를 확인하는 중...");
+  document.getElementById("incomeDocFileName").textContent = "📎 " + files.map(f => f.name).join(", ");
+  try {
+    const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
+    let types;
+    if (files.length === 1 && /재무|결산|손익|대차|재무상태/.test(files[0].name)) types = ["financial"];
+    else types = (await api("POST", "/extract/classify", { images: await Promise.all(files.map(read)) })).types || [];
+    const pick = k => files.filter((f, i) => types[i] === k);
+    const fin = pick("financial"), inc = pick("income"), cred = pick("credit"), other = pick("other");
+    if (fin.length) { busy("재무제표를 읽는 중...", "최대 1분 정도 걸릴 수 있어요"); await htHandleFinFiles(fin); }
+    if (inc.length) { busy("사업자등록증·매출 서류를 읽는 중..."); await htHandleIncomeFile(inc); }
+    if (cred.length) { busy("신용정보를 읽는 중..."); await htHandleCreditFiles(cred); }
+    if (other.length) alertError(`${other.map(f => f.name).join(", ")}은(는) 채울 수 있는 서류가 아니라 건너뛰었어요.\n재무제표·사업자등록증·부가세과세표준증명·소득금액증명원·신용정보조회서를 올려 주세요.`);
+  } catch (err) {
+    alertError(err.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = btnHtml;
+  }
+}
 // 드래그해서 놓기
-[["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs)], ["creditDocBtn", fs => htHandleCreditFiles(fs)]].forEach(([id, fn]) => {
+[["allDocBtn", fs => htHandleAllDocs(fs)], ["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs)], ["creditDocBtn", fs => htHandleCreditFiles(fs)]].forEach(([id, fn]) => {
   const el = document.getElementById(id);
   ["dragenter", "dragover"].forEach(t => el.addEventListener(t, ev => { ev.preventDefault(); el.classList.add("drag"); }));
   ["dragleave", "drop"].forEach(t => el.addEventListener(t, ev => { ev.preventDefault(); el.classList.remove("drag"); }));
