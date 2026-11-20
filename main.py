@@ -42,6 +42,16 @@ def run_auto_migration():
         "nickname": "VARCHAR DEFAULT ''",
     })
     add_missing_columns("subscriptions", {"cycle": "VARCHAR DEFAULT 'month'"})
+    # 이전 요금제(피나 구독·스탠다드·프로 10명) 정리 — 테스트 단계라 남은 것은 Pro로 옮긴다
+    if "teams" in tables:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("UPDATE teams SET plan = 'fina_pro' WHERE plan IN ('starter', 'standard', 'pro')"))
+                if "subscriptions" in tables:
+                    conn.execute(text("UPDATE subscriptions SET plan = 'fina_pro' WHERE plan IN ('starter', 'standard', 'pro')"))
+                conn.commit()
+        except Exception as e:
+            print(f"이전 요금제 정리 오류: {e}")
     add_missing_columns("teams", {"plan_expires_at": "TIMESTAMP", "basic_biz": "VARCHAR DEFAULT ''"})
     # 커뮤니티 글/댓글 수정 기능을 위한 updated_at 컬럼 추가
     add_missing_columns("community_posts", {"updated_at": "TIMESTAMP"})
@@ -136,7 +146,7 @@ CREDIT_PACKAGES = {
 
 # 구독 요금제 — 월 분석 건수는 제한하지 않고 '사용자 수(seats)'로만 구분한다.
 # price = 월 구독료(원). 이 금액 그대로 카드에 청구된다.
-# list_price = 정가(할인 표시용). hidden = 새로 가입은 받지 않는 이전 요금제(기존 팀·관리자 부여용으로만 유지)
+# hidden = 새로 가입은 받지 않는 요금제 (지금은 없음)
 # tier: "basic" = 소상공인용(본인 사업자 1개, 예상한도 + 기관명만) / "pro" = 컨설턴트용(전체 결과)
 SUBSCRIPTION_PLANS = {
     # year_month: 연간 구독 시 월 환산 금액 (연 결제금액 = year_month × 12)
@@ -145,9 +155,6 @@ SUBSCRIPTION_PLANS = {
     "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "year_month": 330000, "tier": "pro", "popular": True,
                  "desc": "컨설턴트용", "features": [{"t": "업체 수 제한 없이 분석", "hi": True}, {"t": "신청 가능 기관 + 자금 명칭 + 기관별 한도", "hi": True},
                               "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
-    "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 330000, "tier": "pro", "hidden": True},   # 이전 요금제 — 기존 구독자는 Pro와 같은 권한
-    "standard": {"label": "스탠다드",  "seats": 3,  "price": 550000, "tier": "pro", "hidden": True},
-    "pro":      {"label": "프로",      "seats": 10, "price": 1100000, "tier": "pro", "hidden": True},
 }
 
 def _public_plans():
@@ -4703,7 +4710,7 @@ def admin_set_basic_biz(body: AdminBasicBizBody, _: bool = Depends(check_admin),
 
 class AdminSetPlanBody(BaseModel):
     email: str
-    plan: str = ""   # starter / standard / pro / "" (요금제 해지)
+    plan: str = ""   # basic / fina_pro / "" (요금제 해지)
     expires_on: str | None = None   # 만료일 "YYYY-MM-DD" (한국 날짜, 그날 23:59:59까지 이용). 없으면 만료 없음
 
 @app.post("/admin/team/set-plan")

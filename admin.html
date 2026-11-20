@@ -1215,9 +1215,6 @@ function renderResult(d) {
            <select id="plan-select" style="flex:1;padding:10px 12px;border:1px solid #d6dde8;border-radius:8px;font-size:14px;">
              <option value="fina_pro" ${!d.team || !d.team.plan || d.team.plan === "fina_pro" ? "selected" : ""}>Pro — 1명 (컨설턴트)</option>
              <option value="basic" ${d.team && d.team.plan === "basic" ? "selected" : ""}>Basic — 1명 (사업자 1곳)</option>
-             <option value="starter" ${d.team && d.team.plan === "starter" ? "selected" : ""}>피나 구독 — 1명 (이전 요금제, Pro 권한)</option>
-             <option value="standard" ${d.team && d.team.plan === "standard" ? "selected" : ""}>스탠다드 — 3명 (이전 요금제)</option>
-             <option value="pro" ${d.team && d.team.plan === "pro" ? "selected" : ""}>프로 — 10명 (이전 요금제)</option>
            </select>
          </div>
          <div class="row" style="margin-bottom:8px;">
