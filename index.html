@@ -4956,7 +4956,7 @@ function htLimitCard(L) {
       <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
         <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}</span>
         ${o.status === "ok" ? `<span style="font-weight:600;color:#185FA5;white-space:nowrap;">${o.low === o.high ? htKwon(o.high) : o.low <= 0 ? "최대 " + htKwon(o.high) : htKwon(o.low) + " ~ " + htKwon(o.high)}</span>`
-          : `<span style="font-weight:600;color:#9b9a95;white-space:nowrap;">${o.status === "blocked" ? (o.hard ? "신청 어려움" : "신청 불가") : "추가 한도 없음"}</span>`}</div>`).join("")}</div>
+          : `<span style="font-weight:600;color:#9b9a95;white-space:nowrap;">${o.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</span>`}</div>`).join("")}</div>
     </div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
       <div style="font-size:12px;color:var(--text3);">필요자금</div>
@@ -5079,7 +5079,7 @@ function htReportBody(r, input) {
   }
   if (L.available && (L.orgs || []).length) {
     limHTML += `<table class="fin-table"><thead><tr><th>신청 가능 기관</th><th style="text-align:right;">예상 금액</th></tr></thead><tbody>${L.orgs.map(g =>
-      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${g.status === "ok" ? (g.low === g.high ? htKwon(g.high) : g.low <= 0 ? "최대 " + htKwon(g.high) : htKwon(g.low) + " ~ " + htKwon(g.high)) : g.status === "blocked" ? (g.hard ? "신청 어려움" : "신청 불가") : "추가 한도 없음"}</td></tr>`).join("")}</tbody></table>`;
+      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${g.status === "ok" ? (g.low === g.high ? htKwon(g.high) : g.low <= 0 ? "최대 " + htKwon(g.high) : htKwon(g.low) + " ~ " + htKwon(g.high)) : g.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</td></tr>`).join("")}</tbody></table>`;
   }
   if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;
   html += sh("예상 한도 · 신청 가능 기관 (Expected Funding)") + limHTML;
@@ -5301,7 +5301,7 @@ function htResultCardHTML(r, input, full, opts) {
     let lim = "";
     if (L.available && L.status === "ok") {
       lim += `<div class="ht-rp-total">약 ${htKwon(L.low)} ~ ${htKwon(L.high)}</div>`;
-      lim += (L.orgs || []).map(g => `<div class="ht-rp-row"><span>${e(g.name)}</span><b>${g.status === "ok" ? (g.low === g.high ? htKwon(g.high) : htKwon(g.low) + " ~ " + htKwon(g.high)) : g.status === "blocked" ? (g.hard ? "신청 어려움" : "신청 불가") : "추가 한도 없음"}</b></div>`).join("");
+      lim += (L.orgs || []).map(g => `<div class="ht-rp-row"><span>${e(g.name)}</span><b>${g.status === "ok" ? (g.low === g.high ? htKwon(g.high) : htKwon(g.low) + " ~ " + htKwon(g.high)) : g.status === "blocked" ? "신청 불가" : "추가 한도 없음"}</b></div>`).join("");
     } else lim += `${L.status === "blocked" || L.status === "low" ? `<div class="ht-rp-total" style="color:${L.status === "blocked" ? "#A32D2D" : "#B8860B"};font-size:18px;">${L.status === "blocked" ? "현재 신청 어려움" : "추가 한도 여력 부족"}</div>` : ""}<div class="srp-opinion-item">${e(L.text || "")}</div>`;
     const f = r.financial, q = r.ratios;
     const kpi = (label, value, lvl) => `<div class="srp-kpi" style="border-left-color:${LC[lvl] || "#185FA5"};"><div class="srp-kpi-label">${label}</div><div class="srp-kpi-value" style="color:${LC[lvl] || "#185FA5"};">${value}</div></div>`;
