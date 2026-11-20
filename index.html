@@ -504,6 +504,14 @@
   .ht-auth-prog .ok { color: #1D9E75; font-weight: 700; }
   .ht-auth-prog .now { color: #185FA5; font-weight: 700; }
   .ht-auth-prog .no { color: var(--text3); }
+  .ht-doc-prog { text-align: left; margin: 4px 0 14px; display: flex; flex-direction: column; gap: 8px; }
+  .ht-doc-prog .row { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 13px; color: var(--text3); }
+  .ht-doc-prog .row b { font-weight: 700; }
+  .ht-doc-prog .row.ok { color: #1D9E75; border-color: rgba(29,158,117,.35); }
+  .ht-doc-prog .row.now { color: #185FA5; border-color: rgba(24,95,165,.35); }
+  .ht-doc-prog .row.fail { color: #B4532A; border-color: rgba(180,83,42,.35); }
+  .ht-doc-prog .f { display: block; font-size: 11.5px; color: var(--text3); margin-top: 2px; word-break: break-all; }
+  .ht-doc-prog .m { display: block; font-size: 12px; color: var(--text2); margin-top: 4px; line-height: 1.5; white-space: pre-line; }
   .ht-npki-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
   .ht-npki-other { background: none; border: none; color: var(--text3); font-size: 12px; text-decoration: underline; cursor: pointer; font-family: inherit; padding: 8px 0 2px; }
   .ht-loan-btn { border: 1.5px solid #185FA5; color: #185FA5; font-weight: 700; background: #F3F8FD; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.25; }
@@ -1929,7 +1937,9 @@ function showPage(name) {
 }
 
 // 오류·확인이 필요한 안내 — 화면 가운데에 띄우고 [확인]을 눌러야 닫힘
+let htDocCapture = null;      // 서류 올리기 진행 창이 떠 있는 동안 알림·토스트를 창 안에 모음
 function alertError(msg) {
+  if (htDocCapture) { htDocCapture.push({ err: true, msg: String(msg || "") }); return; }
   let bg = document.getElementById("faAlert");
   if (!bg) {
     bg = document.createElement("div");
@@ -1958,6 +1968,7 @@ function toast(msg) {
   const t = String(msg || "");
   if (/오류|실패|못했|못 했|없습니다|없어요|올바르지|않습니다|않아요|불가|넘었|초과|만료|끊겼|확인해 주세요|입력해 ?주세요|선택해 ?주세요|동의해 ?주세요/.test(t)
       && !/접수|완료|되었습니다|채웠어요|불러왔어요|보냈어요|저장|가져왔어요|복사했어요|삭제했어요/.test(t)) return alertError(t);
+  if (htDocCapture) { htDocCapture.push({ err: false, msg: t }); return; }
   const wrap = document.getElementById("toastWrap");
   // 토스트가 계속 쌓이지 않도록 오래된 것부터 정리 (최대 2개 유지)
   while (wrap.children.length >= 2) wrap.removeChild(wrap.firstChild);
@@ -2565,6 +2576,21 @@ document.getElementById("allDocInput").addEventListener("change", e => {
   e.target.value = "";
   htHandleAllDocs(files);
 });
+function htDocModalClose() { document.getElementById("htDocModal").style.display = "none"; }
+function htDocRender(rows, done) {
+  const esc = v => String(v || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const ic = { wait: "·", now: "⏳", ok: "✓", fail: "–" };
+  const tail = { wait: "", now: " 읽는 중…", ok: "", fail: "" };
+  document.getElementById("htDocProg").innerHTML = rows.map(r => `<div class="row ${r.st === "wait" ? "" : r.st}">
+    <b>${ic[r.st]} ${esc(r.label)}${tail[r.st]}</b>${r.files ? `<span class="f">${esc(r.files)}</span>` : ""}${r.msg ? `<span class="m">${esc(r.msg)}</span>` : ""}</div>`).join("");
+  if (done) {
+    const bad = rows.filter(r => r.st === "fail").length, good = rows.filter(r => r.st === "ok" && r.key !== "kind").length;
+    document.getElementById("htDocIc").textContent = good ? "✅" : "⚠️";
+    document.getElementById("htDocTitle").textContent = good ? "서류를 다 읽었어요" : "채운 내용이 없어요";
+    document.getElementById("htDocDesc").textContent = good ? (bad ? "일부 서류는 읽지 못했어요. 채워진 값을 한 번 확인해 주세요." : "채워진 값을 한 번 확인해 주세요.") : "서류가 선명하게 보이는 PDF나 이미지로 다시 올려 주세요.";
+    document.getElementById("htDocOk").style.display = "";
+  }
+}
 async function htHandleAllDocs(all) {
   const files = (all || []).slice(0, 15);
   if (!files.length) return;
@@ -2573,29 +2599,49 @@ async function htHandleAllDocs(all) {
   if (files.some(f => !(f.type.startsWith("image/") || f.type === "application/pdf" || isDocx(f)))) return alertError("JPG, PNG, PDF, 워드(.docx) 파일만 업로드 가능합니다.\n한글(.hwp) 파일은 PDF로 저장해서 올려 주세요.");
   const btn = document.getElementById("allDocBtn");
   const btnHtml = btn.innerHTML;
-  const busy = (t, sub) => { btn.innerHTML = `<b>⏳ ${t}</b><span>${sub || "잠시만 기다려 주세요"}</span>`; };
-  btn.disabled = true; busy("서류 종류를 확인하는 중...");
+  btn.disabled = true; btn.innerHTML = `<b>⏳ 서류를 읽는 중...</b><span>진행 상황은 안내 창에서 볼 수 있어요</span>`;
   document.getElementById("incomeDocFileName").textContent = "📎 " + files.map(f => f.name).join(", ");
+  // 진행 창
+  ["htDocIc", "htDocTitle", "htDocDesc"].forEach((id, k) => { document.getElementById(id).textContent = ["⏳", "서류를 읽는 중이에요", "서류마다 차례로 읽어서 입력 칸을 채워요. 최대 1~2분 걸릴 수 있어요."][k]; });
+  document.getElementById("htDocOk").style.display = "none";
+  document.getElementById("htDocModal").style.display = "flex";
+  const rows = [{ key: "kind", label: "서류 종류 확인", files: files.map(f => f.name).join(", "), st: "now" }];
+  htDocRender(rows);
+  const cap = htDocCapture = [];
+  const clean = m => m.replace(/\s*값을 확인[^.]*\.?\s*$/, "").replace(/\s*(채워진 값을 한 번 확인해 주세요|나머지 필수 항목을 입력한 뒤 분석해 주세요)\.?/g, "").trim();
   try {
     const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
-    const types = files.map(f => isDocx(f) ? "incall" : null);          // 워드 파일은 인콜일지로
+    const types = files.map(f => isDocx(f) ? "incall" : null);          // 워드 파일은 상담 기록으로
     const rest = files.filter((f, i) => !types[i]);
     if (rest.length === 1 && /재무|결산|손익|대차|재무상태/.test(rest[0].name)) types[files.indexOf(rest[0])] = "financial";
     else if (rest.length) {
       const got = (await api("POST", "/extract/classify", { images: await Promise.all(rest.map(read)) })).types || [];
       rest.forEach((f, i) => { types[files.indexOf(f)] = got[i] || "other"; });
     }
-    const pick = k => files.filter((f, i) => types[i] === k);
-    const fin = pick("financial"), inc = pick("income"), cred = pick("credit"), call = pick("incall"), other = pick("other");
-    if (call.length) { busy("상담 기록을 읽는 중..."); await htHandleIncallFiles(call); }
-    if (fin.length) { busy("재무제표를 읽는 중...", "최대 1분 정도 걸릴 수 있어요"); await htHandleFinFiles(fin); }
-    if (inc.length) { busy("사업자등록증·매출 서류를 읽는 중..."); await htHandleIncomeFile(inc); }
-    if (cred.length) { busy("신용정보를 읽는 중..."); await htHandleCreditFiles(cred); }
-    if (other.length) { busy("서류를 읽는 중..."); await htHandleGeneralFiles(other); }
+    rows[0].st = "ok"; rows[0].files = "";
+    const GROUPS = [["incall", "상담 기록", htHandleIncallFiles], ["financial", "재무제표", htHandleFinFiles], ["income", "사업자등록증·매출 서류", htHandleIncomeFile],
+                    ["credit", "신용정보", htHandleCreditFiles], ["other", "그 밖의 서류", htHandleGeneralFiles]];
+    const todo = GROUPS.map(([k, label, fn]) => ({ key: k, label, fn, list: files.filter((f, i) => types[i] === k) })).filter(g => g.list.length);
+    todo.forEach(g => rows.push({ key: g.key, label: g.label, files: g.list.map(f => f.name).join(", "), st: "wait" }));
+    htDocRender(rows);
+    for (const g of todo) {
+      const row = rows.find(r => r.key === g.key);
+      row.st = "now"; htDocRender(rows);
+      const from = cap.length;
+      try { await g.fn(g.list); } catch (e) { cap.push({ err: true, msg: e.message }); }
+      const got = cap.slice(from);
+      const err = got.find(x => x.err), ok = got.filter(x => !x.err);
+      row.st = ok.length ? "ok" : err ? "fail" : "ok";
+      row.msg = (ok.length ? ok : got).map(x => clean(x.msg)).filter(Boolean).join("\n") || (row.st === "ok" ? "입력 칸을 채웠어요." : "");
+      htDocRender(rows);
+    }
   } catch (err) {
-    alertError(err.message);
+    const r = rows.find(x => x.st === "now") || rows[0];
+    r.st = "fail"; r.msg = err.message;
   } finally {
+    htDocCapture = null;
     btn.disabled = false; btn.innerHTML = btnHtml;
+    htDocRender(rows, true);
   }
 }
 // ── 인콜일지(상담 기록지) → 업체 정보·매출·신용·기대출·대표자 정보 ──
@@ -8023,6 +8069,18 @@ window.addEventListener("DOMContentLoaded", () => {
   .ht-biz-opt em { font-style:normal; font-size:11px; color:#185FA5; font-weight:600; }
   .ht-biz-opt small { color:var(--text3); }
 </style>
+<div id="htDocModal" class="ht-auth-bg" style="display:none;">
+  <div class="ht-auth">
+    <button type="button" class="ht-auth-x" onclick="htDocModalClose()" aria-label="닫기">×</button>
+    <div style="text-align:center;">
+      <div id="htDocIc" style="font-size:36px;margin:8px 0;">⏳</div>
+      <div class="ht-auth-title" id="htDocTitle">서류를 읽는 중이에요</div>
+      <p class="ht-auth-desc" id="htDocDesc">서류마다 차례로 읽어서 입력 칸을 채워요. 최대 1~2분 걸릴 수 있어요.</p>
+    </div>
+    <div id="htDocProg" class="ht-doc-prog"></div>
+    <button type="button" class="btn btn-primary btn-full" id="htDocOk" onclick="htDocModalClose()" style="display:none;">확인</button>
+  </div>
+</div>
 <div id="htAuthModal" class="ht-auth-bg" style="display:none;">
   <div class="ht-auth">
     <button type="button" class="ht-auth-x" onclick="htAuthClose()" aria-label="닫기">×</button>
