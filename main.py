@@ -2255,7 +2255,7 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
     cw = _cw_body(params, body.telecom)        # 근로복지공단(직원 수)은 사업자등록증명에서 대표자 주민번호를 받은 뒤 따로 요청
     if cw:
         keys.append("employees")
-    dis = _dis_body_simple(params, body.telecom)   # 정부24 장애인 증명서(장애인기업) — 마찬가지로 주민번호를 받은 뒤 (별도 승인)
+    dis = None    # 정부24 장애인 증명서(장애인기업)는 간편인증에선 조회하지 않음 — 승인이 한 번 더 필요해서 (공동인증서만). 다시 켜려면 _dis_body_simple(params, body.telecom)
     if dis:
         keys.append("disability")
     _ht_live[job_id] = {"user_id": user.id, "leads": [], "pending": len(keys), "res": {}, "t": _time.time(),
