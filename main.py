@@ -962,6 +962,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
+#  · 재단 재이용 제한: 서울은 최근 1년, 그 외 지역은 최근 6개월 안에 재단 자금을 받았으면 재단 불가(시기가 있을 때만)
 #  · 개인대출(구분 '개인')은 한도에서 빼지 않음 / 카드론·현금서비스·대부업이 합쳐서 3건 이상이면 신청 어려움(전체)
 #  · 재무제표 차입금이 있으면 기관 미상 기대출 대신 '단기차입금 전액 + 장기차입금(담보로 봄) 30%'를 차감
 #    (최근 1년 고용 유지·증가면 장기 25%). 정책기관 기대출은 그 기관에서 전액 차감하고, 차입금 차감분에서는 그만큼 뺌
@@ -992,6 +993,33 @@ HT_LIMIT_RULE = {
 
 
 _HT_RISKY_LOAN = _re.compile(r"카드|현금\s*서비스|대부|러시앤캐시|산와|리드코프")
+
+
+def _ht_loan_ym(v):
+    """기대출 시기 → (연, 월). '2026.04', '26년 4월', '2026-04-02', '202604' 등"""
+    t = _ht_s(v)
+    m = _re.search(r"(\d{4}|\d{2})\s*(?:년|[.\-/])\s*(\d{1,2})", t) or _re.search(r"^(\d{4})(\d{2})", _re.sub(r"\D", "", t))
+    if not m:
+        return None
+    y, mo = int(m.group(1)), int(m.group(2))
+    if y < 100:
+        y += 2000
+    return (y, mo) if 1 <= mo <= 12 and 2000 <= y <= 2100 else None
+
+
+def _ht_jaedan_recent(inp, loans, today):
+    """최근 재단 자금 이용 — 서울 12개월 / 그 외 6개월 이내면 그 개월 수, 아니면 None"""
+    lim = 12 if _ht_s(inp.get("location")).startswith("서울") else 6
+    for l in loans:
+        if _ht_loan_org(l.get("org")) != "jaedan":
+            continue
+        ym = _ht_loan_ym(l.get("date"))
+        if not ym:
+            continue
+        ago = (today.year - ym[0]) * 12 + (today.month - ym[1])
+        if 0 <= ago < lim:
+            return lim
+    return None
 
 
 def _ht_loan_amt(l, inp=None):
@@ -1339,6 +1367,10 @@ def ht_estimate_limit(inp, today=None):
         block("jungjin")
     if over_borrow:
         block("jaedan")
+    # 재단 재이용 제한: 서울은 최근 1년, 그 외 지역은 최근 6개월 안에 재단 자금을 받았으면 추가 불가
+    jd_recent = _ht_jaedan_recent(inp, ctx["loans"], today or (_dt.utcnow() + _td(hours=9)))
+    if jd_recent:
+        block("jaedan")
     if dr is not None and dr > 550:
         block("kodit"); block("kibo")
     # 대출 후에도 기관 부채비율 기준을 넘지 않는 금액까지만 (대출금만큼 부채 증가, 자본은 그대로)
@@ -1384,6 +1416,8 @@ def ht_estimate_limit(inp, today=None):
             else: sj["high"] = fixed; sj["low"] = max(R["minAmount"], fixed - 10000000); sj["status"] = "ok"
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
+    if jd_recent:
+        base["jaedan_recent"] = jd_recent           # 12(서울) 또는 6 — 화면 안내용
     if ar == "has": return {**base, "status": "blocked", "low": 0, "high": 0, "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
     if ctx["risky_loans"] >= 3:
         for o in orgs: o["status"] = "blocked"; o["low"] = 0; o["high"] = 0

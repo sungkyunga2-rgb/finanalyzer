@@ -3608,6 +3608,20 @@ function analyzeHometax(input, opts) {
 
   // 7) 기대출
   const loans = (input.loans || []).filter(l => l && (l.org || l.date || htNum(l.amount) !== null));
+  {  // 재단 재이용 제한 — 서울 최근 1년 / 그 외 최근 6개월 안에 재단 자금을 받았으면 재단 추가 불가
+    const lim = String(input.location || "").startsWith("서울") ? 12 : 6;
+    const now = new Date(Date.now() + 9 * 3600 * 1000);
+    const ym = v => { const m = String(v || "").match(/(\d{4}|\d{2})\s*(?:년|[.\-/])\s*(\d{1,2})/) || String(v || "").replace(/\D/g, "").match(/^(\d{4})(\d{2})/);
+                      if (!m) return null; let y = +m[1]; if (y < 100) y += 2000; const mo = +m[2]; return mo >= 1 && mo <= 12 ? [y, mo] : null; };
+    const recent = loans.some(l => {
+      const o = String(l.org || "").replace(/\s/g, "");
+      if (l.kind === "personal" || !(/재단|[가-힣]{2}신보/.test(o)) || /신용보증기금|기술보증/.test(o)) return false;
+      const d = ym(l.date); if (!d) return false;
+      const ago = (now.getUTCFullYear() - d[0]) * 12 + (now.getUTCMonth() + 1 - d[1]);
+      return ago >= 0 && ago < lim;
+    });
+    if (recent) flags.push({ level: "danger", title: "최근 재단 자금 이용", text: `최근 ${lim === 12 ? "1년" : "6개월"} 안에 지역신용보증재단에서 받은 자금이 있어, 재단은 추가 신청이 어렵습니다. (재단 한도 없음)` });
+  }
   if (loans.filter(l => /카드|현금\s*서비스|대부|러시앤캐시|산와|리드코프/.test(l.org || "")).length >= 3)
     flags.push({ level: "danger", title: "카드론·현금서비스·대부업 이용", text: "카드론·현금서비스·대부업 이용이 많아 정책자금 신청이 어렵습니다." });
   const loansTotal = loans.reduce((a, l) => a + (htNum(l.amount) || 0), 0);
