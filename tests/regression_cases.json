@@ -1,0 +1,73 @@
+{
+  "_설명": "실제로 문제가 났던 사례를 익명화해 모아 둔 회귀 테스트. AI가 실제로 돌려준(또는 돌려줄 수 있는) 값을 넣고, 서버 후처리·한도 계산 결과가 기대값과 같은지 본다. 새 사례가 생기면 같은 형식으로 추가하고 `python tests/run_regression.py`를 실행한다.",
+  "financial": [
+    {
+      "name": "2026-11 카페 사례 — 단기차입금 빈 칸에 유동부채 합계를 읽음",
+      "ai": {"revenue": 941892215, "current_assets": 57791738, "noncurrent_assets": 544760173, "current_liabilities": 167790368, "noncurrent_liabilities": 262000000,
+             "capital_stock": 147004719, "total_equity": 172761543, "operating_income": 18317198, "interest_expense": 468000, "net_income": 25756824,
+             "short_borrowings": 167790368, "long_borrowings": 262000000},
+      "expect": {"short_borrowings": null, "long_borrowings": 262000000, "checks_fields": ["short_borrowings"]}
+    },
+    {
+      "name": "차입금이 부채보다 큼",
+      "ai": {"current_liabilities": 100000000, "noncurrent_liabilities": 200000000, "short_borrowings": 500000000, "long_borrowings": 300000000},
+      "expect": {"short_borrowings": null, "long_borrowings": null}
+    },
+    {
+      "name": "정상 — 차입금 그대로",
+      "ai": {"current_liabilities": 300000000, "noncurrent_liabilities": 200000000, "short_borrowings": 50000000, "long_borrowings": 150000000},
+      "expect": {"short_borrowings": 50000000, "long_borrowings": 150000000, "checks_fields": []}
+    }
+  ],
+  "income_doc": [
+    {
+      "name": "2026-11 카페 사례 — 사업자등록증 생년월일을 개업연월일로 읽음",
+      "ai": {"doc_type": "사업자등록증", "open_date": "1973-05-13", "rep_birth": "1973-05-13", "address": "경기도 파주시", "business_type": "음식점업", "business_item": "커피 전문점", "biz_kind": "개인"},
+      "expect": {"founded": null, "location": "경기", "checks_fields": ["founded"]}
+    },
+    {
+      "name": "정상 — 개업연월일",
+      "ai": {"doc_type": "사업자등록증", "open_date": "2024-05-31", "rep_birth": "1973-05-13", "address": "경기도 파주시", "business_type": "음식점업", "business_item": "커피 전문점"},
+      "expect": {"founded": "2024-05", "checks_fields": []}
+    }
+  ],
+  "members": [
+    {
+      "name": "2026-11 카페 사례 — 자격취득자 명부 2장(겹치는 기간)",
+      "today": "2026-11-20", "founded": "2024-05",
+      "periods": [{"from": "2025-01-01", "to": "2025-12-31"}, {"from": "2025-07-14", "to": "2026-07-13"}],
+      "rows": [
+        ["A1", "2024-06-13", "2025-03-01", 2300000], ["A2", "2024-12-26", "2025-07-01", 2300000], ["A3", "2025-10-01", null, 1249403],
+        ["A4", "2025-09-03", "2025-11-01", 2200000], ["A5", "2025-11-09", null, 2224786], ["A6", "2025-08-04", null, 2375017],
+        ["A7", "2025-05-01", "2026-05-16", 2139208], ["A8", "2025-02-15", "2025-08-01", 2000000], ["A9", "2025-07-29", "2025-10-01", 2200000],
+        ["A10", "2024-08-01", "2025-05-01", 2111369], ["A11", "2024-11-29", "2025-01-19", 560000],
+        ["A3", "2025-10-01", null, 1249403], ["A4", "2025-09-03", "2025-11-01", 2200000], ["A5", "2025-11-09", null, 2224786],
+        ["A6", "2025-08-04", null, 2375017], ["A7", "2025-05-01", "2026-05-16", 2139208], ["A8", "2025-02-15", "2025-08-01", 2000000],
+        ["B1", "2026-05-12", "2026-05-14", 2200000], ["A9", "2025-07-29", "2025-10-01", 2200000], ["B2", "2026-01-28", null, 500000],
+        ["B3", "2026-05-01", null, 3800000]
+      ],
+      "expect": {"employees": 5, "emp_increase": 3, "emp_avg": 3.4}
+    }
+  ],
+  "limit": [
+    {
+      "name": "2026-11 카페 사례 — 올바른 값으로 소진공 졸업후보(혁신형)",
+      "input": {"biz_type": "personal", "industry": "음식점업", "item": "커피 전문점", "location": "경기", "founded": "2024-05",
+                "years": [{"year": 2024, "vat": 442762366}, {"year": 2025, "vat": 952462085}], "ytd": {"year": 2026, "month": 6, "sales": 503679316},
+                "employees": 4, "emp_avg": 3.4, "emp_keep": true, "credit": {"kcb": 937, "nice": 995}, "arrears": {"status": "none"}, "rep": {"age": 53},
+                "loans": [{"org": "신용대출", "amount": 180000000, "kind": "personal"}, {"org": "+재단", "date": "2026.07.14", "amount": 50000000, "kind": "business"}],
+                "fin": {"assets": 602551911, "liabilities": 429790368, "equity": 172761543, "short_borrowings": null, "long_borrowings": 262000000}},
+      "today": "2026-11-20",
+      "expect": {"status": "ok", "orgs": {"sojin": {"status": "ok", "high": 130000000, "funds_contains": "졸업후보기업"},
+                                          "jungjin": {"status": "ok", "low": 170000000, "high": 220000000},
+                                          "jaedan": {"status": "blocked"}}}
+    },
+    {
+      "name": "같은 업체, 단기차입금 오인식 그대로면 소진공이 바닥남 (오인식이 결과를 얼마나 바꾸는지 기록)",
+      "input_from": 0,
+      "patch": {"fin": {"assets": 602551911, "liabilities": 429790368, "equity": 172761543, "short_borrowings": 167790368, "long_borrowings": 262000000}},
+      "today": "2026-11-20",
+      "expect": {"orgs": {"sojin": {"status": "exhausted"}}}
+    }
+  ]
+}

@@ -3835,6 +3835,72 @@ async def extract_credit_doc(body: IncomeDocExtractRequest, user: models.User = 
     return {"data": _credit_clean(data)}
 
 
+def _income_doc_post(data):
+    """사업자등록증·부가세·소득금액 서류 AI 결과 후처리 (회귀 테스트에서도 사용)"""
+    import re
+    # 상호/대표자명/사업자등록번호 후처리 — 빈 값 정리 및 사업자번호 형식 통일
+    if isinstance(data, dict):
+        def _clean_text(v):
+            if v is None:
+                return None
+            v = str(v).strip().strip('"').strip()
+            if not v or v.lower() in ("null", "none", "n/a", "-", "미상", "불명", "없음"):
+                return None
+            return v
+        for key in ("doc_type", "company_name", "rep_name", "business_number", "comment", "open_date", "address", "business_type", "business_item", "biz_kind"):
+            if key in data:
+                data[key] = _clean_text(data[key])
+        # 사업자등록증 → 원클릭 입력값 (창업년월·소재지·업태/종목 2개까지·개인/법인)
+        od = re.sub(r"\D", "", data.get("open_date") or "")
+        rb = re.sub(r"\D", "", str(data.pop("rep_birth", "") or ""))          # 생년월일은 확인에만 쓰고 돌려주지 않음
+        if len(od) >= 6 and rb and od[:6] == rb[:6]:
+            od = ""                                                        # 생년월일을 개업일로 잘못 읽음
+            data["open_date"] = None
+            data.setdefault("checks", []).append({"field": "founded", "cleared": True, "msg": "창업년월 — 생년월일과 같아 잘못 읽은 것으로 보여 비웠어요. 사업자등록증의 개업연월일을 확인해 주세요."})
+        if len(od) >= 6 and od[:2] in ("19", "20"):
+            data["founded"] = f"{od[:4]}-{od[4:6]}"
+            _founded_check(data, birth_year=int(rb[:4]) if len(rb) >= 4 and rb[:2] in ("19", "20") else None)
+            if not data.get("founded"):
+                data["open_date"] = None
+        if data.get("address"):
+            data["location"] = _sido(data["address"]) or None
+        if data.get("business_type") or data.get("business_item"):
+            i1, t1, i2, t2 = _pair_biz(data.get("business_type"), data.get("business_item"))
+            data["industry"], data["item"], data["industry2"], data["item2"] = i1 or None, t1 or None, i2 or None, t2 or None
+        biz = data.get("business_number")
+        if biz:
+            digits = re.sub(r"\D", "", biz)
+            if len(digits) == 10:
+                data["business_number"] = f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+            elif not digits:
+                data["business_number"] = None
+        # 과세기간별 금액 → 지난 연도별 매출 + 올해 누적 (CODEF와 같은 방식)
+        pr = data.get("periods")
+        if isinstance(pr, list) and pr:
+            rows = []
+            for it in pr:
+                if not isinstance(it, dict):
+                    continue
+                st_, en_ = re.sub(r"\D", "", str(it.get("start") or "")), re.sub(r"\D", "", str(it.get("end") or ""))
+                if len(st_) >= 6:
+                    rows.append({"commStartDate": st_[:6] + "01", "commEndDate": (en_[:6] if len(en_) >= 6 else st_[:6]) + "28", "resIncomeTotalAmt": it.get("amount")})
+            now_kst = datetime.utcnow() + timedelta(hours=9)
+            yrs, ytd = _safe(_parse_vat_split, rows, now_kst.year, default=([], None))
+            if yrs:
+                data["years"] = yrs
+            if ytd:
+                data["ytd"] = ytd
+        data.pop("periods", None)
+        kind = data.get("biz_kind") or ""
+        bd = re.sub(r"\D", "", data.get("business_number") or "")
+        if "법인" in kind or (len(bd) == 10 and bd[3:5] in ("81", "82", "83", "84", "85", "86", "87", "88")):   # 사업자번호 가운데 81~88 = 법인
+            data["biz_type"] = "corp"
+        elif "개인" in kind:
+            data["biz_type"] = "personal"
+
+    return data
+
+
 @app.post("/extract/income-doc")
 async def extract_income_doc(
     body: IncomeDocExtractRequest,
@@ -3942,66 +4008,7 @@ async def extract_income_doc(
     if data is None:
         raise HTTPException(status_code=500, detail=f"AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
 
-    # 상호/대표자명/사업자등록번호 후처리 — 빈 값 정리 및 사업자번호 형식 통일
-    if isinstance(data, dict):
-        def _clean_text(v):
-            if v is None:
-                return None
-            v = str(v).strip().strip('"').strip()
-            if not v or v.lower() in ("null", "none", "n/a", "-", "미상", "불명", "없음"):
-                return None
-            return v
-        for key in ("doc_type", "company_name", "rep_name", "business_number", "comment", "open_date", "address", "business_type", "business_item", "biz_kind"):
-            if key in data:
-                data[key] = _clean_text(data[key])
-        # 사업자등록증 → 원클릭 입력값 (창업년월·소재지·업태/종목 2개까지·개인/법인)
-        od = re.sub(r"\D", "", data.get("open_date") or "")
-        rb = re.sub(r"\D", "", str(data.pop("rep_birth", "") or ""))          # 생년월일은 확인에만 쓰고 돌려주지 않음
-        if len(od) >= 6 and rb and od[:6] == rb[:6]:
-            od = ""                                                        # 생년월일을 개업일로 잘못 읽음
-            data["open_date"] = None
-            data.setdefault("checks", []).append({"field": "founded", "cleared": True, "msg": "창업년월 — 생년월일과 같아 잘못 읽은 것으로 보여 비웠어요. 사업자등록증의 개업연월일을 확인해 주세요."})
-        if len(od) >= 6 and od[:2] in ("19", "20"):
-            data["founded"] = f"{od[:4]}-{od[4:6]}"
-            _founded_check(data, birth_year=int(rb[:4]) if len(rb) >= 4 and rb[:2] in ("19", "20") else None)
-            if not data.get("founded"):
-                data["open_date"] = None
-        if data.get("address"):
-            data["location"] = _sido(data["address"]) or None
-        if data.get("business_type") or data.get("business_item"):
-            i1, t1, i2, t2 = _pair_biz(data.get("business_type"), data.get("business_item"))
-            data["industry"], data["item"], data["industry2"], data["item2"] = i1 or None, t1 or None, i2 or None, t2 or None
-        biz = data.get("business_number")
-        if biz:
-            digits = re.sub(r"\D", "", biz)
-            if len(digits) == 10:
-                data["business_number"] = f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
-            elif not digits:
-                data["business_number"] = None
-        # 과세기간별 금액 → 지난 연도별 매출 + 올해 누적 (CODEF와 같은 방식)
-        pr = data.get("periods")
-        if isinstance(pr, list) and pr:
-            rows = []
-            for it in pr:
-                if not isinstance(it, dict):
-                    continue
-                st_, en_ = re.sub(r"\D", "", str(it.get("start") or "")), re.sub(r"\D", "", str(it.get("end") or ""))
-                if len(st_) >= 6:
-                    rows.append({"commStartDate": st_[:6] + "01", "commEndDate": (en_[:6] if len(en_) >= 6 else st_[:6]) + "28", "resIncomeTotalAmt": it.get("amount")})
-            now_kst = datetime.utcnow() + timedelta(hours=9)
-            yrs, ytd = _safe(_parse_vat_split, rows, now_kst.year, default=([], None))
-            if yrs:
-                data["years"] = yrs
-            if ytd:
-                data["ytd"] = ytd
-        data.pop("periods", None)
-        kind = data.get("biz_kind") or ""
-        bd = re.sub(r"\D", "", data.get("business_number") or "")
-        if "법인" in kind or (len(bd) == 10 and bd[3:5] in ("81", "82", "83", "84", "85", "86", "87", "88")):   # 사업자번호 가운데 81~88 = 법인
-            data["biz_type"] = "corp"
-        elif "개인" in kind:
-            data["biz_type"] = "personal"
-
+    data = _income_doc_post(data)
     return {"data": data}
 
 
