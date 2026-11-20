@@ -385,6 +385,7 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
 @app.get("/me")
 def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     tier = user_plan_tier(db, user)
+    _maybe_run_alerts()
     return {"email": user.email, "credits": user.credits, "subscribed": bool(tier), "tier": tier}
 
 # 비밀번호 재확인 후 상세 정보 조회
@@ -511,6 +512,7 @@ def withdraw(
     db.query(models.PromoUse).filter(models.PromoUse.user_id == user.id).delete()
     cleanup_user_subscription(db, user)   # 예약 결제 취소 + 빌링키 삭제
     cleanup_user_team(db, user)   # 팀 소속/초대 정리 (대표가 탈퇴하면 팀 해산)
+    cleanup_user_push(db, user)   # 알림 구독·알림 예약 삭제
     db.delete(user)
     db.commit()
     return {"message": "회원 탈퇴가 완료되었습니다."}
@@ -4253,6 +4255,7 @@ def admin_delete_user(body: AdminDeleteUserBody, _: bool = Depends(check_admin),
     db.query(models.RefundRequest).filter(models.RefundRequest.user_id == user.id).delete()
     cleanup_user_subscription(db, user)   # 예약 결제 취소 + 빌링키 삭제
     cleanup_user_team(db, user)   # 팀 소속/초대 정리 (대표면 팀 해산)
+    cleanup_user_push(db, user)   # 알림 구독·알림 예약 삭제
     db.delete(user)
     db.commit()
     return {"message": f"{body.email} 회원이 탈퇴 처리되었습니다."}
@@ -6234,3 +6237,249 @@ def admin_cancel_subscription(body: AdminSubCancelBody, _: bool = Depends(check_
         sub.next_payment_id = ""
         db.commit()
     return {"email": owner.email, "status": sub.status}
+
+
+
+# ══════════════════════════════════════════════════════════════
+# 웹푸시 알림 — 재신청 가능 시점 알림 (카카오 알림톡은 이후 같은 알림 목록으로 붙인다)
+#  · 키: 환경변수 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY(PEM)가 있으면 그것, 없으면 처음 한 번 만들어 DB(app_settings)에 보관
+#  · 알림 대상: 회원이 결과 화면에서 '알림 받기'를 누른 업체의 재단·소진공 기대출 날짜 → 재신청 가능일 계산해 저장
+#  · 발송: POST /admin/alerts/run (외부 크론 하루 1회, X-Admin-Password) + 접속 시 1시간에 한 번 보조 실행. 한국 시간 9~20시에만
+# ══════════════════════════════════════════════════════════════
+import threading as _threading
+import base64 as _b64p
+
+_VAPID_CACHE = {}
+_ALERT_LOCK = _threading.Lock()
+_ALERT_LAST = {"t": 0.0}
+PUSH_MAX_PER_USER = 10
+
+
+def _vapid_keys(db: Session):
+    """(공개키 base64url, 개인키 PEM)"""
+    if _VAPID_CACHE.get("pub"):
+        return _VAPID_CACHE["pub"], _VAPID_CACHE["pem"]
+    pub, pem = os.getenv("VAPID_PUBLIC_KEY", "").strip(), os.getenv("VAPID_PRIVATE_KEY", "").strip().replace("\\n", "\n")
+    if not (pub and pem):
+        row_pub = db.query(models.AppSetting).filter(models.AppSetting.key == "vapid_public").first()
+        row_pem = db.query(models.AppSetting).filter(models.AppSetting.key == "vapid_private_pem").first()
+        if row_pub and row_pem and row_pub.value and row_pem.value:
+            pub, pem = row_pub.value, row_pem.value
+        else:
+            from cryptography.hazmat.primitives.asymmetric import ec
+            from cryptography.hazmat.primitives import serialization
+            k = ec.generate_private_key(ec.SECP256R1())
+            pem = k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+            raw = k.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+            pub = _b64p.urlsafe_b64encode(raw).decode().rstrip("=")
+            db.merge(models.AppSetting(key="vapid_public", value=pub))
+            db.merge(models.AppSetting(key="vapid_private_pem", value=pem))
+            db.commit()
+    _VAPID_CACHE.update(pub=pub, pem=pem)
+    return pub, pem
+
+
+def _push_send(db: Session, sub, title: str, body: str, url: str = "./") -> bool:
+    """알림 1건 발송. 만료된 구독(404/410)은 지운다. 성공 여부"""
+    import json as _json
+    try:
+        from pywebpush import webpush, WebPushException
+        from py_vapid import Vapid
+    except Exception as e:
+        print(f"[push] pywebpush 없음: {e!r}")
+        return False
+    _pub, pem = _vapid_keys(db)
+    try:
+        webpush(subscription_info={"endpoint": sub.endpoint, "keys": {"p256dh": sub.p256dh, "auth": sub.auth}},
+                data=_json.dumps({"title": title, "body": body, "url": url}, ensure_ascii=False),
+                vapid_private_key=Vapid.from_pem(pem.encode()),
+                vapid_claims={"sub": "mailto:" + (os.getenv("ADMIN_EMAIL") or "cngpartners123@gmail.com")},
+                ttl=24 * 3600, timeout=10)
+        return True
+    except WebPushException as e:
+        code = getattr(getattr(e, "response", None), "status_code", None)
+        if code in (404, 410):
+            db.delete(sub)
+            db.commit()
+        else:
+            print(f"[push] 발송 실패 {code}: {str(e)[:200]}")
+        return False
+    except Exception as e:
+        print(f"[push] 발송 오류: {e!r}")
+        return False
+
+
+def cleanup_user_push(db: Session, user):
+    """회원 탈퇴/삭제 시 알림 구독·알림 예약 삭제 (commit은 호출한 쪽에서)"""
+    db.query(models.PushSubscription).filter(models.PushSubscription.user_id == user.id).delete()
+    db.query(models.FundAlert).filter(models.FundAlert.user_id == user.id).delete()
+    db.flush()
+
+
+def _fund_alert_dues(inp: dict, today):
+    """입력값의 기대출 → [(기관 키, 재신청 가능일)] — 재단: 서울 12개월·그 외 6개월 / 소진공: 6개월. 이미 지난 날짜는 뺀다"""
+    out = {}
+    lim = {"jaedan": 12 if _ht_s(inp.get("location")).startswith("서울") else 6, "sojin": 6}
+    for l in (inp.get("loans") or []):
+        if not isinstance(l, dict):
+            continue
+        k = _ht_loan_org(l.get("org"))
+        if k not in lim:
+            continue
+        ym = _ht_loan_ym(l.get("date"))
+        if not ym:
+            continue
+        dm = _re.search(r"(\d{4})\D(\d{1,2})\D(\d{1,2})", _ht_s(l.get("date")))
+        day = int(dm.group(3)) if dm else 1
+        y, m = ym[0], ym[1] + lim[k]
+        y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+        import calendar as _cal
+        due = datetime(y, m, min(day, _cal.monthrange(y, m)[1])).date()
+        if due > today and (k not in out or due > out[k]):
+            out[k] = due
+    return sorted(out.items())
+
+
+_ORG_LABEL = {"jaedan": "지역신용보증재단", "sojin": "소상공인시장진흥공단"}
+
+
+def run_fund_alerts(db: Session, force: bool = False) -> dict:
+    """재신청 가능일이 된 알림 발송 → 보낸 알림은 지운다 (한국 시간 9~20시만, force면 시간 무시)"""
+    now = datetime.utcnow() + timedelta(hours=9)
+    if not force and not (9 <= now.hour < 20):
+        return {"sent": 0, "skipped": "night"}
+    if not _ALERT_LOCK.acquire(blocking=False):
+        return {"sent": 0, "skipped": "busy"}
+    try:
+        due = db.query(models.FundAlert).filter(models.FundAlert.due_on <= now.date(), models.FundAlert.sent_at.is_(None)).limit(500).all()
+        sent = 0
+        for a in due:
+            subs = db.query(models.PushSubscription).filter(models.PushSubscription.user_id == a.user_id).all()
+            name = a.company_name or "등록한 업체"
+            ok = False
+            for sb in subs:
+                ok = _push_send(db, sb, "피나 · 재신청 가능 알림", f"{name} — {_ORG_LABEL.get(a.org_key, '정책자금')} 자금을 다시 신청할 수 있는 시기가 됐어요.", "./?from=alert") or ok
+            if ok or not subs:
+                db.delete(a)          # 보냈거나 받을 기기가 없으면 정리 (업체 정보를 오래 두지 않는다)
+                sent += 1 if ok else 0
+        db.commit()
+        return {"sent": sent, "checked": len(due)}
+    finally:
+        _ALERT_LOCK.release()
+
+
+def _maybe_run_alerts():
+    """접속할 때 1시간에 한 번 보조로 실행 (Render에 스케줄러가 없어서)"""
+    import time as _time
+    if _time.time() - _ALERT_LAST["t"] < 3600:
+        return
+    _ALERT_LAST["t"] = _time.time()
+    def job():
+        d = SessionLocal()
+        try:
+            run_fund_alerts(d)
+        except Exception as e:
+            print(f"[alerts] 실행 오류: {e!r}")
+        finally:
+            d.close()
+    _threading.Thread(target=job, daemon=True).start()
+
+
+@app.get("/push/key")
+def push_key(db: Session = Depends(get_db)):
+    pub, _pem = _vapid_keys(db)
+    return {"public_key": pub}
+
+
+class PushSubBody(BaseModel):
+    endpoint: str
+    keys: dict = {}
+
+
+@app.post("/push/subscribe")
+def push_subscribe(body: PushSubBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    ep = (body.endpoint or "").strip()
+    if not ep.startswith("https://"):
+        raise HTTPException(status_code=400, detail="알림 구독 정보가 올바르지 않아요.")
+    row = db.query(models.PushSubscription).filter(models.PushSubscription.endpoint == ep).first()
+    if not row:
+        n = db.query(models.PushSubscription).filter(models.PushSubscription.user_id == user.id).count()
+        if n >= PUSH_MAX_PER_USER:       # 오래된 기기부터 정리
+            old = db.query(models.PushSubscription).filter(models.PushSubscription.user_id == user.id).order_by(models.PushSubscription.created_at).first()
+            if old:
+                db.delete(old)
+        row = models.PushSubscription(endpoint=ep)
+        db.add(row)
+    row.user_id = user.id
+    row.p256dh = str((body.keys or {}).get("p256dh") or "")[:256]
+    row.auth = str((body.keys or {}).get("auth") or "")[:128]
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/push/unsubscribe")
+def push_unsubscribe(body: PushSubBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(models.PushSubscription).filter(models.PushSubscription.user_id == user.id, models.PushSubscription.endpoint == (body.endpoint or "").strip()).delete()
+    if not db.query(models.PushSubscription).filter(models.PushSubscription.user_id == user.id).count():
+        db.query(models.FundAlert).filter(models.FundAlert.user_id == user.id).delete()     # 받을 기기가 없으면 알림 예약도 지움
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/push/test")
+def push_test(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    subs = db.query(models.PushSubscription).filter(models.PushSubscription.user_id == user.id).all()
+    if not subs:
+        raise HTTPException(status_code=400, detail="이 계정에 알림을 켠 기기가 없어요. 먼저 알림을 켜 주세요.")
+    ok = sum(1 for sb in subs if _push_send(db, sb, "피나 알림 테스트", "알림이 잘 도착했어요. 재신청 가능 시점이 되면 이렇게 알려드릴게요.", "./"))
+    if not ok:
+        raise HTTPException(status_code=502, detail="알림을 보내지 못했어요. 브라우저 알림 권한을 확인한 뒤 다시 켜 주세요.")
+    return {"sent": ok}
+
+
+class FundWatchBody(BaseModel):
+    input: dict
+
+
+@app.post("/push/watch")
+def push_watch(body: FundWatchBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """이 업체의 재신청 가능 시점 알림 받기 — 재단·소진공 기대출 날짜로 계산해 저장"""
+    if not db.query(models.PushSubscription).filter(models.PushSubscription.user_id == user.id).count():
+        raise HTTPException(status_code=400, detail="먼저 이 기기에서 알림을 켜 주세요.")
+    inp = body.input or {}
+    today = (datetime.utcnow() + timedelta(hours=9)).date()
+    dues = _fund_alert_dues(inp, today)
+    if not dues:
+        return {"alerts": []}
+    biz = _biz_digits(inp.get("business_number"))
+    name = _ht_s(inp.get("company_name")).strip()[:120]
+    out = []
+    for k, d in dues:
+        q = db.query(models.FundAlert).filter(models.FundAlert.user_id == user.id, models.FundAlert.org_key == k)
+        q = q.filter(models.FundAlert.business_number == biz) if biz else q.filter(models.FundAlert.company_name == name)
+        row = q.first() or models.FundAlert(user_id=user.id, org_key=k)
+        row.business_number, row.company_name, row.due_on, row.sent_at = biz, name, d, None
+        db.add(row)
+        out.append({"org": _ORG_LABEL[k], "due_on": d.isoformat()})
+    db.commit()
+    return {"alerts": out}
+
+
+@app.get("/push/alerts")
+def push_alerts(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.query(models.FundAlert).filter(models.FundAlert.user_id == user.id, models.FundAlert.sent_at.is_(None)).order_by(models.FundAlert.due_on).all()
+    return {"devices": db.query(models.PushSubscription).filter(models.PushSubscription.user_id == user.id).count(),
+            "alerts": [{"id": r.id, "company_name": r.company_name, "business_number": _biz_fmt(r.business_number or ""), "org": _ORG_LABEL.get(r.org_key, r.org_key), "due_on": r.due_on.isoformat()} for r in rows]}
+
+
+@app.delete("/push/alerts/{alert_id}")
+def push_alert_delete(alert_id: int, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(models.FundAlert).filter(models.FundAlert.id == alert_id, models.FundAlert.user_id == user.id).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/admin/alerts/run")
+def admin_alerts_run(force: bool = False, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
+    """외부 크론에서 하루 1회 호출 (한국 시간 9~20시 사이 권장)"""
+    return run_fund_alerts(db, force=force)

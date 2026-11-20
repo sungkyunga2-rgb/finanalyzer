@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, BigInteger, String, DateTime, Date, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
@@ -208,4 +208,35 @@ class CodefJob(Base):
     user_id = Column(Integer, index=True, nullable=False)
     status = Column(String(16), default="running")      # running / done / error
     result = Column(Text, nullable=True)                # JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AppSetting(Base):
+    """서버 설정값 보관 (웹푸시 VAPID 키처럼 한 번 만들어 계속 쓰는 값)"""
+    __tablename__ = "app_settings"
+    key = Column(String(64), primary_key=True)
+    value = Column(Text, nullable=True)
+
+
+class PushSubscription(Base):
+    """웹푸시(브라우저 알림) 구독 — 기기·브라우저마다 1개"""
+    __tablename__ = "push_subscriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    endpoint = Column(Text, nullable=False)
+    p256dh = Column(String(256), default="")
+    auth = Column(String(128), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FundAlert(Base):
+    """재신청 가능 시점 알림 — 회원이 '알림 받기'를 누른 업체만 저장. 알림을 보내거나 해지하면 삭제"""
+    __tablename__ = "fund_alerts"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    business_number = Column(String(16), default="")
+    company_name = Column(String(128), default="")
+    org_key = Column(String(16), default="")            # jaedan / sojin
+    due_on = Column(Date, nullable=False)               # 이 날부터 다시 신청 가능 (한국 날짜)
+    sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

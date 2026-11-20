@@ -1414,6 +1414,19 @@
       <button class="btn btn-primary" onclick="goTeam()">열기</button>
     </div>
 
+    <!-- 알림 (비밀번호 확인 없이 항상 표시) -->
+    <div class="card" id="myinfo-push-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:600;">🔔 재신청 가능 알림</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px;" id="push-state-text">이 기기에서 알림을 받을 수 있는지 확인하는 중...</div>
+        </div>
+        <button class="btn btn-primary" id="push-toggle-btn" onclick="htPushToggle()" style="white-space:nowrap;">알림 켜기</button>
+      </div>
+      <div id="push-alert-list" style="margin-top:10px;"></div>
+      <button class="btn hidden" id="push-test-btn" onclick="htPushTest()" style="margin-top:8px;font-size:13px;">테스트 알림 보내기</button>
+    </div>
+
     <!-- 비밀번호 확인 -->
     <div class="card" id="myinfo-verify-card">
       <div class="card-title" style="margin-bottom:.75rem;">본인 확인</div>
@@ -1724,6 +1737,11 @@
       ⑥ 회원은 자동 조회에 동의하지 않을 수 있으며, 이 경우 각 항목을 직접 입력하거나 서류를 올려 분석을 이용할 수 있습니다.<br/>
       ⑦ (장애인 여부 확인 — 민감정보) 공동인증서로 조회할 때 화면의 동의에 따라, 개인사업자 대표의 장애인기업 해당 여부를 확인하기 위해 코드에프를 통해 정부24에서 대표자의 장애인 증명서를 조회합니다(간편인증으로 조회할 때는 하지 않습니다). 이때 사업자등록증명상 대표자 성명·주민등록번호·사업장 주소와 인증서를 사용하며, 결과 중 장애인 해당 여부만 입력 칸('장애인기업')에 반영하고 장애 종류·정도·등록번호 등은 저장하거나 화면·기록(로그)에 남기지 않습니다. 회원은 자동 조회 대신 직접 입력할 수 있습니다.</p>
       <br/>
+      <p><strong>8의2. 재신청 가능 알림(웹푸시)</strong></p>
+      <p>① 회원이 알림을 켜면 알림을 보내기 위해 브라우저가 발급한 알림 주소(기기별 구독 정보)를 보관합니다. 알림을 끄거나 탈퇴하면 즉시 삭제합니다.<br/>
+      ② 회원이 분석 결과에서 '재신청 가능 알림 받기'를 누른 업체에 한해 상호, 사업자등록번호, 알림 대상 기관(지역신용보증재단·소상공인시장진흥공단)과 다시 신청할 수 있는 날짜를 보관합니다. 기대출 금액 등 그 밖의 분석 내용은 보관하지 않습니다.<br/>
+      ③ 위 정보는 알림을 보내면 바로 삭제하며, 회원은 '내 정보'에서 예약된 알림을 언제든지 삭제할 수 있습니다. 알림은 한국 시간 오전 9시부터 오후 8시 사이에만 보냅니다.</p>
+      <br/>
       <p><strong>9. 고객 의견수렴 및 불만처리</strong></p>
       <p>회사는 개인정보보호와 관련하여 정보주체 및 회원의 의견과 불만을 제기할 수 있는 창구를 개설하고 있습니다. 개인정보와 관련한 불만이 있으신 분은 회사의 개인정보 관리책임자에게 의견을 주시면 접수 즉시 조치하여 처리결과를 통보해 드립니다.</p>
       <br/>
@@ -1926,6 +1944,7 @@ function showPage(name) {
     loadSubscription();
   }
   if (name === "myinfo") {
+    htPushRefresh();
     document.getElementById("myinfo-pw").value = "";
     document.getElementById("myinfo-error").style.display = "none";
     document.getElementById("myinfo-verify-card").classList.remove("hidden");
@@ -5207,6 +5226,108 @@ async function htRenderSaved(input, adminPw) {
 }
 
 // ── 결과창 ────────────────────────────────────────────────────────
+// ── 알림(웹푸시) ─────────────────────────────────────────────
+function htPushSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; }
+function htIsIos() { const ua = navigator.userAgent || ""; return /iPhone|iPod|iPad/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
+function htIsStandalone() { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; }
+function htB64ToBytes(b64) {
+  const pad = "=".repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+async function htPushCurrent() {
+  if (!htPushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+// 알림 켜기 — 성공하면 true. 아이폰은 홈 화면에 추가한 피나에서만 가능
+async function htPushEnable() {
+  if (!token) { showPage("login"); return false; }
+  if (!htPushSupported()) {
+    if (htIsIos() && !htIsStandalone()) {
+      alertError("아이폰은 피나를 홈 화면에 추가한 뒤 그 아이콘으로 열어야 알림을 받을 수 있어요.\n공유 버튼 → '홈 화면에 추가'를 눌러 주세요.");
+      if (window.faShowInstallGuide) try { window.faShowInstallGuide(); } catch (e) {}
+    } else alertError("이 브라우저는 알림을 지원하지 않아요. 크롬이나 사파리 최신 버전에서 열어 주세요.");
+    return false;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") { alertError("알림이 차단되어 있어요. 브라우저 설정에서 피나 알림을 허용해 주세요."); return false; }
+  const reg = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(() => navigator.serviceWorker.ready);
+  const { public_key } = await api("GET", "/push/key");
+  let sub = await reg.pushManager.getSubscription();
+  if (sub) {   // 서버 키가 바뀌었으면 새로 구독
+    const cur = sub.options && sub.options.applicationServerKey ? btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") : public_key;
+    if (cur !== public_key) { await sub.unsubscribe(); sub = null; }
+  }
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: htB64ToBytes(public_key) });
+  await api("POST", "/push/subscribe", sub.toJSON());
+  return true;
+}
+async function htPushToggle() {
+  const btn = document.getElementById("push-toggle-btn");
+  btn.disabled = true;
+  try {
+    const sub = await htPushCurrent();
+    if (sub && Notification.permission === "granted") {
+      if (!confirm("이 기기의 알림을 끌까요? 다른 기기에서도 알림을 받지 않으면 예약된 알림도 함께 지워져요.")) return;
+      await api("POST", "/push/unsubscribe", sub.toJSON());
+      await sub.unsubscribe();
+      toast("이 기기의 알림을 껐어요.");
+    } else if (await htPushEnable()) toast("이 기기에서 알림을 받을 수 있어요.");
+  } catch (e) { alertError(e.message || "알림 설정을 바꾸지 못했어요."); }
+  finally { btn.disabled = false; htPushRefresh(); }
+}
+async function htPushTest() {
+  try { await api("POST", "/push/test"); toast("테스트 알림을 보냈어요. 잠시 후 도착해요."); }
+  catch (e) { alertError(e.message); }
+}
+async function htPushRefresh() {
+  const txt = document.getElementById("push-state-text"), btn = document.getElementById("push-toggle-btn");
+  const list = document.getElementById("push-alert-list"), test = document.getElementById("push-test-btn");
+  if (!txt) return;
+  let on = false;
+  try { on = !!(await htPushCurrent()) && Notification.permission === "granted"; } catch (e) {}
+  if (!htPushSupported()) txt.textContent = htIsIos() && !htIsStandalone() ? "아이폰은 홈 화면에 추가한 피나에서 알림을 켤 수 있어요." : "이 브라우저는 알림을 지원하지 않아요.";
+  else txt.textContent = on ? "이 기기에서 알림을 받고 있어요." : "자금을 다시 신청할 수 있게 되면 알려드려요.";
+  btn.textContent = on ? "알림 끄기" : "알림 켜기";
+  btn.className = on ? "btn" : "btn btn-primary";
+  test.classList.toggle("hidden", !on);
+  list.innerHTML = "";
+  if (!token) return;
+  try {
+    const d = await api("GET", "/push/alerts");
+    list.innerHTML = (d.alerts || []).map(a => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;padding:7px 0;border-top:1px solid var(--border);">
+      <span><b>${escapeHtml(a.company_name || "업체")}</b> · ${escapeHtml(a.org)}<br><span style="color:var(--text3);">${a.due_on.replace(/-/g, ".")}부터 신청 가능 — 그날 알려드려요</span></span>
+      <button class="btn" style="padding:5px 9px;font-size:12px;" onclick="htPushDelAlert(${a.id})">삭제</button></div>`).join("");
+  } catch (e) {}
+}
+async function htPushDelAlert(id) {
+  try { await api("DELETE", "/push/alerts/" + id); htPushRefresh(); } catch (e) { alertError(e.message); }
+}
+// 결과 화면 — 이 업체 재신청 가능 시점 알림 받기
+function htWatchTargets(input) {
+  return (input.loans || []).filter(l => /재단|신용보증재단|소진공|소상공인시장진흥|소상공인진흥|신용취약/.test(String(l.org || "")) && /\d{2,4}\s*[.\-/년]\s*\d{1,2}/.test(String(l.date || "")));
+}
+async function htWatchClick(btn) {
+  const input = window.__htLastInput;
+  if (!input) return;
+  btn.disabled = true;
+  try {
+    if (!(await htPushEnable())) return;
+    const d = await api("POST", "/push/watch", { input });
+    const a = d.alerts || [];
+    if (!a.length) toast("지금 바로 신청할 수 있는 상태라 따로 알림이 필요 없어요.");
+    else toast(a.map(x => `${x.org} ${x.due_on.replace(/-/g, ".")}`).join(", ") + "에 알려드릴게요.");
+    btn.textContent = "🔔 알림 예약됨";
+  } catch (e) { alertError(e.message); btn.disabled = false; }
+}
+function htWatchHtml(input) {
+  if (!input || !htWatchTargets(input).length) return "";
+  return `<div style="margin-top:10px;border:1px dashed #c9d6e6;border-radius:10px;padding:11px 13px;font-size:12.5px;color:#3d4b5c;line-height:1.6;">
+    🔔 재단·소진공 자금을 다시 신청할 수 있는 시기가 되면 알려드려요.
+    <button type="button" class="btn" style="margin-top:8px;width:100%;padding:9px;font-size:13px;" onclick="htWatchClick(this)">재신청 가능 알림 받기</button></div>`;
+}
+
 // 기관별 금액 — Basic은 서버가 금액을 빼고 보내므로 "신청 가능"으로
 function htOrgAmt(o, maxWord) {
   if (o.status !== "ok") return o.status === "blocked" ? "신청 불가" : "추가 한도 없음";
@@ -5653,6 +5774,7 @@ function htResultCardHTML(r, input, full, opts) {
       lim += (L.orgs || []).map(g => `<div class="ht-rp-row"><span>${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<span style="display:block;font-size:11px;font-weight:500;color:#6b7a8d;">${e(htOrgFunds(g))}</span>` : ""}</span><b>${htOrgAmt(g)}</b></div>`).join("");
       lim += htBasicNote(L, !!opts.sample);
     } else lim += `${L.status === "blocked" || L.status === "low" ? `<div class="ht-rp-total" style="color:${L.status === "blocked" ? "#A32D2D" : "#B8860B"};font-size:18px;">${L.status === "blocked" ? "현재 신청 어려움" : "추가 한도 여력 부족"}</div>` : ""}<div class="srp-opinion-item">${e(L.text || "")}</div>`;
+    if (!opts.sample) { window.__htLastInput = input; lim += htWatchHtml(input); }
     const f = r.financial, q = r.ratios;
     const kpi = (label, value, lvl) => `<div class="srp-kpi" style="border-left-color:${LC[lvl] || "#185FA5"};"><div class="srp-kpi-label">${label}</div><div class="srp-kpi-value" style="color:${LC[lvl] || "#185FA5"};">${value}</div></div>`;
     const miK = '<span class="ht-mi" style="font-size:15px;">미입력</span>';
@@ -8364,6 +8486,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // 안드로이드 크롬 등: 설치 창을 바로 띄울 수 있다
   var deferred = null;
+  window.faShowInstallGuide = showGuide;
   window.addEventListener("beforeinstallprompt", function (e) {
     e.preventDefault();
     deferred = e;
