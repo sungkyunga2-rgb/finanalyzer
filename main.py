@@ -1798,7 +1798,7 @@ def _hometax_calls(params, now, telecom=""):
     calls.append(("tax_payment", dict(base, phoneNo=phone, isIdentityViewYN="0", isAddrViewYn="0", proofType="B0007",
                                       submitTargets="99", applicationType="01", originDataYN="0")))
     if 8 <= now.hour < 22:                    # 재무제표는 08~22시만. 법인/개인을 아직 모르니 둘 다 요청
-        years = [y - 1] + ([y - 2] if now.month < 6 else [])      # 상반기엔 작년 신고 전일 수 있어 재작년도
+        years = [y - 1, y - 2, y - 3] + ([y - 4] if now.month < 6 else [])   # 최근 3년 매출 (상반기엔 작년 신고 전일 수 있어 한 해 더)
         fin = dict(base, loginPhoneNo=phone, isIdentityViewYN="0", usePurposes="99", submitTargets="99", originDataYN="0")
         if params.get("_want_biz"):
             fin["identity"] = params["_want_biz"]
@@ -1847,15 +1847,17 @@ def _ht_assemble(st, now, final):
     elif final:
         failed.append("납세증명서")
     fins = [f for f in (_safe(_parse_financial, d) for d in ok("financial")) if f]
+    revs = {}
+    for d in ok("financial"):
+        revs.update(_safe(_fin_revenues, d, default={}) or {})
     if fins:
-        fin = dict(sorted(fins, key=lambda f: f.get("_year", 0))[-1])     # 가장 최근 연도
-        rev = fin.pop("_revenue", None)
-        yr = fin.pop("_year", now.year - 1)
+        fin = dict(sorted(fins, key=lambda f: f.get("_year", 0))[-1])     # 재무 수치는 가장 최근 연도
+        fin.pop("_revenue", None); fin.pop("_year", None)
         fill["fin"] = fin
         got.append("재무제표")
-        if rev and not fill.get("years"):
-            fill["years"] = [{"year": int(yr), "vat": rev}]
-    elif final:
+    if revs:
+        _merge_fin_years(fill, revs, now.year)                          # 매출은 최근 3년 모두
+    if not fins and final:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     if "employees" in st.get("keys", ()):
         n = next((v for v in (_safe(_parse_employees, d) for d in ok("employees")) if v is not None), None)
@@ -2438,7 +2440,9 @@ async def _hometax_collect(params, reg_data, progress=None):
     bizno = _re2.sub(r"\D", "", fill.get("business_number", "") or params.get("_want_biz", ""))
     if 8 <= now.hour < 22:
         step("재무제표")
-        tries = [f"{now.year - 1}12", f"{now.year - 2}12"] if corp else [str(now.year - 1), str(now.year - 2)]
+        yrs = [now.year - 1, now.year - 2, now.year - 3] + ([now.year - 4] if now.month < 6 else [])
+        tries = [f"{yy}12" for yy in yrs] if corp else [str(yy) for yy in yrs]
+        fin_revs = {}
         for sd in tries:
             extra = {**ph("loginPhoneNo"), "startDate": sd, "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"}
             if not corp:
@@ -2446,16 +2450,20 @@ async def _hometax_collect(params, reg_data, progress=None):
             if bizno and params.get("loginType") == "0":
                 extra["identity"] = bizno          # 인증서 로그인은 재무제표에 사업자번호 필수 (CF-12850)
             data, err = await call("financial", extra)
-            fin = _safe(_parse_financial, data) if data is not None else None
-            if fin:
+            if data is None:
+                continue
+            f1 = _safe(_parse_financial, data)
+            fin_revs.update(_safe(_fin_revenues, data, default={}) or {})
+            if f1 and (not fin or f1.get("_year", 0) > fin.get("_year", 0)):
+                fin = f1                                   # 재무 수치는 가장 최근 연도
+            if len([yy for yy in fin_revs if yy < now.year]) >= 3:
                 break
+        _merge_fin_years(fill, fin_revs, now.year)          # 매출은 최근 3년 모두
     if fin:
-        rev = fin.pop("_revenue", None)
+        fin.pop("_revenue", None)
+        fin.pop("_year", None)
         fill["fin"] = fin
         got.append("재무제표")
-        if rev and not fill.get("years"):
-            fill["years"] = [{"year": int(fin.pop("_year", now.year - 1)), "vat": rev}]
-        fin.pop("_year", None)
     else:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
     # ④ 직원 수 — 근로복지공단 근로자고용정보현황 (인증서는 추가 승인 없음)
@@ -2581,6 +2589,41 @@ _FIN_KEYS = {
     "operating_income": ("영업이익", "영업손익"), "interest_expense": ("이자비용",),
     "net_income": ("당기순이익", "당기순손익"), "_revenue": ("매출액", "수입금액"),
 }
+
+
+def _fin_revenues(data):
+    """표준재무제표증명 → {연도: 매출액(수입금액)} — 응답에 여러 연도가 있으면 모두"""
+    rows = data if isinstance(data, list) else [data]
+    out = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        yr = str(r.get("resAttrYear") or r.get("commEndDate") or "")[:4]
+        if not yr.isdigit():
+            continue
+        for it in (r.get("resIncomeStatement") or []):
+            if not isinstance(it, dict):
+                continue
+            t = _re2.sub(r"[^가-힣]", "", it.get("_title") or "")
+            a = _codef_amt(it.get("_amt"))
+            if a is not None and any(t.startswith(n) or t.endswith(n) for n in _FIN_KEYS["_revenue"]):
+                out[int(yr)] = a
+                break
+    return out
+
+
+def _merge_fin_years(fill, revs, this_year):
+    """재무제표 매출로 연도별 매출 채우기 — 부가세과세표준증명 값이 있는 연도는 그대로, 최근 3년"""
+    if not revs:
+        return
+    by = {int(y["year"]): dict(y) for y in (fill.get("years") or []) if y.get("year")}
+    for yr, rev in revs.items():
+        if yr >= this_year:
+            continue
+        cur = by.get(yr)
+        if not cur or cur.get("vat") in (None, 0):
+            by[yr] = dict(cur or {}, year=yr, vat=rev)
+    fill["years"] = [by[y] for y in sorted(by)][-3:]
 
 
 def _parse_financial(data):
@@ -2786,7 +2829,7 @@ async def extract_income_doc(
         for img in body.images
     ]
 
-    prompt = """이 문서는 한국 국세청에서 발급한 "사업자등록증", "부가가치세과세표준증명원", "소득금액증명원" 중 하나입니다 (여러 장이 첨부된 경우 같은 서류의 여러 페이지이거나, 여러 서류가 함께 첨부되었을 수 있습니다). 첨부된 모든 이미지를 함께 확인해 아래 항목을 추출하세요.
+    prompt = """이 문서는 한국 국세청에서 발급한 "사업자등록증", "부가가치세과세표준증명원", "부가가치세 면세사업자 수입금액증명", "소득금액증명원" 중 하나입니다 (여러 장이 첨부된 경우 같은 서류의 여러 페이지이거나, 여러 서류가 함께 첨부되었을 수 있습니다). 첨부된 모든 이미지를 함께 확인해 아래 항목을 추출하세요.
 
 ━━━ 1단계: 상호 / 대표자명 / 사업자등록번호 (반드시 먼저, 빠뜨리지 말 것) ━━━
 두 서류 모두 문서 상단(제목 바로 아래)에 납세자·사업자 정보가 표 또는 항목 형태로 반드시 인쇄되어 있습니다. 금액을 읽기 전에 이 부분을 먼저 정확히 읽으세요.
@@ -2807,6 +2850,12 @@ async def extract_income_doc(
 - 표에 나온 가장 최근 4개 과세기간(1년치, 분기 신고면 4개/반기 신고면 2개)의 과세표준액을 모두 더한 값을 revenue(연 매출액 추정치)로 반환하세요. 과세기간이 1년치가 안 되면 있는 만큼만 더하세요.
 - 그리고 표의 모든 과세기간을 빠짐없이 periods 배열로 반환하세요 (가장 최근 기간, 올해 기간 포함). 각 항목: {"start":"YYYY-MM","end":"YYYY-MM","amount":과세표준액 숫자}. 과세기간 표기가 "2025년 1기"면 start "2025-01", end "2025-06", "2기"면 "2025-07"~"2025-12", 예정·확정이 나뉘어 있으면 각각의 실제 기간(예: 2025-01~2025-03)으로 적으세요.
 
+[부가가치세 면세사업자 수입금액증명] (면세사업자는 부가세 과세표준 대신 이 서류로 매출을 확인)
+- 상단에 상호, 성명(대표자명), 사업자등록번호가 표기됩니다.
+- 표에는 귀속연도(또는 과세기간)별 "수입금액"이 나열됩니다. 업종별로 여러 줄이면 같은 연도끼리 더하세요.
+- 표의 모든 연도를 periods 배열로 반환하세요. 연 단위면 {"start":"YYYY-01","end":"YYYY-12","amount":그 해 수입금액 합계}, 기간이 따로 적혀 있으면 실제 기간으로.
+- revenue에는 가장 최근 연도의 수입금액 합계를 넣으세요.
+
 [소득금액증명원]
 - 상단에 상호 또는 성명(대표자명), 사업자등록번호가 표기됩니다.
 - 표에는 귀속연도별로 "소득금액"이 나열됩니다. 가장 최근 귀속연도의 소득금액을 income_amount로 반환하세요.
@@ -2821,7 +2870,7 @@ async def extract_income_doc(
 부가세·소득금액 서류에는 개업일·주소·업태가 없으면 null로 두세요. 대출·부채·자산 정보는 추출 대상이 아닙니다.
 
 아래 JSON 형식으로만 응답하세요. 문서에서 찾을 수 없는 항목은 null:
-{"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"periods":[{"start":"YYYY-MM","end":"YYYY-MM","amount":숫자}] 또는 null,"income_amount":숫자또는null,"open_date":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
+{"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "면세사업자수입금액증명" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"periods":[{"start":"YYYY-MM","end":"YYYY-MM","amount":숫자}] 또는 null,"income_amount":숫자또는null,"open_date":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
 
     GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.7-flash"]
 
