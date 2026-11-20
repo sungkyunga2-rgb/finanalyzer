@@ -2891,7 +2891,7 @@ function renderResults(d) {
   // 자본잠식
   let erosionStatus, erosionClass;
   if (d.total_equity !== null && d.total_equity <= 0) { erosionStatus = "완전자본잠식"; erosionClass = "danger"; }
-  else if (d.capital_stock && d.total_equity < d.capital_stock) {
+  else if (htIsCorp(d.business_number, d.company_name) && d.capital_stock && d.total_equity < d.capital_stock) {
     const r = ((d.capital_stock - d.total_equity) / d.capital_stock * 100).toFixed(1);
     erosionStatus = `부분자본잠식 (${r}%)`; erosionClass = r >= 50 ? "danger" : "warn";
   } else { erosionStatus = "정상"; erosionClass = "safe"; }
@@ -3270,7 +3270,14 @@ function htYoy(cur, prev) {
 function htLevelRank(l) { return l === "danger" ? 3 : l === "warn" ? 2 : l === "info" ? 1 : 0; }
 
 // 재무 수치 → 기존 "직접 입력 분석"과 같은 기준으로 부채비율·이자보상배수·자본잠식·안정성 점수를 계산
-function calcStability(fin) {
+// 법인 여부 — 사업자번호 가운데 81~88 또는 상호에 법인 표기. 개인사업자는 부분자본잠식을 보지 않는다(자본금이 인출·출자 누계라 의미 없음)
+function htIsCorp(bizNo, name) {
+  const d = String(bizNo || "").replace(/\D/g, "");
+  if (d.length === 10 && +d.slice(3, 5) >= 81 && +d.slice(3, 5) <= 88) return true;
+  return /주식회사|\(주\)|㈜|유한회사|유한책임회사|합자회사|합명회사|법인/.test(String(name || ""));
+}
+
+function calcStability(fin, corp) {
   if (!fin) return null;
   const assets = htNum(fin.assets), liabilities = htNum(fin.liabilities);
   if (assets === null || liabilities === null || assets <= 0) return null;
@@ -3288,7 +3295,7 @@ function calcStability(fin) {
 
   let erosionStatus, erosionClass;
   if (capitalEroded) { erosionStatus = "완전자본잠식"; erosionClass = "danger"; }
-  else if (capitalStock && equity < capitalStock) {
+  else if (corp && capitalStock && equity < capitalStock) {
     const r = (capitalStock - equity) / capitalStock * 100;
     erosionStatus = `부분자본잠식 (${r.toFixed(1)}%)`; erosionClass = r >= 50 ? "danger" : "warn";
   } else { erosionStatus = "정상"; erosionClass = "safe"; }
@@ -3428,7 +3435,7 @@ function analyzeHometax(input, opts) {
   }
 
   // 5) 재무(기존 분석)
-  const financial = calcStability(input.fin);
+  const financial = calcStability(input.fin, input.biz_type === "corp" || (input.biz_type !== "personal" && htIsCorp(input.business_number, input.company_name)));
   if (financial) {
     if (financial.capitalEroded) flags.push({ level: "danger", title: "자본잠식", text: "자본총계가 0 이하인 완전자본잠식 상태입니다." });
     else if (financial.drClass === "danger") flags.push({ level: "danger", title: "부채비율 위험", text: `부채비율 ${financial.dr.toFixed(1)}%로 위험 수준입니다.` });
