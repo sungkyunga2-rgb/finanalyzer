@@ -76,6 +76,20 @@
   .header-right { display: flex; align-items: center; gap: 12px; }
   .credit-badge { background: var(--accent-bg); color: var(--accent); font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 20px; display: none; }
   .credit-badge.is-sub { background: #0F6E56; color: #fff; font-weight: 700; box-shadow: 0 2px 6px rgba(15,110,86,.3); }
+  .join-card { max-width: 400px; animation: joinIn .22s ease-out; }
+  @keyframes joinIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+  .join-logo { font-size: 30px; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 4px; }
+  .join-logo .c1 { color: #185FA5; } .join-logo .c2 { color: #C9962B; }
+  .join-plan { display: inline-block; background: var(--accent-bg); color: var(--accent); font-size: 13px; padding: 5px 12px; border-radius: 999px; margin-bottom: 4px; }
+  .nav-pricing { position: relative; }
+  .nav-pricing-tag .s { display: none; }
+  .nav-pricing-tag { position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%) rotate(-3deg); white-space: nowrap;
+    background: #e5267a; color: #fff; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 4px; line-height: 1.4; box-shadow: 0 2px 6px rgba(229,38,122,.35); pointer-events: none; }
+  @media (max-width: 600px) {
+    .nav-pricing-tag { position: static; transform: none; display: inline-block; margin-left: 4px; font-size: 9.5px; padding: 1px 4px; vertical-align: 1px; box-shadow: none; }
+    .nav-pricing-tag .l { display: none; } .nav-pricing-tag .s { display: inline; }
+    .landing-comm-btn { display: none !important; }       /* 좁은 화면: 커뮤니티는 아래 버튼으로 */
+  }
   .credit-badge.is-up { background: linear-gradient(135deg, #123f7a 0%, #1f6fbf 100%); color: #fff; font-weight: 700; cursor: pointer;
     box-shadow: 0 2px 8px rgba(24,95,165,.35); display: inline-flex !important; align-items: center; gap: 6px; transition: transform .15s, box-shadow .15s; }
   .credit-badge.is-up:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(24,95,165,.45); }
@@ -353,6 +367,8 @@
   .plan-feats { margin:8px 0 0; padding-left:17px; font-size:12.5px; color:var(--text2); line-height:1.7; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
   .plan-feats li.hi { color:#185FA5; font-weight:700; }
+  .plan-cta { width:100%; margin-top:12px; justify-content:center; font-weight:700; background:var(--text); color:#fff; border-color:var(--text); }
+  .plan-card.featured .plan-cta { background:#FFD166; color:#123f7a; border-color:#FFD166; }
   .sub-upgrade { margin-top:1rem; border-radius:14px; padding:14px 16px; color:#fff; background:linear-gradient(160deg, #123f7a 0%, #185FA5 100%); }
   .sub-upgrade .plan-feats { color:rgba(255,255,255,.85); }
   .sub-upgrade .plan-feats li.hi { color:#FFD166; }
@@ -667,10 +683,11 @@
         <span class="credit-badge hidden" id="landing-credits">잔여횟수 0건</span>
         <button class="btn hidden" id="landing-dashboard-btn" onclick="showPage('dashboard')">분석하기</button>
         <button class="btn hidden" id="landing-history-btn" onclick="goHistory()">분석이력</button>
-        <a class="btn" href="#" onclick="goCommunity()">커뮤니티</a>
+        <a class="btn landing-comm-btn" href="#" onclick="goCommunity()">커뮤니티</a>
         <button class="btn hidden" id="landing-myinfo-btn" onclick="showPage('myinfo')">내 정보</button>
         <button class="btn hidden" id="landing-charge-btn" onclick="showPage('charge')">구독</button>
         <button class="btn hidden" id="landing-logout-btn" onclick="doLogout()">로그아웃</button>
+        <a class="btn nav-pricing" id="landing-pricing-btn" href="#" onclick="event.preventDefault();showPage('charge')">요금제<span class="nav-pricing-tag" id="landing-pricing-tag"><span class="l">최대 27% 할인</span><span class="s">-27%</span></span></a>
         <a class="btn" id="landing-login-btn" href="#" onclick="showPage('login')">로그인</a>
         <a class="btn btn-primary" id="landing-register-btn" href="#" onclick="showPage('register')">시작하기</a>
       </div>
@@ -1584,7 +1601,7 @@
     <div class="header-right" data-nav="charge"></div>
   </header>
   <div class="main" style="max-width:720px;">
-    <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">구독</h2>
+    <h2 id="sub-page-title" style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">구독</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
       월 구독으로 기업분석·평가를 <strong>횟수 제한 없이</strong> 이용하세요. 내 사업장을 확인하는 사장님은 <strong>Basic</strong>, 여러 업체를 분석하는 컨설턴트는 <strong>Pro</strong>가 맞아요.
     </p>
@@ -1906,6 +1923,8 @@ let userHasSub = false;   // 구독(팀 요금제)이 유효한지 — 서버가
 function updateLandingHeader() {
   const loggedIn = !!token;
   document.getElementById("landing-login-btn").classList.toggle("hidden", loggedIn);
+  document.getElementById("landing-pricing-btn").classList.toggle("hidden", loggedIn);
+  if (!loggedIn) htPricingTag();
   document.getElementById("landing-register-btn").classList.toggle("hidden", loggedIn);
   document.getElementById("landing-dashboard-btn").classList.toggle("hidden", !loggedIn);
   document.getElementById("landing-history-btn").classList.toggle("hidden", !loggedIn);
@@ -1959,6 +1978,12 @@ const NAV_BACK = {
 function renderHeaderNav(pageName) {
   const el = document.querySelector('#page-' + pageName + ' .header-right[data-nav]');
   if (!el) return;
+  if (!token) {        // 로그인 전 (요금제 화면 등)
+    el.innerHTML = `<button class="btn" onclick="showPage('landing')">홈</button>
+      <button class="btn" onclick="showPage('login')">로그인</button>
+      <button class="btn btn-primary" onclick="showPage('register')">시작하기</button>`;
+    return;
+  }
   const back = NAV_BACK[pageName];
   const current = NAV_CURRENT[pageName];
   let html = "";
@@ -2145,7 +2170,7 @@ async function doRegister() {
     localStorage.setItem("fa_rep", userRepName);
     localStorage.setItem("fa_biz", userBizNumber);
     updateCreditBadges();
-    showPage("dashboard");
+    htAfterAuth("dashboard");
     toast("가입 완료! 환영합니다 🎉");
   } catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; }
 }
@@ -2212,7 +2237,7 @@ async function doLogin() {
     localStorage.setItem("fa_rep", userRepName);
     localStorage.setItem("fa_biz", userBizNumber);
     updateCreditBadges();
-    showPage("dashboard");
+    htAfterAuth("dashboard");
     toast("로그인되었습니다.");
   } catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; }
 }
@@ -7585,8 +7610,71 @@ async function refreshMe() {
 
 function won(n) { return Number(n || 0).toLocaleString("ko-KR") + "원"; }
 
+// ── 로그인 전 요금제 보기 ──
+let htPlansCache = null;
+async function htPublicPlans() {
+  if (htPlansCache) return htPlansCache;
+  try { htPlansCache = await api("GET", "/plans"); } catch (e) { htPlansCache = []; }
+  return htPlansCache;
+}
+async function htPricingTag() {
+  const tag = document.getElementById("landing-pricing-tag");
+  if (!tag) return;
+  const plans = await htPublicPlans();
+  const off = Math.max(0, ...plans.map(htYearOff));
+  tag.innerHTML = off ? `<span class="l">최대 ${off}% 할인</span><span class="s">-${off}%</span>` : `<span class="l">요금 안내</span>`;
+}
+// 로그인 전에 고른 요금제 → 가입·로그인 뒤 그대로 이어서
+function htSavePendingPlan(plan, cycle) {
+  try { localStorage.setItem("fa_pending_plan", JSON.stringify({ plan, cycle, ts: Date.now() })); } catch (e) {}
+}
+function htTakePendingPlan() {
+  try {
+    const raw = localStorage.getItem("fa_pending_plan");
+    localStorage.removeItem("fa_pending_plan");
+    const d = raw ? JSON.parse(raw) : null;
+    return d && Date.now() - (d.ts || 0) < 24 * 3600 * 1000 ? d : null;
+  } catch (e) { return null; }
+}
+// 가입·로그인 직후 — 고른 요금제가 있으면 구독 화면으로 이어서
+function htAfterAuth(defaultPage) {
+  const pend = htTakePendingPlan();
+  if (pend && pend.plan) {
+    selectedPlan = pend.plan; subCycle = pend.cycle === "year" ? "year" : "month";
+    showPage("charge");
+    setTimeout(() => {
+      const agree = document.getElementById("sub-agree");
+      if (agree) agree.closest(".card").scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 900);
+    toast("고르신 요금제로 이어서 진행해 주세요.");
+    return true;
+  }
+  showPage(defaultPage || "dashboard");
+  return false;
+}
+function htOpenJoin(planId) {
+  const plan = (htPlansCache || []).find(p => p.id === planId);
+  if (planId) htSavePendingPlan(planId, subCycle);
+  const sel = document.getElementById("joinModalPlan");
+  if (plan) {
+    const year = subCycle === "year" && plan.year_month;
+    sel.innerHTML = `<b>${escapeHtml(plan.label)}</b> · ${year ? `연간 (월 ${won(plan.year_month)})` : `월 ${won(plan.price)}`}`;
+    sel.style.display = "";
+  } else sel.style.display = "none";
+  document.getElementById("joinModal").style.display = "flex";
+}
+function htCloseJoin() { document.getElementById("joinModal").style.display = "none"; }
+function htJoinGo(page) { htCloseJoin(); showPage(page); }
+
 async function loadSubscription() {
-  if (!token) return;
+  if (!token) {                       // 로그인 전 — 요금제만 보여주고, 시작하기를 누르면 가입 창
+    ["sub-loading", "sub-current-card", "sub-member-card", "sub-admin-card"].forEach(id => document.getElementById(id).classList.add("hidden"));
+    const plans = await htPublicPlans();
+    subState = { plans };
+    renderPlanCards(plans);
+    document.getElementById("sub-buy-wrap").classList.remove("hidden");
+    return;
+  }
   try {
     const d = await api("GET", "/subscription/me");
     subState = d;
@@ -7740,8 +7828,15 @@ function renderPlanCards(plans) {
       ${disc ? `<div class="plan-save"><span class="off">월간 대비 ${offPct}% 할인</span><span class="won">${year ? `매년 ${won((listPrice - monthly) * 12)}` : `매월 ${won(listPrice - monthly)}`} 절약</span></div>` : ''}
       ${(p.features || []).length ? `<ul class="plan-feats">${p.features.map(x => typeof x === "string" ? `<li>${escapeHtml(x)}</li>` : `<li class="hi">${escapeHtml(x.t)}</li>`).join("")}</ul>` : `<div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>`}
       ${per ? `<div class="plan-per">${per}</div>` : ''}
+      ${!token ? `<button type="button" class="btn plan-cta" onclick="event.stopPropagation();selectPlan('${p.id}');htOpenJoin('${p.id}')">${escapeHtml(p.label)} 시작하기</button>` : ""}
     </div>`;
   }).join("");
+  const agreeCard = document.getElementById("sub-agree") && document.getElementById("sub-agree").closest(".card");
+  if (agreeCard) agreeCard.classList.toggle("hidden", !token);      // 로그인 전에는 자동결제 동의는 가입 뒤에
+  const subBtn = document.getElementById("subBtn");
+  if (subBtn) subBtn.classList.toggle("hidden", !token);             // 로그인 전에는 카드마다 시작하기 버튼
+  const ttl = document.getElementById("sub-page-title");
+  if (ttl) ttl.textContent = token ? "구독" : "요금제";
   updateSubButton();
 }
 
@@ -7767,6 +7862,7 @@ function updateSubButton() {
   const every = document.getElementById("sub-notice-every");
   if (every) every.textContent = ch && ch.cycle === "year" ? "매년 같은 날 자동 결제" : "매월 같은 날 자동 결제";
   if (!plan) { btn.textContent = "요금제를 선택하세요"; btn.disabled = true; return; }
+  if (!token) { btn.textContent = `${plan.label} · ${ch.text}로 시작하기 →`; btn.disabled = false; return; }
   btn.textContent = `${plan.label} · ${ch.text} 구독 시작하기 →`;
   btn.disabled = !agreed;
 }
@@ -7788,7 +7884,7 @@ async function ensurePortOne() {
 
 let subStarting = false;
 async function startSubscription() {
-  if (!token) { showPage("login"); return; }
+  if (!token) { htOpenJoin(selectedPlan); return; }
   if (subStarting) return;
   const plan = subState && subState.plans ? subState.plans.find(p => p.id === selectedPlan) : null;
   if (!plan) { alertError("요금제를 선택해주세요."); return; }
@@ -8471,6 +8567,20 @@ window.addEventListener("DOMContentLoaded", () => {
   .ht-biz-opt em { font-style:normal; font-size:11px; color:#185FA5; font-weight:600; }
   .ht-biz-opt small { color:var(--text3); }
 </style>
+<div id="joinModal" class="ht-auth-bg" style="display:none;" onclick="if(event.target===this)htCloseJoin()">
+  <div class="ht-auth join-card">
+    <button type="button" class="ht-auth-x" onclick="htCloseJoin()" aria-label="닫기">×</button>
+    <div style="text-align:center;padding:6px 4px 2px;">
+      <div class="join-logo"><span class="c1">피</span><span class="c2">나</span></div>
+      <div class="ht-auth-title" style="font-size:20px;">피나와 함께 시작하기</div>
+      <p class="ht-auth-desc" style="margin-bottom:10px;">가입하면 고르신 요금제로 바로 이어서 진행돼요.</p>
+      <div id="joinModalPlan" class="join-plan" style="display:none;"></div>
+    </div>
+    <button type="button" class="btn btn-primary btn-full" style="margin-top:6px;padding:13px;font-size:15px;" onclick="htJoinGo('register')">이메일로 가입하기</button>
+    <button type="button" class="btn btn-full" style="margin-top:8px;padding:12px;" onclick="htJoinGo('login')">이미 회원이에요 · 로그인</button>
+    <p style="font-size:11.5px;color:var(--text3);text-align:center;margin-top:12px;line-height:1.6;">가입하면 <a href="#" onclick="htCloseJoin();showPage('terms')" style="color:inherit;text-decoration:underline;">이용약관</a>과 <a href="#" onclick="htCloseJoin();showPage('privacy')" style="color:inherit;text-decoration:underline;">개인정보처리방침</a>을 확인한 것으로 봐요. 결제는 가입 후 구독 화면에서 동의한 뒤에만 진행돼요.</p>
+  </div>
+</div>
 <div id="htDocModal" class="ht-auth-bg" style="display:none;">
   <div class="ht-auth">
     <button type="button" class="ht-auth-x" onclick="htDocModalClose()" aria-label="닫기">×</button>
