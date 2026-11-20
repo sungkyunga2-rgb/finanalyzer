@@ -2100,6 +2100,10 @@ def _ht_assemble(st, now, final):
             failed.append("직원 수(고용보험) — 0명으로 채움")
     elif final:
         fill["employees_default"] = 0
+    dis = next((v for v in (_dis_result({"result": {"code": c, "message": m}, "data": d}) for c, d, m in R.get("disability", []) if c not in ("SKIP", "TIMEOUT")) if v is not None), None)
+    if dis is not None:
+        fill["rep_disabled"] = dis
+        got.append("장애인기업 여부")
     return {"fill": fill, "got": got, "failed": failed}
 
 
@@ -2115,7 +2119,8 @@ def _ht_progress(job_id, final=False):
         _ht_live.pop(job_id, None)
     else:
         waiting = [HT_DOC_LABEL[k] for k in HT_DOC_LABEL if k in st["keys"] and k not in st["done_keys"]]
-        approve = "근로복지공단" if any(l["key"] == "employees" for l in st["leads"]) and st.get("cw_fired") else ""
+        lab = {"employees": "근로복지공단", "disability": "정부24"}
+        approve = "·".join(lab[k] for k in ("employees", "disability") if any(l["key"] == k for l in st["leads"]) and (k != "employees" or st.get("cw_fired")))
         _job_save(job_id, None, {"got": out["got"], "failed": [], "doing": waiting[0] if waiting else "", "fill": out["fill"], "approve": approve})
 
 
@@ -2131,6 +2136,22 @@ def _ht_settle(job_id, key, res):
     if st["left"][key] <= 0:
         st["done_keys"].add(key)
     st["pending"] -= 1
+    # 정부24 장애인 증명서 — 사업자등록증명이 오면 바로 (개인사업자 대표 주민번호가 있을 때만)
+    if key == "registration" and st.get("dis_body") and not st.get("dis_fired"):
+        st["dis_fired"] = True
+        rd = res.get("data") if code == "CF-00000" else None
+        rrn_x = _safe(_reg_rrn, rd, st.get("identity", ""), default="") if rd is not None else ""
+        reg_x = _safe(_parse_registration, rd, st.get("identity", ""), default={}) if rd is not None else {}
+        if rrn_x and (reg_x or {}).get("biz_type") != "corp":
+            body_d = dict(st["dis_body"], identity=rrn_x, address=_safe(_reg_addr, rd, st.get("identity", ""), default="") or "서울특별시")
+            if (reg_x or {}).get("rep_name"):
+                body_d["userName"] = reg_x["rep_name"]
+            _spawn(_ht_fire(job_id, "disability", body_d))
+        else:
+            st["res"].setdefault("disability", []).append(("SKIP", None, "확인 대상 아님"))
+            st["left"]["disability"] = 0
+            st["done_keys"].add("disability")
+            st["pending"] -= 1
     # 근로복지공단(두 번째 승인)은 사업자등록증명 + 원천세 신고서 결과를 본 뒤에 — 원천세로 직원 수가 나오면 건너뛰어 승인 한 번으로 끝냄
     reg_rows = st["res"].get("registration", [])
     wh_wait = "withholding" in st["keys"] and "withholding" not in st["done_keys"]
@@ -2160,7 +2181,7 @@ async def _cw_watchdog(job_id, lead, wait=285):
     if st and lead in st["leads"]:
         st["leads"].remove(lead)
         st["pending"] += 1
-        _ht_settle(job_id, "employees", {"result": {"code": "TIMEOUT", "message": "근로복지공단 인증 시간이 지났습니다."}, "data": None})
+        _ht_settle(job_id, lead["key"], {"result": {"code": "TIMEOUT", "message": "추가 인증 시간이 지났습니다."}, "data": None})
 
 
 async def _ht_fire(job_id, key, body):
@@ -2182,7 +2203,7 @@ async def _ht_fire(job_id, key, body):
         st["leads"].append(lead)
         st["pending"] -= 1          # 2차 요청 때 다시 집계
         st["approval"].set()
-        if key == "employees":      # 홈택스 승인 뒤 새로 온 인증 → 확인 횟수 새로, 화면에 승인 안내
+        if key in ("employees", "disability"):      # 홈택스 승인 뒤 새로 온 인증(근로복지공단·정부24) → 확인 횟수 새로, 화면에 승인 안내
             st["tries"] = 0
             _spawn(_cw_watchdog(job_id, lead))
             _ht_progress(job_id)
@@ -2234,10 +2255,13 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
     cw = _cw_body(params, body.telecom)        # 근로복지공단(직원 수)은 사업자등록증명에서 대표자 주민번호를 받은 뒤 따로 요청
     if cw:
         keys.append("employees")
+    dis = _dis_body_simple(params, body.telecom)   # 정부24 장애인 증명서(장애인기업) — 마찬가지로 주민번호를 받은 뒤 (별도 승인)
+    if dis:
+        keys.append("disability")
     _ht_live[job_id] = {"user_id": user.id, "leads": [], "pending": len(keys), "res": {}, "t": _time.time(),
                         "keys": set(keys), "done_keys": set(), "left": {k: keys.count(k) for k in set(keys)},
                         "identity": params.get("_want_biz", ""), "approval": asyncio.Event(), "launched": asyncio.Event(),
-                        "cw_body": cw}
+                        "cw_body": cw, "dis_body": dis}
     db = SessionLocal()
     try:
         db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
@@ -2284,10 +2308,10 @@ async def codef_hometax_skip_employees(body: CodefCompleteBody, user: models.Use
     st = _ht_live.get(body.job)
     if not st or st["user_id"] != user.id:
         return {"status": "collecting", "job": body.job}
-    for lead in [l for l in st["leads"] if l["key"] == "employees"]:
+    for lead in [l for l in st["leads"] if l["key"] in ("employees", "disability")]:
         st["leads"].remove(lead)
         st["pending"] += 1
-        _ht_settle(body.job, "employees", {"result": {"code": "SKIP", "message": "건너뜀"}, "data": None})
+        _ht_settle(body.job, lead["key"], {"result": {"code": "SKIP", "message": "건너뜀"}, "data": None})
     return {"status": "collecting", "job": body.job}
 
 
@@ -2330,6 +2354,12 @@ async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = De
         code = _codef_code(res)
         if code == "CF-03002":
             waiting = True
+            continue
+        if code == "CF-12872" and lead["key"] in ("employees", "disability"):   # 추가 인증만 끝난 것 → 그 항목만 빼고 계속
+            if lead in st["leads"]:
+                st["leads"].remove(lead)
+                st["pending"] += 1
+                _ht_settle(body.job, lead["key"], res)
             continue
         if code == "CF-12872":       # 확인 횟수 초과로 거래 종료
             _ht_live.pop(body.job, None)
@@ -2824,19 +2854,15 @@ async def _hometax_collect(params, reg_data, progress=None):
                 fill["emp_increase"] = wh_df
     else:
         fill["employees_default"] = 0
-    # ⑤ 대표자 장애인 여부 — 정부24 장애인 증명서 (별도 동의 + 개인사업자 대표 주민번호가 있을 때만). 해당 여부만 남기고 세부 내용은 버림
-    if params.get("_check_dis") and params.get("loginType") == "0":
+    # ⑤ 대표자 장애인 여부(장애인기업) — 정부24 장애인 증명서 (개인사업자 대표 주민번호가 있을 때). 해당 여부만 남기고 세부 내용은 버림
+    if params.get("loginType") == "0" and not corp:
         rrn_d = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
         if rrn_d and fill.get("rep_name"):
-            step("장애인 여부(정부24)")
+            step("장애인기업 여부(정부24)")
             dis = await _check_disability(params, fill["rep_name"], rrn_d, _safe(_reg_addr, reg_data, params.get("_want_biz", ""), default="") or "")
             if dis is not None:
                 fill["rep_disabled"] = dis
-                got.append("장애인 여부")
-            else:
-                failed.append("장애인 여부(정부24)")
-        else:
-            failed.append("장애인 여부(정부24) — 법인 대표는 확인 불가")
+                got.append("장애인기업 여부")
     return {"status": "done", "fill": fill, "got": got, "pending": failed, "reason": "" if got else (errs[0] if errs else "")}
 
 
@@ -2846,6 +2872,33 @@ def _reg_addr(reg_data, want_biz=""):
     digits = _re2.sub(r"\D", "", want_biz or "")
     row = next((r for r in rows if digits and _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "") == digits), rows[0] if rows else {})
     return str(row.get("resUserAddr") or "").strip()
+
+
+DIS_LEVELS = {"1", "3", "4", "5", "6", "7", "8", "9", "10"}     # 정부24가 지원하는 간편인증 수단
+
+
+def _dis_result(res):
+    """정부24 장애인 증명서 응답 → True(등록)/False(해당 없음)/None(확인 못 함)"""
+    code, msg = _codef_code(res), _codef_msg(res)
+    if code == "CF-00000":
+        d = res.get("data") if isinstance(res, dict) else None
+        return bool(_codef_rows(d, ("resRegNumber",)) or _codef_rows(d, ("resMainDisability",)))
+    if any(k in (msg or "") for k in ("장애인으로 등록되어 있지", "등록되지 않", "대상자가 아", "발급 대상이 아", "해당 정보가 없", "조회된 정보가 없", "존재하지 않", "발급대상이 아")):
+        return False
+    return None
+
+
+def _dis_body_simple(params, telecom=""):
+    """간편인증(비회원)으로 정부24 장애인 증명서 요청 — 주민번호·주소는 사업자등록증명을 받은 뒤 채움 (별도 승인 1회)"""
+    if params.get("loginType") not in ("5", "6") or params.get("loginTypeLevel") not in DIS_LEVELS or not params.get("phoneNo"):
+        return None
+    if params.get("loginTypeLevel") == "5" and not telecom:
+        return None
+    b = {"organization": "0001", "loginType": "6", "loginTypeLevel": params["loginTypeLevel"], "userName": params.get("userName", ""),
+         "phoneNo": params["phoneNo"], "id": f"{params.get('id', 'fina')}-dis", "isIdentityViewYn": "0", "originDataYN": "0"}
+    if telecom:
+        b["telecom"] = telecom
+    return b
 
 
 async def _check_disability(params, name, rrn, addr):
@@ -2860,14 +2913,10 @@ async def _check_disability(params, name, rrn, addr):
     except Exception as e:
         print(f"[CODEF] disability 호출 오류: {type(e).__name__}")
         return None
-    code, msg = _codef_code(res), _codef_msg(res)
-    if code == "CF-00000":
-        rows = _codef_rows(res.get("data"), ("resRegNumber",)) or _codef_rows(res.get("data"), ("resMainDisability",))
-        return bool(rows)
-    print(f"[CODEF] disability 실패 {code}")
-    if any(k in (msg or "") for k in ("장애인으로 등록되어 있지", "등록되지 않", "대상자가 아", "발급 대상이 아", "해당 정보가 없", "조회된 정보가 없", "존재하지 않")):
-        return False
-    return None
+    r = _dis_result(res)
+    if r is None:
+        print(f"[CODEF] disability 실패 {_codef_code(res)}: {_codef_msg(res)}")
+    return r
 
 
 def _codef_amt(v):

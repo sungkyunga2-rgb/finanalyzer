@@ -923,7 +923,7 @@
         <input type="file" id="incomeDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <input type="file" id="allDocInput" accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style="display:none" />
         <button type="button" class="btn ht-doc-btn ht-doc-all" id="allDocBtn" onclick="document.getElementById('allDocInput').click()">
-          <span class="ht-doc-ic">📂</span><b>서류 올리기</b><span>재무제표 · 사업자등록증 · 부가세과세표준증명 · 면세사업자 수입금액증명 · 소득금액증명원 · 신용정보조회서(신용점수·대출 화면 캡처) · 인콜일지(워드·PDF·사진)<br>여러 서류를 한 번에 올려도 AI가 서류별로 알아서 읽어요</span>
+          <span class="ht-doc-ic">📂</span><b>서류 올리기</b><span>재무제표 · 사업자등록증 · 부가세과세표준증명 · 면세사업자 수입금액증명 · 소득금액증명원 · 신용정보조회서(신용점수·대출 화면 캡처)<br>여러 서류를 한 번에 올려도 AI가 서류별로 알아서 읽어요</span>
           <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
         <div class="ht-doc-btns" style="display:none;">
           <button type="button" class="btn ht-doc-btn" id="finDocBtn" onclick="document.getElementById('finDocInput').click()">
@@ -1090,8 +1090,8 @@
             <label class="ht-f"><span>보유 자산 (집, 차량)</span><input oninput="htCommaText(this)" type="text" id="ht-rep-assets" placeholder="아파트 자가" /></label>
             <label class="ht-f"><span>혼인 여부</span><select id="ht-marital"><option value="">-</option><option value="married">기혼</option><option value="single">미혼</option></select></label>
           </div>
-          <label class="ht-chk"><input type="checkbox" id="ht-woman" /> 여성 대표</label>
-          <label class="ht-chk"><input type="checkbox" id="ht-disabled" /> 장애인 대표</label>
+          <label class="ht-chk"><input type="checkbox" id="ht-woman" /> 여성기업</label>
+          <label class="ht-chk"><input type="checkbox" id="ht-disabled" /> 장애인기업</label>
         </div>
       </div>
 
@@ -1694,14 +1694,14 @@
       ③ 회사의 개인정보 관리책임자 및 권한이 부여된 관리자는 서비스 운영, 오류 확인, 고객 문의 대응 등 서비스 제공에 필요한 범위에서 위 분석 결과를 열람할 수 있습니다. 이 경우에도 수집 목적 외의 용도로 이용하거나 정보주체의 동의 없이 제3자에게 제공하지 않습니다.<br/>
       ④ 관리자의 열람은 관리자 인증을 거친 경우에만 가능하며, 회원이 업로드한 재무제표 원본은 보관하지 않으므로 열람 대상에 포함되지 않습니다.</p>
       <br/>
-      <p><strong>8. 본인 인증 자동 조회(홈택스·근로복지공단·은행) 시 개인정보 처리</strong></p>
-      <p>① 회원이 원클릭 분석에서 본인 인증(간편인증·공동인증서)으로 자료 불러오기를 요청한 경우, 회사는 회원 본인의 자료를 조회하기 위해 인증 대행사인 코드에프(CODEF, 헥토데이터)를 통해 국세청 홈택스, 근로복지공단(고용·산재보험 토탈서비스), 회원이 선택한 은행에 조회를 요청합니다.<br/>
+      <p><strong>8. 본인 인증 자동 조회(홈택스·근로복지공단·정부24·은행) 시 개인정보 처리</strong></p>
+      <p>① 회원이 원클릭 분석에서 본인 인증(간편인증·공동인증서)으로 자료 불러오기를 요청한 경우, 회사는 회원 본인의 자료를 조회하기 위해 인증 대행사인 코드에프(CODEF, 헥토데이터)를 통해 국세청 홈택스, 근로복지공단(고용·산재보험 토탈서비스), 정부24(장애인 증명서), 회원이 선택한 은행에 조회를 요청합니다.<br/>
       ② 이때 처리하는 정보는 다음과 같습니다. 간편인증: 성명, 생년월일, 휴대폰 번호, 통신사 / 공동인증서: 인증서 파일, 인증서 비밀번호 / 공통: 사업자등록증명에 기재된 대표자 주민등록번호.<br/>
       ③ 대표자 주민등록번호는 회원 본인의 요청에 따라 근로복지공단에서 직원 수(고용보험 근로자 수)를 조회하는 데에만 사용하며, 조회 요청을 위해 서버 메모리에서 일시적으로 처리할 뿐 저장·보관하지 않고 회원 화면이나 기록(로그)에도 남기지 않습니다.<br/>
       ④ 인증서 파일·인증서 비밀번호·휴대폰 인증 정보는 조회에만 사용하고 저장하지 않습니다. 은행 조회를 위해 코드에프에 등록한 인증서 정보는 조회가 끝나는 즉시 삭제를 요청합니다. 다만 회원이 '이 기기에 인증서 보관하기'를 선택한 경우 인증서 파일은 회원의 기기(브라우저)에만 보관되며 회사 서버에는 보관되지 않습니다.<br/>
       ⑤ 조회로 받은 결과(상호, 대표자명, 사업자등록번호, 업태·종목, 매출, 체납 여부, 재무수치, 직원 수, 대출 현황 등)는 입력 칸을 채우는 데 사용되며, 회원이 분석을 실행한 경우에 한해 제7조 ②에 따라 분석 결과로 보관됩니다.<br/>
       ⑥ 회원은 자동 조회에 동의하지 않을 수 있으며, 이 경우 각 항목을 직접 입력하거나 서류를 올려 분석을 이용할 수 있습니다.<br/>
-      ⑦ (장애인 여부 확인 — 민감정보) 회원이 공동인증서 조회 화면에서 '대표자 장애인 여부 확인'에 별도로 동의한 경우에 한해, 코드에프를 통해 정부24에서 대표자의 장애인 증명서를 조회합니다. 이때 사업자등록증명상 대표자 성명·주민등록번호·사업장 주소와 인증서를 사용하며, 결과 중 장애인 해당 여부만 입력 칸('장애인 대표')에 반영하고 장애 종류·정도·등록번호 등은 저장하거나 화면·기록(로그)에 남기지 않습니다. 동의하지 않아도 다른 조회와 분석 이용에는 영향이 없습니다.</p>
+      ⑦ (장애인 여부 확인 — 민감정보) 본인 인증 화면의 동의에 따라, 개인사업자 대표의 장애인기업 해당 여부를 확인하기 위해 코드에프를 통해 정부24에서 대표자의 장애인 증명서를 조회합니다(간편인증은 정부24 인증이 한 번 더 요청됩니다). 이때 사업자등록증명상 대표자 성명·주민등록번호·사업장 주소와 인증서를 사용하며, 결과 중 장애인 해당 여부만 입력 칸('장애인기업')에 반영하고 장애 종류·정도·등록번호 등은 저장하거나 화면·기록(로그)에 남기지 않습니다. 회원은 자동 조회 대신 직접 입력할 수 있습니다.</p>
       <br/>
       <p><strong>9. 고객 의견수렴 및 불만처리</strong></p>
       <p>회사는 개인정보보호와 관련하여 정보주체 및 회원의 의견과 불만을 제기할 수 있는 창구를 개설하고 있습니다. 개인정보와 관련한 불만이 있으신 분은 회사의 개인정보 관리책임자에게 의견을 주시면 접수 즉시 조치하여 처리결과를 통보해 드립니다.</p>
@@ -3655,8 +3655,8 @@ function analyzeHometax(input, opts) {
   const prefs = [];
   if (profile.age !== null && profile.age <= 39) prefs.push({ tag: "청년 대표", text: `대표자 만 ${profile.age}세 — 청년 대표 우대 대상` });
   if (bizAge && bizAge.months < 84) prefs.push({ tag: "창업기업", text: `업력 ${bizAge.years}년 ${bizAge.rest}개월 — 창업기업 지원 대상` });
-  if (profile.woman) prefs.push({ tag: "여성 대표", text: "여성기업 우대 대상 (여성기업 확인서 발급 여부 확인)" });
-  if (profile.disabled) prefs.push({ tag: "장애인 대표", text: "장애인기업 우대 대상 (장애인기업 확인서 발급 여부 확인)" });
+  if (profile.woman) prefs.push({ tag: "여성기업", text: "여성기업 우대 대상 (여성기업 확인서 발급 여부 확인)" });
+  if (profile.disabled) prefs.push({ tag: "장애인기업", text: "장애인기업 우대 대상 (장애인기업 확인서 발급 여부 확인)" });
   if (profile.career !== null && profile.career >= 10) prefs.push({ tag: "업계 경력", text: `동종업계 경력 ${profile.career}년` });
   if (profile.employees !== null && profile.employees < 5) prefs.push({ tag: "소상공인", text: `상시근로자 ${profile.employees}명 — 소상공인 해당 가능` });
   const empInc = htNum(input.emp_increase);
@@ -4724,7 +4724,7 @@ async function htCertStart() {
   htAuthShow(3);
   try {
     const res = await api("POST", "/codef/hometax/cert", {
-      cert_type: htCertFiles.type, cert_file: htCertFiles.cert, key_file: htCertFiles.key, password: pwEl.value, banks: htBanksSel.slice(), check_disability: !!(document.getElementById("htCertDis") || {}).checked,
+      cert_type: htCertFiles.type, cert_file: htCertFiles.cert, key_file: htCertFiles.key, password: pwEl.value, banks: htBanksSel.slice(),
       business_number: (document.getElementById("ht-biz") || {}).value || "",
     });
     pwEl.value = "";
@@ -4776,7 +4776,7 @@ async function htAuthStart() {
     htAuthState.pending = { job: res.job };     // 서류 요청은 서버가 이미 한꺼번에 보내 둠 — 승인 1번이면 4종 모두
     const two = ["1", "3", "4", "5", "6", "7", "8", "10"].includes(htAuthState.provider);
     document.getElementById("htAuthStep2Desc").innerHTML = two
-      ? "인증 요청을 보냈어요. 먼저 <b>홈택스</b> 인증을 승인하면 <b>자동으로 넘어가요.</b><br>서류를 불러온 뒤 <b>근로복지공단(직원 수)</b> 인증이 한 번 더 와요. (4분 30초 안에 완료)"
+      ? "인증 요청을 보냈어요. 먼저 <b>홈택스</b> 인증을 승인하면 <b>자동으로 넘어가요.</b><br>서류를 불러온 뒤 <b>근로복지공단·정부24</b> 인증이 한 번 더 올 수 있어요. (4분 30초 안에 완료)"
       : "인증 요청을 보냈어요. 휴대폰 앱에서 인증을 마치면 <b>자동으로 넘어가요.</b><br>바로 넘어가지 않으면 아래 버튼을 눌러주세요. (4분 30초 안에 완료)";
     htAuthShow(2);
     htAuthStartAuto();
@@ -4829,6 +4829,7 @@ function htCwState(p, job) {
   if (!box) return;
   const on = !!(p && p.approve);
   box.style.display = on ? "" : "none";
+  const lb = document.getElementById("htCwLabel"); if (lb && on) lb.textContent = p.approve;
   if (on && htAuthState.cwJob !== job) {
     htAuthState.cwJob = job;
     (htAuthState.cwTimers || []).forEach(clearTimeout);
@@ -8010,7 +8011,7 @@ window.addEventListener("DOMContentLoaded", () => {
         <label><span>통신사</span><select id="htAuthTelecom" class="ht-auth-input"><option value="">선택</option><option value="0">SKT (알뜰폰 포함)</option><option value="1">KT (알뜰폰 포함)</option><option value="2">LG U+ (알뜰폰 포함)</option></select></label>
         <label><span>휴대폰 번호</span><input id="htAuthPhone" class="ht-auth-input" placeholder="01012345678" inputmode="numeric" maxlength="13" autocomplete="tel" /></label>
       </div>
-      <label class="ht-auth-check"><input type="checkbox" id="htAuthAgree" /> 홈택스 자료 조회를 위해 위 정보를 인증 대행사(CODEF)에 제공하는 데 동의합니다.</label>
+      <label class="ht-auth-check"><input type="checkbox" id="htAuthAgree" /> 홈택스·근로복지공단·정부24 자료 조회를 위해 위 정보와 사업자등록증명상 대표자 주민등록번호를 인증 대행사(CODEF)에 제공하고, 장애인 여부(민감정보) 확인에 동의합니다.</label>
       <button type="button" class="btn btn-primary btn-full" id="htAuthStartBtn" onclick="htAuthStart()">인증 요청하기</button>
       </div>
       <div id="htAuthCertBox" style="display:none;">
@@ -8070,8 +8071,7 @@ window.addEventListener("DOMContentLoaded", () => {
         </div>
         <div id="htBankHome"></div>
         <label class="ht-auth-grid" style="grid-template-columns:1fr;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">인증서 비밀번호</span><input id="htCertPw" type="password" class="ht-auth-input" autocomplete="off" placeholder="인증서 비밀번호" /></label>
-        <label class="ht-auth-check"><input type="checkbox" id="htCertDis" /> (선택) 대표자 장애인 여부도 확인할게요 — 정부24 장애인 증명서 조회에 동의하며, 장애 여부(해당·비해당)만 입력 칸에 반영하고 장애 종류·정도는 저장하지 않아요. (개인사업자만)</label>
-        <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스·근로복지공단·은행 자료 조회를 위해 인증서와 사업자등록증명상 대표자 주민등록번호(직원 수 조회용)를 인증 대행사(CODEF)에 제공하는 데 동의합니다. 비밀번호·주민등록번호는 저장하지 않아요.</label>
+        <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스·근로복지공단·정부24·은행 자료 조회를 위해 인증서와 사업자등록증명상 대표자 주민등록번호(직원 수·장애인기업 여부 확인용)를 인증 대행사(CODEF)에 제공하고, 장애인 여부(민감정보) 확인에 동의합니다. 비밀번호·주민등록번호·장애 내용은 저장하지 않아요.</label>
         <button type="button" class="btn btn-primary btn-full" id="htCertBtn" onclick="htCertStart()">공동인증서로 불러오기</button>
       </div>
     </div>
@@ -8127,8 +8127,8 @@ window.addEventListener("DOMContentLoaded", () => {
       <p class="ht-auth-desc">잠시만 기다려 주세요. 최대 1~2분 걸릴 수 있어요.</p>
       <div id="htAuthProg" class="ht-auth-prog"></div>
       <div id="htCwBox" class="ht-cw-box" style="display:none;">
-        <div class="ht-cw-t">📱 휴대폰에서 <b>근로복지공단</b> 인증을 승인해 주세요</div>
-        <div class="ht-cw-d">직원 수를 불러오는 인증이 한 번 더 왔어요. 승인하면 자동으로 넘어가요.</div>
+        <div class="ht-cw-t">📱 휴대폰에서 <b id="htCwLabel">근로복지공단</b> 인증을 승인해 주세요</div>
+        <div class="ht-cw-d">직원 수·장애인기업 여부를 확인하는 인증이 한 번 더 왔어요. 승인하면 자동으로 넘어가요.</div>
         <div style="display:flex;gap:8px;margin-top:10px;">
           <button type="button" class="btn" style="flex:1;" onclick="htCwSkip()">건너뛰기</button>
           <button type="button" class="btn btn-primary" style="flex:2;" id="htCwBtn" onclick="htCwConfirm(false)">인증 완료</button>
