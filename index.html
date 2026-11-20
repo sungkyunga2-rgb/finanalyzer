@@ -960,15 +960,18 @@
       #hometaxSection .ht-radios input { width:auto; margin:0; }
       #hometaxSection .ht-missing { border-color:#A32D2D !important; background:#FFF6F6 !important; }
       #hometaxSection .ht-missing-box { box-shadow:inset 3px 0 0 #A32D2D; background:#FFF8F8; }
-      #hometaxSection .ht-loan-row { display:grid; grid-template-columns:1.2fr 1fr 1.2fr auto; gap:6px; align-items:center; }
+      #hometaxSection .ht-loan-row { display:grid; grid-template-columns:1.2fr 1fr 1.2fr auto auto; gap:6px; align-items:center; }
+      #hometaxSection .ht-loan-row select { padding:8px 6px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; font-family:inherit; background:#fff; min-width:0; }
       #hometaxSection .ht-loan-row input { width:100%; padding:8px 10px; border:1px solid var(--border-strong); border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; min-width:0; }
       #hometaxSection .ht-x { border:none; background:none; color:var(--text3); font-size:18px; cursor:pointer; padding:0 4px; }
       #hometaxSection .ht-link { border:none; background:none; color:#185FA5; font-size:13px; cursor:pointer; padding:0; text-align:left; width:fit-content; }
       @media (max-width: 560px) {
         #hometaxSection .ht-row { grid-template-columns:1fr; }
         #hometaxSection .ht-head { padding:8px 14px; font-size:12px; }
-        #hometaxSection .ht-loan-row { grid-template-columns:1fr 1fr; }
-        #hometaxSection .ht-loan-row .ht-loan-amt { grid-column:1 / 2; }
+        #hometaxSection .ht-loan-row { grid-template-columns:1fr 1fr auto; }
+        #hometaxSection .ht-loan-row .ht-x { grid-column:3; grid-row:1; }
+        #hometaxSection .ht-loan-row .ht-loan-amt { grid-column:1 / 2; grid-row:2; }
+        #hometaxSection .ht-loan-row .ht-loan-kind { grid-column:2 / 4; grid-row:2; }
       }
     </style>
 
@@ -3637,6 +3640,7 @@ function htBuildYears(preset) {
 }
 
 // 기대출 목록 (기관 / 시기 / 금액)
+const HT_LOAN_KIND = { personal: "개인대출", business: "사업자대출" };
 function htRenderLoans(list) {
   const box = document.getElementById("ht-loans");
   if (!box) return;
@@ -3646,12 +3650,14 @@ function htRenderLoans(list) {
       <input type="text" id="ht-loan-${i}-org" placeholder="기관 (예: 신용보증기금)" />
       <input type="text" id="ht-loan-${i}-date" placeholder="시기 (예: 2024.03)" />
       <input type="text" inputmode="numeric" class="ht-loan-amt" id="ht-loan-${i}-amount" placeholder="금액 (원)" oninput="formatMoneyInput(this)" />
+      <select id="ht-loan-${i}-kind" class="ht-loan-kind"><option value="">구분</option><option value="personal">개인대출</option><option value="business">사업자대출</option></select>
       <button type="button" class="ht-x" title="삭제" onclick="htRemoveLoan(${i})">×</button>
     </div>`).join("");
   rows.forEach((l, i) => {
     document.getElementById(`ht-loan-${i}-org`).value = l.org || "";
     document.getElementById(`ht-loan-${i}-date`).value = l.date || "";
     htSetMoney(`ht-loan-${i}-amount`, l.amount);
+    document.getElementById(`ht-loan-${i}-kind`).value = l.kind === "personal" || l.kind === "business" ? l.kind : "";
   });
   htToggleLoans();
 }
@@ -3660,7 +3666,8 @@ function htReadLoans() {
   for (let i = 0; document.getElementById(`ht-loan-${i}-org`); i++) {
     const l = { org: document.getElementById(`ht-loan-${i}-org`).value.trim(),
                 date: document.getElementById(`ht-loan-${i}-date`).value.trim(),
-                amount: htMoney(`ht-loan-${i}-amount`) };
+                amount: htMoney(`ht-loan-${i}-amount`),
+                kind: document.getElementById(`ht-loan-${i}-kind`).value };
     if (l.org || l.date || l.amount !== null) list.push(l);
   }
   return list;
@@ -5128,7 +5135,7 @@ function htReportBody(r, input) {
   // 기대출 현황
   const lo = r.loans || { list: [] };
   html += sh("기대출 현황 (Existing Loans)") + (lo.list.length
-    ? `<table class="fin-table"><thead><tr><th>기관</th><th>시기</th><th style="text-align:right;">금액</th></tr></thead><tbody>${lo.list.map(l => `<tr><td>${e(l.org || "기관 미입력")}</td><td class="cat">${e(l.date || "-")}</td><td class="val">${htNum(l.amount) !== null ? htKwon(htNum(l.amount)) : "-"}</td></tr>`).join("")}<tr><td colspan="2" style="font-weight:700;">합계</td><td class="val">${htKwon(lo.total)}</td></tr></tbody></table>`
+    ? `<table class="fin-table"><thead><tr><th>기관</th><th>시기</th><th style="text-align:right;">금액</th></tr></thead><tbody>${lo.list.map(l => `<tr><td>${e(l.org || "기관 미입력")}${HT_LOAN_KIND[l.kind] ? ` <span style="color:#9b9a95;">(${HT_LOAN_KIND[l.kind]})</span>` : ""}</td><td class="cat">${e(l.date || "-")}</td><td class="val">${htNum(l.amount) !== null ? htKwon(htNum(l.amount)) : "-"}</td></tr>`).join("")}<tr><td colspan="2" style="font-weight:700;">합계</td><td class="val">${htKwon(lo.total)}</td></tr></tbody></table>`
     : `<div class="opinion"><div class="opinion-item">${lo.none ? "기대출 없음" : "입력된 기대출이 없습니다."}</div></div>`);
 
   // 우대 · 참고 요소
@@ -5327,7 +5334,7 @@ function htResultCardHTML(r, input, full, opts) {
     const sales = ((r.vat && r.vat.rows) || []).map(x => `<div class="ht-rp-row"><span>${x.year}년 매출</span><b>${htKwon(x.vat)}${x.vatYoy !== null ? ` <span style="color:${x.vatYoy < 0 ? "#A32D2D" : "#0F6E56"};font-weight:600;">(${htPctText(x.vatYoy)})</span>` : ""}</b></div>`).join("");
     const arRow = `<div class="ht-rp-row"><span>국세 체납</span><b>${ar.status === "has" ? '<span style="color:#A32D2D;">있음</span>' : ar.status === "none" ? "없음" : '<span class="ht-mi">미입력</span>'}</b></div>`;
     const loanRows = r.loans && r.loans.list.length
-      ? r.loans.list.map(l => `<div class="ht-rp-row"><span>${e(l.org || "기관 미입력")}${l.date ? ` <span style="color:#9b9a95;">(${e(l.date)})</span>` : ""}</span><b>${htNum(l.amount) !== null ? htKwon(htNum(l.amount)) : '<span class="ht-mi">미입력</span>'}</b></div>`).join("")
+      ? r.loans.list.map(l => `<div class="ht-rp-row"><span>${e(l.org || "기관 미입력")}${HT_LOAN_KIND[l.kind] ? ` · ${HT_LOAN_KIND[l.kind]}` : ""}${l.date ? ` <span style="color:#9b9a95;">(${e(l.date)})</span>` : ""}</span><b>${htNum(l.amount) !== null ? htKwon(htNum(l.amount)) : '<span class="ht-mi">미입력</span>'}</b></div>`).join("")
       : `<div class="ht-rp-row"><span>기대출</span><b>${r.loans && r.loans.none ? "없음" : '<span class="ht-mi">미입력</span>'}</b></div>`;
     lockedInner = lim + sh("재무 분석") + `<div class="srp-kpi-grid">${fin}</div>` +
       sh("국세 · 매출 현황") + arRow + (sales || `<div class="ht-rp-row"><span>매출</span><b><span class="ht-mi">미입력</span></b></div>`) +

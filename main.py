@@ -2303,7 +2303,8 @@ async def _bank_loans(params, banks, corp):
             for l in _bank_loan_rows(r.get("data")):
                 d = _re2.sub(r"\D", "", str(l["start"]))
                 loans.append({"org": f"{CODEF_BANKS.get(b, b)} · {l['name']}".strip(" ·"),
-                              "date": f"{d[:4]}.{d[4:6]}" if len(d) >= 6 else "", "amount": l["balance"]})
+                              "date": f"{d[:4]}.{d[4:6]}" if len(d) >= 6 else "", "amount": l["balance"],
+                              **({"kind": "business"} if corp else {})})
     finally:      # 인증서 등록은 조회 후 바로 지운다
         await _safe_async(_codef_post("/v1/account/delete", {"connectedId": cid, "accountList": [
             {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "organization": b} for b in ok]}))
