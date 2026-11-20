@@ -1440,6 +1440,7 @@ _codef_token_cache = {"token": None, "exp": 0}
 CODEF_HOMETAX_PRODUCTS = {
     "registration": "/v1/kr/public/nt/proof-issue/corporate-registration",        # 사업자등록 증명
     "vat": "/v1/kr/public/nt/proof-issue/additional-tax-standard",                # 부가세과세표준증명
+    "withholding": "/v1/kr/public/nt/report/withholding-tax",                     # 원천징수이행상황신고서 — 기관코드 0005, 근로소득 간이세액(A01) 인원 = 직원 수
     "taxfree": "/v1/kr/public/nt/proof-issue/tax-free-businessman-income",        # 부가가치세 면세사업자 수입금액증명 — 회원(0/5), 08~22시, 면세사업자만 발급
     "tax_payment": "/v1/kr/public/nt/proof-issue/tax-cert-all",                    # 납세증명서
     "financial": "/v1/kr/public/nt/proof-issue/standard-financial-statements",     # 재무제표(표준재무제표증명) — 08:00~22:00
@@ -1549,6 +1550,45 @@ def _parse_emp_trend(data, today=None):
     if now_n == 0:
         return None
     return "up" if now_n > ago_n else "keep" if now_n == ago_n else "down"
+
+
+def _wh_body(now):
+    """원천징수이행상황신고서 — 최근 1년 신고분(신고일 기준 최대 1년)"""
+    st_ = (now - timedelta(days=364)).strftime("%Y%m%d")
+    return {"organization": "0005", "startDate": st_, "endDate": now.strftime("%Y%m%d"), "inquiryType": "0", "infoViewYn": "0"}
+
+
+def _parse_withholding(data):
+    """원천징수이행상황신고서(최근 1년) → (최근 달 근로소득 인원, 최근 1년 추세 'up'/'keep'/'down' 또는 None)
+    귀속연월별 A01(근로소득 간이세액) 인원. 같은 달 수정신고가 있으면 나중 신고분"""
+    by = {}
+    for r in _codef_rows(data, ("resYearMonth",)):
+        if str(r.get("resIssueYN") or "1") == "0" or str(r.get("resDocumentType") or "0") not in ("0", ""):
+            continue
+        ym = _re2.sub(r"\D", "", str(r.get("resYearMonth") or ""))[:6]
+        if len(ym) != 6:
+            continue
+        lst = r.get("resTaxAmtSpecList") or []
+        lst = lst if isinstance(lst, list) else [lst]
+        n = 0
+        for it in lst:
+            if isinstance(it, dict) and str(it.get("resCodeNo") or "").upper() == "A01":
+                n = int(_codef_amt(it.get("resPersonnel")) or 0)
+                break
+        rd = str(r.get("resReportingDate") or "")
+        if ym not in by or rd >= by[ym][0]:
+            by[ym] = (rd, n)
+    if not by:
+        return None, None
+    months = sorted(by)
+    last = by[months[-1]][1]
+    first = months[0]
+    gap = (int(months[-1][:4]) - int(first[:4])) * 12 + int(months[-1][4:]) - int(first[4:])
+    trend = None
+    if gap >= 10 and last > 0:                       # 1년 가까이 떨어진 두 달을 비교
+        old = by[first][1]
+        trend = "up" if last > old else "keep" if last == old else "down"
+    return last, trend
 
 
 def _codef_host():
@@ -1908,6 +1948,9 @@ def _hometax_calls(params, now, telecom=""):
     if params.get("loginType") == "5":        # 부가세과세표준증명은 회원만
         calls.append(("vat", dict(base, phoneNo=phone, startDate=f"{y - 3}01", endDate=_vat_end(now), isIdentityViewYN="0",
                                   usePurposes="99", submitTargets="99", applicationType="01", originDataYN="0")))
+    if params.get("loginType") == "5" and params.get("_want_biz"):   # 원천징수이행상황신고서(직원 수) — 사업자번호를 알 때만
+        calls.append(("withholding", dict(base, phoneNo=phone, identity=params["_want_biz"], identity2=params.get("loginIdentity", ""),
+                                          **_wh_body(now))))
     if params.get("loginType") == "5" and 8 <= now.hour < 22:   # 면세사업자 수입금액증명 — 면세사업자가 아니면 발급 안 됨(무시)
         calls.append(("taxfree", dict(base, phoneNo=phone, startYear=str(y - 3), endYear=str(y - 1), isIdentityViewYN="0",
                                       usePurposes="99", submitTargets="99", originDataYN="0")))
@@ -1981,14 +2024,20 @@ def _ht_assemble(st, now, final):
         _merge_fin_years(fill, revs, now.year)                          # 매출은 최근 3년 모두
     if not fins and final:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
-    if "employees" in st.get("keys", ()):
+    wh_n, wh_tr = next((v for v in (_safe(_parse_withholding, d, default=(None, None)) for d in ok("withholding")) if v[0] is not None), (None, None))
+    if "employees" in st.get("keys", ()) or wh_n is not None:
         n = next((v for v in (_safe(_parse_employees, d) for d in ok("employees")) if v is not None), None)
         if n is None and any(_cw_no_data(c, m) for c, d, m in R.get("employees", [])):
             n = 0                      # 고용보험 근로자 내역 없음 → 0명
+        tr = next((v for v in (_safe(_parse_emp_trend, d) for d in ok("employees")) if v), None) if n else None
+        if (n is None or n == 0) and wh_n:                    # 근로복지공단이 안 되면 원천세 신고 인원
+            n = wh_n
+        if n is None and wh_n == 0 and final:
+            n = 0
         if n is not None:
             fill["employees"] = n
             got.append("직원 수(고용보험)")
-            tr = next((v for v in (_safe(_parse_emp_trend, d) for d in ok("employees")) if v), None)
+            tr = tr or wh_tr
             if tr:
                 fill["emp_trend"] = tr
         elif final:
@@ -2064,6 +2113,8 @@ async def _ht_fire(job_id, key, body):
     st = _ht_live.get(job_id)
     if not st:
         return
+    if _ht_is_2way(res) and key == "withholding" and st["leads"]:
+        res = {"result": {"code": "SKIP", "message": "별도 승인 필요 — 건너뜀"}, "data": None}   # 승인을 두 번 받게 하지 않음
     if _ht_is_2way(res):
         d = res["data"]
         lead = {"key": key, "body": body, "two_way": {k: d.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}}
@@ -2603,6 +2654,12 @@ async def _hometax_collect(params, reg_data, progress=None):
         got.append("재무제표")
     else:
         failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
+    # ③-2 원천징수이행상황신고서 — 근로소득 인원(직원 수)과 최근 1년 추세 (기관코드 0005, 사업자번호 필수)
+    wh_n = wh_tr = None
+    if bizno and params.get("loginType") == "0":
+        data, err = await call("withholding", dict(_wh_body(now), identity=bizno))
+        if data is not None:
+            wh_n, wh_tr = _safe(_parse_withholding, data, default=(None, None))
     # ④ 직원 수 — 근로복지공단 근로자고용정보현황 (인증서는 추가 승인 없음)
     cw = _cw_body(params, corp=corp, bizno=bizno)
     if cw:
@@ -2626,15 +2683,25 @@ async def _hometax_collect(params, reg_data, progress=None):
         n = _safe(_parse_employees, res.get("data")) if _codef_code(res) == "CF-00000" else (0 if _cw_no_data(_codef_code(res), _codef_msg(res)) else None)
         if _codef_code(res) not in ("", "CF-00000"):
             print(f"[CODEF] employees 실패 {_codef_code(res)}: {_codef_msg(res)}")
+        tr = _safe(_parse_emp_trend, res.get("data")) if (_codef_code(res) == "CF-00000" and n) else None
+        if (n is None or n == 0) and wh_n:                    # 근로복지공단이 안 되면 원천세 신고 인원
+            n = wh_n
+        if n is None and wh_n == 0:
+            n = 0
         if n is not None:
             fill["employees"] = n
             got.append("직원 수(고용보험)")
-            tr = _safe(_parse_emp_trend, res.get("data")) if _codef_code(res) == "CF-00000" else None
+            tr = tr or wh_tr
             if tr:
                 fill["emp_trend"] = tr
         else:
             fill["employees_default"] = 0
             failed.append("직원 수(고용보험) — 0명으로 채움")
+    elif wh_n is not None:
+        fill["employees"] = wh_n
+        got.append("직원 수(고용보험)")
+        if wh_tr:
+            fill["emp_trend"] = wh_tr
     else:
         fill["employees_default"] = 0
     return {"status": "done", "fill": fill, "got": got, "pending": failed}
