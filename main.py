@@ -3105,13 +3105,92 @@ def _credit_clean(data):
     return out
 
 
+INCALL_PROMPT = """아래는 정책자금 컨설팅 회사의 '인콜일지(상담 기록지)'입니다. 업체와 통화하며 적은 메모라 표기가 제각각입니다(예: '1.7천' = 1,700만 원, '2.5억' = 2억 5천만 원, '5억' = 500,000,000원, 'x' = 없음).
+적힌 내용만 옮기고, 적혀 있지 않은 항목은 null로 두세요. 추측해서 채우지 마세요. 금액은 모두 원 단위 숫자로 바꾸세요.
+
+항목:
+- company_name: 업체명 / industry, item: 업태·업종(사업자등록증 기준)의 업태와 종목. 두 번째 업태·종목이 있으면 industry2, item2
+- location: 사업장 소재지를 시·도 하나로 (서울,부산,대구,인천,광주,대전,울산,세종,경기,강원,충북,충남,전북,전남,경북,경남,제주 중 하나. 예: 목포 → 전남, 수원 → 경기)
+- founded: 창업년월 "YYYY-MM" (연도만 있으면 "YYYY")
+- years: 연도별 매출 [{"year":2024,"sales":400000000}, ...] (올해 진행 중인 매출은 제외)
+- ytd: 올해 현재까지 매출 {"year":올해,"month":몇 월까지,"sales":금액} — 적혀 있을 때만
+- kcb, nice: 대표자 신용점수 / co_kcb, co_nice: 공동대표·배우자 신용점수
+- recovery: 신용회복 {"type":"종류·회차 문구","faithful":"yes"(성실납부)|"no"(연체)} — 없으면 null
+- arrears: 국세 체납 {"status":"has"|"none","amount":금액,"note":"세목·기간"} — '없음/x'면 status "none", 아예 안 적혀 있으면 null
+- arrears_other: 기타 연체·체납·가압류 문구 ('x'·없음이면 null)
+- loans: 기대출 목록 [{"org":"기관(예: 지역신용보증재단, 땅 담보대출)","date":"YYYY.MM 또는 원문","amount":금액,"kind":"personal"(개인 명의·개인 담보)|"business"(사업자·정책자금)}] — 기대출이 '없음'이면 []
+- age: 대표자 만 나이(숫자) / career: 동종업계 경력(년, 숫자) / assets_note: 보유 자산 문구 / marital: "married"|"single" / woman: 여성 대표면 true
+- employees: 직원 수(4대보험 기준, 'x'·없음이면 0) / hire: 추가 채용 예정 인원
+- naeil: 내일채움공제 문구 / umbrella: 노란우산공제 가입이면 "yes", 미가입이면 "no"
+- export_amount: 수출 실적 금액 / factory: 공장 "own"(자가)|"rent"(임차)|"none"
+- memo: ※ 추가사항에 적힌 상담 메모를 핵심만 3줄 이내로 요약 (분석에 참고할 사실 위주)
+
+JSON으로만 답하세요:
+{"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":[..],"ytd":..,"kcb":..,"nice":..,"co_kcb":..,"co_nice":..,"recovery":..,"arrears":..,"arrears_other":..,"loans":[..] 또는 null,"age":..,"career":..,"assets_note":..,"marital":..,"woman":..,"employees":..,"hire":..,"naeil":..,"umbrella":..,"export_amount":..,"factory":..,"memo":..}"""
+
+
+def _docx_text(b64):
+    """.docx → 표·문단 텍스트 (병합 셀 중복 제거). 외부 라이브러리 없이 XML로 읽는다"""
+    import zipfile, io
+    from xml.etree import ElementTree as ET
+    raw = _b64.b64decode(b64)
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        xml = z.read("word/document.xml")
+    W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    root = ET.fromstring(xml)
+    body = root.find(f"{W}body")
+    lines = []
+    def ptext(p):
+        return "".join((t.text or "") for t in p.iter(f"{W}t")).strip()
+    for el in list(body) if body is not None else []:
+        if el.tag == f"{W}p":
+            t = ptext(el)
+            if t:
+                lines.append(t)
+        elif el.tag == f"{W}tbl":
+            for tr in el.iter(f"{W}tr"):
+                cells, prev = [], None
+                for tc in tr.findall(f"{W}tc"):
+                    t = " / ".join(x for x in (ptext(p) for p in tc.iter(f"{W}p")) if x)
+                    if t != prev:
+                        cells.append(t)
+                    prev = t
+                if any(cells):
+                    lines.append(" | ".join(cells))
+    return "\n".join(lines)[:20000]
+
+
+@app.post("/extract/incall")
+async def extract_incall(body: IncomeDocExtractRequest, user: models.User = Depends(get_current_user)):
+    """인콜일지(상담 기록지) → 원클릭 입력값. .docx는 글자만 뽑아서, 이미지·PDF는 그대로 AI가 읽는다. 저장하지 않는다."""
+    if not body.images:
+        raise HTTPException(status_code=400, detail="인콜일지 파일이 없습니다.")
+    parts = []
+    for img in body.images[:5]:
+        mime = (img.mime or "").lower()
+        if "wordprocessingml" in mime or mime.endswith("docx") or mime == "application/msword":
+            try:
+                parts.append({"text": "[인콜일지 내용]\n" + _docx_text(img.data)})
+            except Exception as e:
+                print(f"[incall] docx 읽기 실패: {e!r}")
+                raise HTTPException(status_code=400, detail="워드 파일을 읽지 못했어요. .docx 파일인지 확인해 주세요. (.doc·.hwp는 PDF로 저장해서 올려 주세요)")
+        else:
+            parts.append({"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}})
+    now = datetime.utcnow() + timedelta(hours=9)
+    data, err = await _gemini_json(parts, INCALL_PROMPT + f"\n\n(오늘은 {now.year}년 {now.month}월입니다.)", max_tokens=3000)
+    if data is None:
+        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+    return {"data": data if isinstance(data, dict) else {}}
+
+
 DOC_CLASSIFY_PROMPT = """위에 [파일 1], [파일 2] … 순서로 한국 서류(이미지 또는 PDF)가 첨부돼 있습니다. 각 파일이 어떤 서류인지 아래 중 하나로 분류하세요.
 - "financial": 재무제표 — 표준재무제표증명, 재무상태표(대차대조표), 손익계산서, 결산서
 - "income": 사업자등록증·사업자등록증명, 부가가치세 과세표준증명, 부가가치세 면세사업자 수입금액증명, 소득금액증명
+- "incall": 인콜일지·상담일지·상담 기록지 (업체명·매출·신용점수·기대출 등을 손으로/표로 적은 컨설팅 상담 양식)
 - "credit": 신용정보조회서(올크레딧·나이스지키미·크레딧포유), 신용점수 화면 캡처, 대출 내역 화면(은행·토스·카카오뱅크 등 앱 캡처 포함)
 - "other": 위에 해당하지 않음
 한 파일 안에 여러 서류가 있으면 가장 많은 부분을 차지하는 서류로 고르세요. 내용은 옮겨 적지 말고 분류만 하세요.
-JSON으로만 답하세요: {"types": ["financial", "income", ...]}  (파일 순서대로, 파일 수만큼)"""
+JSON으로만 답하세요: {"types": ["financial", "income", "incall", ...]}  (파일 순서대로, 파일 수만큼)"""
 
 
 @app.post("/extract/classify")
@@ -3129,7 +3208,7 @@ async def extract_classify(body: IncomeDocExtractRequest, user: models.User = De
     if data is None:
         raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
     types = data.get("types") if isinstance(data, dict) else None
-    types = [t if t in ("financial", "income", "credit") else "other" for t in (types or [])][:len(body.images)]
+    types = [t if t in ("financial", "income", "credit", "incall") else "other" for t in (types or [])][:len(body.images)]
     types += ["other"] * (len(body.images) - len(types))
     return {"types": types}
 

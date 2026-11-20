@@ -918,9 +918,9 @@
         <input type="file" id="finDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <input type="file" id="creditDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <input type="file" id="incomeDocInput" accept="image/*,application/pdf" multiple style="display:none" />
-        <input type="file" id="allDocInput" accept="image/*,application/pdf" multiple style="display:none" />
+        <input type="file" id="allDocInput" accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style="display:none" />
         <button type="button" class="btn ht-doc-btn ht-doc-all" id="allDocBtn" onclick="document.getElementById('allDocInput').click()">
-          <span class="ht-doc-ic">📂</span><b>서류 올리기</b><span>재무제표 · 사업자등록증 · 부가세과세표준증명 · 면세사업자 수입금액증명 · 소득금액증명원 · 신용정보조회서(신용점수·대출 화면 캡처)<br>여러 서류를 한 번에 올려도 AI가 서류별로 알아서 읽어요</span>
+          <span class="ht-doc-ic">📂</span><b>서류 올리기</b><span>재무제표 · 사업자등록증 · 부가세과세표준증명 · 면세사업자 수입금액증명 · 소득금액증명원 · 신용정보조회서(신용점수·대출 화면 캡처) · 인콜일지(워드·PDF·사진)<br>여러 서류를 한 번에 올려도 AI가 서류별로 알아서 읽어요</span>
           <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
         <div class="ht-doc-btns" style="display:none;">
           <button type="button" class="btn ht-doc-btn" id="finDocBtn" onclick="document.getElementById('finDocInput').click()">
@@ -2555,7 +2555,8 @@ async function htHandleAllDocs(all) {
   const files = (all || []).slice(0, 15);
   if (!files.length) return;
   if (!token) { showPage("login"); return; }
-  if (files.some(f => !(f.type.startsWith("image/") || f.type === "application/pdf"))) return alertError("JPG, PNG, PDF 파일만 업로드 가능합니다.");
+  const isDocx = f => /\.docx$/i.test(f.name) || /wordprocessingml/.test(f.type);
+  if (files.some(f => !(f.type.startsWith("image/") || f.type === "application/pdf" || isDocx(f)))) return alertError("JPG, PNG, PDF, 워드(.docx) 파일만 업로드 가능합니다.\n한글(.hwp) 파일은 PDF로 저장해서 올려 주세요.");
   const btn = document.getElementById("allDocBtn");
   const btnHtml = btn.innerHTML;
   const busy = (t, sub) => { btn.innerHTML = `<b>⏳ ${t}</b><span>${sub || "잠시만 기다려 주세요"}</span>`; };
@@ -2563,20 +2564,82 @@ async function htHandleAllDocs(all) {
   document.getElementById("incomeDocFileName").textContent = "📎 " + files.map(f => f.name).join(", ");
   try {
     const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
-    let types;
-    if (files.length === 1 && /재무|결산|손익|대차|재무상태/.test(files[0].name)) types = ["financial"];
-    else types = (await api("POST", "/extract/classify", { images: await Promise.all(files.map(read)) })).types || [];
+    const types = files.map(f => isDocx(f) ? "incall" : null);          // 워드 파일은 인콜일지로
+    const rest = files.filter((f, i) => !types[i]);
+    if (rest.length === 1 && /재무|결산|손익|대차|재무상태/.test(rest[0].name)) types[files.indexOf(rest[0])] = "financial";
+    else if (rest.length) {
+      const got = (await api("POST", "/extract/classify", { images: await Promise.all(rest.map(read)) })).types || [];
+      rest.forEach((f, i) => { types[files.indexOf(f)] = got[i] || "other"; });
+    }
     const pick = k => files.filter((f, i) => types[i] === k);
-    const fin = pick("financial"), inc = pick("income"), cred = pick("credit"), other = pick("other");
+    const fin = pick("financial"), inc = pick("income"), cred = pick("credit"), call = pick("incall"), other = pick("other");
+    if (call.length) { busy("인콜일지를 읽는 중..."); await htHandleIncallFiles(call); }
     if (fin.length) { busy("재무제표를 읽는 중...", "최대 1분 정도 걸릴 수 있어요"); await htHandleFinFiles(fin); }
     if (inc.length) { busy("사업자등록증·매출 서류를 읽는 중..."); await htHandleIncomeFile(inc); }
     if (cred.length) { busy("신용정보를 읽는 중..."); await htHandleCreditFiles(cred); }
-    if (other.length) alertError(`${other.map(f => f.name).join(", ")}은(는) 채울 수 있는 서류가 아니라 건너뛰었어요.\n재무제표·사업자등록증·부가세과세표준증명·소득금액증명원·신용정보조회서를 올려 주세요.`);
+    if (other.length) alertError(`${other.map(f => f.name).join(", ")}은(는) 채울 수 있는 서류가 아니라 건너뛰었어요.\n재무제표·사업자등록증·부가세과세표준증명·소득금액증명원·신용정보조회서·인콜일지를 올려 주세요.`);
   } catch (err) {
     alertError(err.message);
   } finally {
     btn.disabled = false; btn.innerHTML = btnHtml;
   }
+}
+// ── 인콜일지(상담 기록지) → 업체 정보·매출·신용·기대출·대표자 정보 ──
+async function htHandleIncallFiles(files) {
+  const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1],
+    mime: /\.docx$/i.test(f.name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : (f.type || "image/jpeg") }); r.onerror = no; r.readAsDataURL(f); });
+  try {
+    const res = await api("POST", "/extract/incall", { images: await Promise.all(files.slice(0, 5).map(read)) });
+    htFillFromIncall(res.data || {});
+  } catch (err) { alertError(err.message); }
+}
+const HT_SIDO = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
+function htFillFromIncall(d) {
+  const n = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
+  const t = v => (v === null || v === undefined) ? "" : String(v).trim();
+  const cur = htReadForm();
+  let filled = 0;
+  const set = (k, v) => { if (v !== null && v !== undefined && v !== "") { cur[k] = v; filled++; } };
+  ["company_name", "industry", "item", "industry2", "item2"].forEach(k => set(k, t(d[k])));
+  if (t(d.industry) && !t(d.industry2) && !t(d.item2)) { cur.industry2 = ""; cur.item2 = ""; }
+  if (HT_SIDO.includes(t(d.location))) set("location", t(d.location));
+  const fm = t(d.founded).match(/^(\d{4})(?:-(\d{1,2}))?/);
+  if (fm) set("founded", `${fm[1]}-${String(fm[2] || 1).padStart(2, "0")}`);
+  if (Array.isArray(d.years) && d.years.length) {
+    const by = {}; (cur.years || []).forEach(y => { if (y.year) by[y.year] = y; });
+    d.years.forEach(y => { const yr = n(y.year), v = n(y.sales); if (yr && v !== null) by[yr] = Object.assign(by[yr] || { purchase: null, income: null }, { year: yr, vat: v }); });
+    cur.years = Object.values(by).sort((a, b) => a.year - b.year).slice(-3); filled++;
+  }
+  if (d.ytd && n(d.ytd.sales) !== null) { cur.ytd = { year: n(d.ytd.year), month: n(d.ytd.month), sales: n(d.ytd.sales) }; filled++; }
+  cur.credit = cur.credit || {};
+  [["kcb", "kcb"], ["nice", "nice"], ["co_kcb", "co_kcb"], ["co_nice", "co_nice"]].forEach(([a, b]) => { if (n(d[a]) !== null) { cur.credit[b] = n(d[a]); filled++; } });
+  if (d.recovery && (t(d.recovery.type) || t(d.recovery.faithful))) { cur.credit.recovery = { type: t(d.recovery.type), faithful: ["yes", "no"].includes(d.recovery.faithful) ? d.recovery.faithful : "" }; filled++; }
+  cur.arrears = cur.arrears || {};
+  if (d.arrears && ["has", "none"].includes(d.arrears.status)) {
+    cur.arrears.status = d.arrears.status;
+    if (n(d.arrears.amount) !== null) cur.arrears.amount = n(d.arrears.amount);
+    if (t(d.arrears.note)) cur.arrears.note = t(d.arrears.note);
+    filled++;
+  }
+  if (t(d.arrears_other) && !/^(x|없음|-)$/i.test(t(d.arrears_other))) { cur.arrears.other = t(d.arrears_other); filled++; }
+  if (Array.isArray(d.loans)) {
+    cur.loans = d.loans.filter(l => l && (t(l.org) || n(l.amount) !== null)).map(l => ({ org: t(l.org), date: t(l.date), amount: n(l.amount), kind: ["personal", "business"].includes(l.kind) ? l.kind : "" }));
+    cur.loans_none = !cur.loans.length; filled++;
+  }
+  cur.rep = cur.rep || {};
+  if (n(d.age) !== null) { cur.rep.age = n(d.age); filled++; }
+  if (n(d.career) !== null) { cur.rep.career = n(d.career); filled++; }
+  if (t(d.assets_note)) { cur.rep.assets_note = t(d.assets_note); filled++; }
+  if (["married", "single"].includes(d.marital)) { cur.rep.marital = d.marital; filled++; }
+  if (d.woman === true) { cur.rep.woman = true; filled++; }
+  if (n(d.employees) !== null) set("employees", n(d.employees));
+  set("naeil", t(d.naeil));
+  if (["yes", "no"].includes(d.umbrella)) set("umbrella", d.umbrella);
+  if (["own", "rent", "none"].includes(d.factory)) set("factory", d.factory);
+  if (n(d.export_amount) !== null) set("export_amount", n(d.export_amount));
+  if (!filled) return alertError("인콜일지에서 채울 내용을 찾지 못했어요. 표가 잘 보이는 파일로 다시 올려 주세요.");
+  htFillForm(cur);
+  toast("인콜일지 내용으로 입력 칸을 채웠어요. 값을 확인해 주세요.");
 }
 // 드래그해서 놓기
 [["allDocBtn", fs => htHandleAllDocs(fs)], ["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs)], ["creditDocBtn", fs => htHandleCreditFiles(fs)]].forEach(([id, fn]) => {
