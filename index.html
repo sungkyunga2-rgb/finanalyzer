@@ -341,8 +341,9 @@
   .plan-price small { font-size:12px; font-weight:500; color:var(--text2); margin-left:2px; }
   .plan-seats { font-size:13px; color:var(--text2); margin-top:6px; }
   .plan-cycle { display:inline-flex; background:var(--bg2, #f1f3f6); border:1px solid var(--border); border-radius:999px; padding:3px; gap:2px; }
-  .plan-cycle button { border:none; background:transparent; font-size:13px; font-weight:600; color:var(--text2); padding:6px 14px; border-radius:999px; cursor:pointer; white-space:nowrap; }
-  .plan-cycle button.on { background:var(--surface); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.12); }
+  .plan-cycle { cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
+  .plan-cycle > span { font-size:13px; font-weight:600; color:var(--text2); padding:6px 14px; border-radius:999px; white-space:nowrap; transition:background .15s, color .15s; }
+  .plan-cycle > span.on { background:var(--surface); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.12); }
   .plan-cycle .cyc-off { color:#e5267a; font-size:11.5px; font-weight:700; margin-left:2px; }
   .plan-feats { margin:8px 0 0; padding-left:17px; font-size:12.5px; color:var(--text2); line-height:1.7; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
@@ -7485,11 +7486,12 @@ function renderCurrentSubscription(sub) {
 }
 
 let subCycle = "month";     // month / year — 구독 화면 스위치
-function htYearOff(p) { return p.year_month ? Math.floor((1 - p.year_month / p.price) * 100) : 0; }
+function htYearOff(p) { const base = p.list_price || p.price; return p.year_month ? Math.floor((1 - p.year_month / base) * 100) : 0; }
 function setSubCycle(c) {
   subCycle = c === "year" ? "year" : "month";
   renderPlanCards(subState && subState.plans);
 }
+function toggleSubCycle() { setSubCycle(subCycle === "year" ? "month" : "year"); }
 function renderPlanCards(plans) {
   const grid = document.getElementById("plan-grid");
   plans = plans || [];
@@ -7499,24 +7501,27 @@ function renderPlanCards(plans) {
   const maxOff = Math.max(0, ...plans.map(htYearOff));
   if (sw) {
     sw.style.display = plans.some(p => p.year_month) ? "" : "none";
-    sw.innerHTML = `<button type="button" class="${subCycle === "month" ? "on" : ""}" onclick="setSubCycle('month')">월간</button>
-      <button type="button" class="${subCycle === "year" ? "on" : ""}" onclick="setSubCycle('year')">연간${maxOff ? ` <span class="cyc-off">최대 ${maxOff}% 할인</span>` : ""}</button>`;
+    sw.setAttribute("role", "switch");
+    sw.setAttribute("aria-checked", subCycle === "year" ? "true" : "false");
+    sw.setAttribute("tabindex", "0");
+    sw.onclick = toggleSubCycle;                // 어디를 눌러도 월간 ↔ 연간
+    sw.onkeydown = ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleSubCycle(); } };
+    sw.innerHTML = `<span class="${subCycle === "month" ? "on" : ""}">월간</span>
+      <span class="${subCycle === "year" ? "on" : ""}">연간${maxOff ? ` <span class="cyc-off">최대 ${maxOff}% 할인</span>` : ""}</span>`;
   }
   grid.innerHTML = plans.map(p => {
     const per = p.seats > 1 ? `1인당 월 ${won(Math.round(p.price / p.seats))}` : "";
     const year = subCycle === "year" && p.year_month;
-    const listPrice = year ? p.price : (p.list_price || (p.id === "starter" ? 330000 : 0));   // 정가 (백엔드 값이 없을 때 대비)
+    const listPrice = p.list_price || (p.id === "starter" ? 330000 : 0);   // 정가 (백엔드 값이 없을 때 대비)
     const monthly = year ? p.year_month : p.price;
     const disc = listPrice > monthly;
     const offPct = disc ? Math.floor((1 - monthly / listPrice) * 100) : 0;
     return `<div class="plan-card${selectedPlan === p.id ? " selected" : ""}" data-plan="${p.id}" onclick="selectPlan('${p.id}')">
-      ${disc && !year ? `<div class="plan-badge">특별 할인가</div>` : ""}
       <div class="plan-name">${escapeHtml(p.label)}</div>
-      ${disc ? `<div class="plan-was">${year ? "" : "정가 "}${won(listPrice)}/월</div>` : ''}
+      ${disc ? `<div class="plan-was">정가 ${won(listPrice)}/월</div>` : ''}
       <div class="plan-price">${won(monthly)}<small>/월${year ? ", 연간 결제" : ""}</small></div>
       ${year ? `<div class="plan-per">연 ${won(p.year_price)} 한 번에 결제</div>` : ""}
       ${disc ? `<div class="plan-save"><span class="off">${offPct}% 할인</span><span class="won">${year ? `매년 ${won((listPrice - monthly) * 12)}` : `매월 ${won(listPrice - monthly)}`} 절약</span></div>` : ''}
-      ${p.desc ? `<div class="plan-seats" style="font-weight:600;color:var(--text);">${escapeHtml(p.desc)}</div>` : ''}
       ${(p.features || []).length ? `<ul class="plan-feats">${p.features.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : `<div class="plan-seats">사용자 ${p.seats}명 · 분석 무제한</div>`}
       ${per ? `<div class="plan-per">${per}</div>` : ''}
     </div>`;

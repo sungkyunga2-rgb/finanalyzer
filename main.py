@@ -140,9 +140,9 @@ CREDIT_PACKAGES = {
 # tier: "basic" = 소상공인용(본인 사업자 1개, 예상한도 + 기관명만) / "pro" = 컨설턴트용(전체 결과)
 SUBSCRIPTION_PLANS = {
     # year_month: 연간 구독 시 월 환산 금액 (연 결제금액 = year_month × 12)
-    "basic":    {"label": "Basic",     "seats": 1,  "price": 39900,  "year_month": 29000,  "tier": "basic",
+    "basic":    {"label": "Basic",     "seats": 1,  "price": 39900,  "list_price": 59000,  "year_month": 29000,  "tier": "basic",
                  "desc": "소상공인 사장님용", "features": ["내 사업자 1곳 분석", "총 예상한도 + 신청 가능 기관", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
-    "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "year_month": 330000, "tier": "pro",
+    "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "list_price": 590000, "year_month": 330000, "tier": "pro",
                  "desc": "컨설턴트용", "features": ["업체 수 제한 없이 분석", "기관별 예상 한도 + 해당 자금", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
     "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 330000, "tier": "pro", "hidden": True},   # 이전 요금제 — 기존 구독자는 Pro와 같은 권한
     "standard": {"label": "스탠다드",  "seats": 3,  "price": 550000, "tier": "pro", "hidden": True},
