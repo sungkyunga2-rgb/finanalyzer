@@ -140,9 +140,9 @@ CREDIT_PACKAGES = {
 # tier: "basic" = 소상공인용(본인 사업자 1개, 예상한도 + 기관명만) / "pro" = 컨설턴트용(전체 결과)
 SUBSCRIPTION_PLANS = {
     # year_month: 연간 구독 시 월 환산 금액 (연 결제금액 = year_month × 12)
-    "basic":    {"label": "Basic",     "seats": 1,  "price": 39900,  "list_price": 59000,  "year_month": 29000,  "tier": "basic",
+    "basic":    {"label": "Basic",     "seats": 1,  "price": 39900,  "year_month": 29000,  "tier": "basic",
                  "desc": "소상공인 사장님용", "features": ["내 사업자 1곳 분석", "총 예상한도 + 신청 가능 기관", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
-    "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "list_price": 590000, "year_month": 330000, "tier": "pro",
+    "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "year_month": 330000, "tier": "pro", "popular": True,
                  "desc": "컨설턴트용", "features": ["업체 수 제한 없이 분석", "기관별 예상 한도 + 해당 자금", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
     "starter":  {"label": "피나 구독", "seats": 1,  "price": 59000, "list_price": 330000, "tier": "pro", "hidden": True},   # 이전 요금제 — 기존 구독자는 Pro와 같은 권한
     "standard": {"label": "스탠다드",  "seats": 3,  "price": 550000, "tier": "pro", "hidden": True},
@@ -152,7 +152,7 @@ SUBSCRIPTION_PLANS = {
 def _public_plans():
     return [{"id": k, "label": v["label"], "seats": v["seats"], "price": v["price"], "list_price": v.get("list_price"),
              "year_month": v.get("year_month"), "year_price": v["year_month"] * 12 if v.get("year_month") else None,
-             "tier": v.get("tier", "pro"), "desc": v.get("desc", ""), "features": v.get("features", [])}
+             "tier": v.get("tier", "pro"), "popular": bool(v.get("popular")), "desc": v.get("desc", ""), "features": v.get("features", [])}
             for k, v in SUBSCRIPTION_PLANS.items() if not v.get("hidden")]
 TEAM_INVITE_VALID_DAYS = 14   # 초대 유효기간 (지나면 수락 불가)
 TEAM_MAX_PENDING_INVITES = 20 # 수락 대기 초대 상한 (초대 남발 방지용 — 사용자 수 한도와는 별개)
