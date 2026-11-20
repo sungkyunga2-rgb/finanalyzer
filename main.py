@@ -2072,7 +2072,8 @@ def _ht_progress(job_id, final=False):
     now = datetime.utcnow() + timedelta(hours=9)
     out = _ht_assemble(st, now, final)
     if final:
-        _job_save(job_id, "done", {"status": "done", "fill": out["fill"], "got": out["got"], "pending": out["failed"]})
+        reason = "" if out["got"] else next((f"{m} ({c})" for k in ("registration", "vat", "tax_payment", "financial") for c, d, m in st["res"].get(k, []) if c != "CF-00000" and m), "")
+        _job_save(job_id, "done", {"status": "done", "fill": out["fill"], "got": out["got"], "pending": out["failed"], "reason": reason})
         _ht_live.pop(job_id, None)
     else:
         waiting = [HT_DOC_LABEL[k] for k in HT_DOC_LABEL if k in st["keys"] and k not in st["done_keys"]]
@@ -2644,6 +2645,8 @@ async def _hometax_collect(params, reg_data, progress=None):
     phone = params.get("phoneNo", "")
     ph = (lambda key: {key: phone} if phone else {})    # 간편인증만 휴대폰 번호를 보낸다
 
+    errs = []
+
     async def call(key, extra):
         try:
             res = await _codef_post(CODEF_HOMETAX_PRODUCTS[key], dict(base, **extra))
@@ -2654,6 +2657,7 @@ async def _hometax_collect(params, reg_data, progress=None):
         if code == "CF-00000":
             return res.get("data"), None
         print(f"[CODEF] {key} 실패 {code}: {_codef_msg(res)}")
+        errs.append(f"{_codef_msg(res)} ({code})")
         return None, _codef_msg(res)
 
     # ① 부가세과세표준증명 — 최근 3개 연도 (회원 인증서·회원 간편인증만 지원)
@@ -2782,7 +2786,7 @@ async def _hometax_collect(params, reg_data, progress=None):
                 fill["emp_increase"] = wh_df
     else:
         fill["employees_default"] = 0
-    return {"status": "done", "fill": fill, "got": got, "pending": failed}
+    return {"status": "done", "fill": fill, "got": got, "pending": failed, "reason": "" if got else (errs[0] if errs else "")}
 
 
 def _codef_amt(v):

@@ -4798,7 +4798,7 @@ function htAuthApply(res) {
   const bankFailed = res.bank_failed || [];
   const pend = (res.pending || []).filter(x => !(bankFailed.length && /^은행 대출/.test(x)));
   const notes = [];
-  if (!got) notes.push("불러온 자료가 없어요. 직접 입력해 주세요.");
+  if (!got) notes.push(`불러온 자료가 없어요. 직접 입력해 주세요.${res.reason ? `\n\n(홈택스 응답: ${res.reason})` : ""}`);
   else if (pend.length) {
     const zero = pend.some(x => /0명으로 채움/.test(x));
     notes.push(`${pend.map(x => x.replace(/\s*—.*$/, "")).join(", ")}은(는) 불러오지 못했어요. 직접 확인해 주세요.${zero ? "\n(직원 수는 0명으로 채워 두었어요)" : ""}`);
