@@ -942,7 +942,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #  · 기관별 한도 = 기준 매출 × 25% ~ 30% (청년 대표 25% ~ 50%, 미소금융은 1천만 ~ 2천만 원)
 #  · 순서에 따라 중복 지원: 소진공 → (재단 · 신용보증기금 · 기술보증기금 중 1곳) → 미소
 #  · 재단 · 신보 · 기보는 셋 중 한 곳만 — 그중 한 곳에 기대출이 있으면 나머지 두 곳은 불가
-#  · 기대출은 같은 기관 한도에서 차감. 기관을 특정할 수 없는 대출은 미소금융을 뺀 모든 기관에서 차감
+#  · 기대출(어느 기관 정책자금이든, 기관을 모르는 대출이든)은 미소금융을 뺀 모든 기관 한도에서 차감
 #  · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업 10인 이상) 소진공 제외
 #  · 업력 1년 미만 + (제조 · 콘텐츠 제작 · 특허) → 매출이 없어도 기보 5천만 ~ 1억
 #  · 중진공 최대 5억(운전자금 연 5억, 수출기업·최근 1년 10명 이상 고용 증가 10억) / 신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
@@ -1174,7 +1174,7 @@ def _ht_startup_kibo(ctx, inp=None):
         k = _ht_loan_org(l.get("org")); a = _ht_loan_amt(l, inp or {})
         if a <= 0: continue
         if k == "kibo": k_used += a
-        elif not k: other += a
+        elif k != "miso": other += a          # 다른 기관 정책자금·기관 모를 대출도 차감
     fb = _ht_fin_borrow(inp or {})
     if fb is not None:
         other = max(0, fb - k_used)
@@ -1284,7 +1284,7 @@ def ht_estimate_limit(inp, today=None):
             jm = R["jungjinExportMax"] if (exporter or emp_up10) else R["jungjinMax"]
             lo = min(lo, jm); hi = min(hi, jm)
         if big_enough and key in ("jungjin", "kodit", "kibo"): lo = max(lo, R["fundMinAmount"]); hi = max(hi, R["fundMinAmount"])
-        ded = used[key] + (0 if key == "miso" else other)
+        ded = used["miso"] if key == "miso" else (sum(v for kk, v in used.items() if kk != "miso") + other)   # 다른 기관 정책자금도 모든 기관 한도에서 차감
         low = max(0, lo - ded); high = max(0, hi - ded)
         if key in ("kodit", "kibo"): low = _fund_round(low); high = _fund_round(high)
         if key == "jungjin": low = floor_u(low); high = floor_u(high)
