@@ -2596,7 +2596,18 @@ async function htHandleIncallFiles(files) {
 const HT_SIDO = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
 function htFillFromIncall(d) {
   const n = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
-  const t = v => (v === null || v === undefined) ? "" : String(v).trim();
+  // 양식 빈칸 기호 정리: "( 홍길동 )" → "홍길동", "___", "( )", 앞뒤 ":" 제거 — "(주)" 같은 법인 표기는 유지
+  const t = v => {
+    if (v === null || v === undefined) return "";
+    let x = String(v).replace(/[_＿]+/g, " ").replace(/\(\s*\)|\[\s*\]|（\s*）/g, " ").trim();
+    for (let i = 0; i < 3; i++) {
+      const m = x.match(/^[(\[（]\s*([\s\S]*?)\s*[)\]）]$/);
+      if (m && !/^(주|유|사|재|합|의|학)$/.test(m[1])) x = m[1].trim(); else break;
+    }
+    x = x.replace(/^[\s:：·\-]+|[\s:：·\-]+$/g, "");
+    if ((x.match(/[(（]/g) || []).length !== (x.match(/[)）]/g) || []).length) x = x.replace(/^[(（]\s*|\s*[)）]$/g, "").replace(/^\s*[)）]|[(（]\s*$/g, "");
+    return x.replace(/\s{2,}/g, " ").trim();
+  };
   const cur = htReadForm();
   let filled = 0;
   const set = (k, v) => { if (v !== null && v !== undefined && v !== "") { cur[k] = v; filled++; } };
