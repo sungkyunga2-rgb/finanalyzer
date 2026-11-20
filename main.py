@@ -1476,6 +1476,12 @@ def _reg_rrn(reg_data, want_biz=""):
     row = next((r for r in rows if digits and _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "") == digits), rows[0] if rows else {})
     raw = str(row.get("resUserIdentiyNo") or "")
     n = _re2.sub(r"\D", "", raw)
+    bn = _re2.sub(r"\D", "", row.get("resCompanyIdentityNo") or "")
+    kind = str(row.get("resBusinessmanType") or "")
+    if "법인" in kind or ("개인" not in kind and len(bn) == 10 and "81" <= bn[3:5] <= "88"):
+        return ""                      # 법인은 이 칸이 법인등록번호 — 대표자 주민번호가 아님
+    if len(n) == 13 and n[6] not in "12345678":
+        return ""
     return n if len(n) == 13 and "*" not in raw else ""
 
 
@@ -2603,7 +2609,8 @@ async def _hometax_collect(params, reg_data, progress=None):
         step("직원 수(고용보험)")
         rrn = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
         # 대표자 개인명의(0)는 주민번호, 사업자명의 인증서(2)는 사업자번호 — 맞는 조합을 차례로 시도
-        tries = ([("0", rrn)] if rrn else []) + [("2", bizno)] if corp else ([("0", rrn)] if rrn else []) + [("0", bizno), ("2", bizno)]
+        # 법인: 사업자명의 인증서(2)+사업자번호 먼저 / 개인: 대표자 개인명의(0)+주민번호 먼저
+        tries = ([("2", bizno)] + ([("0", rrn)] if rrn else [])) if corp else (([("0", rrn)] if rrn else []) + [("2", bizno), ("0", bizno)])
         tries = [t for i, t in enumerate(tries) if t[1] and t not in tries[:i]]
         res = {}
         try:
