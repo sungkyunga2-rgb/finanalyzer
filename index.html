@@ -960,7 +960,7 @@
       #hometaxSection .ht-radios input { width:auto; margin:0; }
       #hometaxSection .ht-missing { border-color:#A32D2D !important; background:#FFF6F6 !important; }
       #hometaxSection .ht-missing-box { box-shadow:inset 3px 0 0 #A32D2D; background:#FFF8F8; }
-      #hometaxSection .ht-loan-row { display:grid; grid-template-columns:1.2fr 1fr 1.2fr auto auto; gap:6px; align-items:center; }
+      #hometaxSection .ht-loan-row { display:grid; grid-template-columns:auto 1.2fr 1fr 1.2fr auto; gap:6px; align-items:center; }
       #hometaxSection .ht-loan-row select { padding:8px 6px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; font-family:inherit; background:#fff; min-width:0; }
       #hometaxSection .ht-loan-row input { width:100%; padding:8px 10px; border:1px solid var(--border-strong); border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; min-width:0; }
       #hometaxSection .ht-x { border:none; background:none; color:var(--text3); font-size:18px; cursor:pointer; padding:0 4px; }
@@ -969,9 +969,12 @@
         #hometaxSection .ht-row { grid-template-columns:1fr; }
         #hometaxSection .ht-head { padding:8px 14px; font-size:12px; }
         #hometaxSection .ht-loan-row { grid-template-columns:1fr 1fr auto; }
+        #hometaxSection .ht-loan-row .ht-loan-kind { grid-column:1 / 3; grid-row:1; }
         #hometaxSection .ht-loan-row .ht-x { grid-column:3; grid-row:1; }
-        #hometaxSection .ht-loan-row .ht-loan-amt { grid-column:1 / 2; grid-row:2; }
-        #hometaxSection .ht-loan-row .ht-loan-kind { grid-column:2 / 4; grid-row:2; }
+        #hometaxSection .ht-loan-row input[id$="-org"] { grid-column:1 / 2; grid-row:2; }
+        #hometaxSection .ht-loan-row input[id$="-date"] { grid-column:2 / 4; grid-row:2; }
+        #hometaxSection .ht-loan-row .ht-loan-amt { grid-column:1 / 4; grid-row:3; }
+        #hometaxSection .ht-loan-row + .ht-loan-row { margin-top:8px; padding-top:10px; border-top:1px dashed var(--border); }
       }
     </style>
 
@@ -3650,10 +3653,10 @@ function htRenderLoans(list) {
   const rows = (list && list.length) ? list : [{ org: "", date: "", amount: null }];
   box.innerHTML = rows.map((l, i) => `
     <div class="ht-loan-row">
+      <select id="ht-loan-${i}-kind" class="ht-loan-kind"><option value="">구분</option><option value="personal">개인대출</option><option value="business">사업자대출</option></select>
       <input type="text" id="ht-loan-${i}-org" placeholder="기관·종류 (예: 신용보증기금, ○○카드 카드론)" />
       <input type="text" id="ht-loan-${i}-date" placeholder="시기 (예: 2024.03)" />
       <input type="text" inputmode="numeric" class="ht-loan-amt" id="ht-loan-${i}-amount" placeholder="금액 (원)" oninput="formatMoneyInput(this)" />
-      <select id="ht-loan-${i}-kind" class="ht-loan-kind"><option value="">구분</option><option value="personal">개인대출</option><option value="business">사업자대출</option></select>
       <button type="button" class="ht-x" title="삭제" onclick="htRemoveLoan(${i})">×</button>
     </div>`).join("");
   rows.forEach((l, i) => {
