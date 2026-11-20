@@ -5141,7 +5141,12 @@ function htReportBody(r, input) {
     if (erosionOk === false) fail.push("자본잠식");
     if (drOk === false) fail.push("부채비율 400% 초과");
     if (iceOk === false) fail.push("이자보상배수 1배 미만");
-    const policyOk = L0.available ? (L0.status === "ok" && !fail.length) : (fail.length ? false : null);
+    // 정책자금 연계는 예상 한도(기관별 기준) 결과를 따른다 — 신청 가능한 기관이 있으면 가능
+    const okN = L0.available ? (L0.orgs || []).filter(x => x.status === "ok").length
+              : (L0.status === "none" || L0.status === undefined) && typeof input.__okOrgs === "number" && input.__okOrgs > 0 ? input.__okOrgs : null;
+    const hardFail = fail.filter(x => x === "국세 체납" || x === "자본잠식");
+    const policyOk = okN !== null ? (okN > 0 && (!L0.available || L0.status === "ok")) : L0.available ? false : (hardFail.length ? false : null);
+    fail.length = 0; if (policyOk === false) fail.push(...hardFail);
     const items = [
       { ok: has(input.business_number) ? true : null, text: has(input.business_number) ? "사업자 정보 확인 완료" : "사업자등록번호 미입력" },
       { ok: arOk, text: arOk === false ? "국세 체납 있음 (납세증명서 발급 불가)" : arOk ? "국세 체납 없음 (납세증명서 발급 가능)" : "국세 체납 여부 미확인" },
