@@ -2733,7 +2733,7 @@ function htFillFromFinancial(d) {
   const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
   const sum = (a, b) => (num(a) === null && num(b) === null) ? null : (num(a) || 0) + (num(b) || 0);
   const setText = (id, v) => { const el = document.getElementById(id); if (el && v) { el.value = String(v).trim(); el.dispatchEvent(new Event("input")); } };
-  const setMoney = (id, v) => { const el = document.getElementById(id); if (el && v !== null) { el.value = Math.round(v).toLocaleString("ko-KR"); el.dispatchEvent(new Event("input")); } };
+  const setMoney = (id, v) => { const el = document.getElementById(id); if (el && v !== null) { el.value = (v < 0 ? "-" : "") + Math.abs(Math.round(v)).toLocaleString("ko-KR"); el.dispatchEvent(new Event("input", { bubbles: true })); } };
   setText("ht-company", d.company_name);
   setText("ht-rep", d.rep_name);
   if (d.business_number) {
@@ -2756,6 +2756,7 @@ function htFillFromFinancial(d) {
   const anyFin = Object.values(fin).some(v => v !== null);
   htToggleFin(true);
   if (anyFin) Object.entries(fin).forEach(([id, v]) => setMoney(id, v));
+  htFinAuto();                       // 부채비율·이자보상배수 자동 계산 칸도 바로 채움
   const got = [d.company_name, d.revenue, anyFin].filter(Boolean).length;
   if (!got) alertError("재무제표에서 정보를 읽지 못했어요. 선명한 이미지나 PDF로 다시 올리거나 직접 입력해 주세요.");
   else toast("재무제표에서 정보를 채웠어요. 값을 확인하고 나머지 필수 항목을 입력한 뒤 분석해 주세요.");
@@ -4623,7 +4624,7 @@ async function htAuthStart() {
     const res = await api("POST", "/codef/hometax/start", {
       user_name: name, birth, phone, provider: htAuthState.provider, telecom,
       business_number: (document.getElementById("ht-biz") || {}).value || "",
-      member: !document.getElementById("htAuthNonMember").checked,
+      member: true,                       // 회원 인증 먼저 → 회원이 아니면 서버가 비회원 인증으로 자동 전환
     });
     if (res.status === "done" || res.status === "collecting") return await htAuthFinish(res);
     htAuthState.pending = { job: res.job };     // 서류 요청은 서버가 이미 한꺼번에 보내 둠 — 승인 1번이면 4종 모두
@@ -7861,7 +7862,6 @@ window.addEventListener("DOMContentLoaded", () => {
         <label><span>통신사</span><select id="htAuthTelecom" class="ht-auth-input"><option value="">선택</option><option value="0">SKT (알뜰폰 포함)</option><option value="1">KT (알뜰폰 포함)</option><option value="2">LG U+ (알뜰폰 포함)</option></select></label>
         <label><span>휴대폰 번호</span><input id="htAuthPhone" class="ht-auth-input" placeholder="01012345678" inputmode="numeric" maxlength="13" autocomplete="tel" /></label>
       </div>
-      <label class="ht-auth-check"><input type="checkbox" id="htAuthNonMember" /> 홈택스 회원이 아니에요 (비회원 인증)</label>
       <label class="ht-auth-check"><input type="checkbox" id="htAuthAgree" /> 홈택스 자료 조회를 위해 위 정보를 인증 대행사(CODEF)에 제공하는 데 동의합니다.</label>
       <button type="button" class="btn btn-primary btn-full" id="htAuthStartBtn" onclick="htAuthStart()">인증 요청하기</button>
       </div>

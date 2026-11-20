@@ -2212,17 +2212,31 @@ async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(
         await asyncio.wait_for(st["approval"].wait(), timeout=60)
     except asyncio.TimeoutError:
         pass
+    st0 = st
     st = _ht_live.get(job_id)
     if st and st["leads"]:
         return {"status": "need_approval", "job": job_id}
+    regs0 = st0["res"].get("registration") or []
+    if not st and body.member and regs0 and regs0[0][0] != "CF-00000" and _ht_not_member(regs0[0][2]):
+        st = st0                                 # 전부 실패로 끝났어도 '회원 아님'이면 아래에서 비회원으로 다시
     if not st:                                   # 승인 없이 모두 끝남
         return {"status": "collecting", "job": job_id}
     regs = st["res"].get("registration") or []
     if regs and regs[0][0] != "CF-00000" and not st["leads"]:
         _ht_live.pop(job_id, None)
+        if body.member and _ht_not_member(regs[0][2]):        # 홈택스 회원이 아니면 비회원 간편인증으로 자동 재시도
+            print(f"[CODEF] 홈택스 회원 아님 → 비회원 인증으로 다시 요청 ({regs[0][2]})")
+            _job_save(job_id, "error", {"detail": "비회원으로 다시 요청"})
+            return await codef_hometax_start((body.model_copy(update={"member": False}) if hasattr(body, "model_copy") else body.copy(update={"member": False})), user)
         _job_save(job_id, "error", {"detail": regs[0][2]})
         raise HTTPException(status_code=400, detail=f"본인 인증 요청에 실패했습니다: {regs[0][2]}")
     return {"status": "collecting", "job": job_id}
+
+
+def _ht_not_member(msg):
+    """'홈택스 회원이 아님' 류 오류인지 — 회원 간편인증(5) 실패 시 비회원(6)으로 자동 전환"""
+    m = str(msg or "").replace(" ", "")
+    return ("회원" in m and any(k in m for k in ("아닙", "아님", "미가입", "비회원", "가입되", "가입정보", "없습", "없는", "존재하지"))) or "미가입" in m
 
 
 @app.post("/codef/hometax/skip-employees")
