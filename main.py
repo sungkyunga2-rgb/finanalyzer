@@ -704,6 +704,40 @@ async def extract_financial(
 ):
     return await _analyze_financial(body, user, db, consume=False)
 
+def _fin_biz_info(data, today=None):
+    """재무제표에서 읽은 업체 정보 → 원클릭 입력값 (지역·업태/종목 2개까지·대표자 만 나이). 생년월일 원문은 돌려주지 않는다"""
+    def clean(v):
+        v = ("" if v is None else str(v)).strip().strip('"').strip()
+        return "" if v.lower() in ("", "null", "none", "n/a", "-", "없음", "미상", "불명") else v
+    addr = clean(data.get("address"))
+    if addr:
+        loc = _sido(addr)
+        if loc:
+            data["location"] = loc
+    bt, bi = clean(data.get("business_type")), clean(data.get("business_item"))
+    if bt or bi:
+        i1, t1, i2, t2 = _pair_biz(bt, bi)
+        for k, v in (("industry", i1), ("item", t1), ("industry2", i2), ("item2", t2)):
+            if v:
+                data[k] = v
+    b = _re2.sub(r"\D", "", clean(data.pop("birth_date", None)))
+    today = today or (datetime.utcnow() + timedelta(hours=9))
+    if len(b) == 6:                                   # YYMMDD → 올해보다 뒤면 1900년대
+        yy = int(b[:2]); b = (("19" if yy > today.year % 100 else "20") + b)
+    if len(b) == 8:
+        try:
+            y, m, d = int(b[:4]), int(b[4:6]), int(b[6:8])
+            if 1900 < y <= today.year and 1 <= m <= 12 and 1 <= d <= 31:
+                age = today.year - y - ((today.month, today.day) < (m, d))
+                if 17 <= age <= 100:
+                    data["rep_age"] = age
+        except Exception:
+            pass
+    for k in ("address", "business_type", "business_item"):
+        data.pop(k, None)
+    return data
+
+
 async def _analyze_financial(body, user, db, consume: bool):
     from fastapi.concurrency import run_in_threadpool
     subscribed = await run_in_threadpool(user_has_subscription_access, db, user)
@@ -744,15 +778,20 @@ async def _analyze_financial(body, user, db, consume: bool):
 2. total_equity ≈ capital_stock + net_income (자본총계 = 자본금 + 당기순이익)
 위 두 식이 맞지 않으면, 각 숫자를 다시 원본에서 확인하고 올바른 값으로 정정하세요. 그래도 확신이 없으면 comment에 어떤 항목이 불확실한지 명시하세요.
 
-추출 항목: company_name(회사명, 문자열), rep_name(대표자명, 문자열), business_number(사업자등록번호, 문자열, 000-00-00000 형식),
+추출 항목: company_name(회사명, 문자열), rep_name(대표자명, 문자열), business_number(사업자등록번호, 문자열, 000-00-00000 형식), address(사업장 소재지), business_type(업태), business_item(종목), birth_date(대표자 생년월일 YYYY-MM-DD),
 revenue(매출액), current_assets(유동자산), noncurrent_assets(비유동자산), current_liabilities(유동부채),
 noncurrent_liabilities(비유동부채), capital_stock(자본금), total_equity(자본총계),
 operating_income(영업이익), interest_expense(이자비용), net_income(당기순이익)
 
 대표자명과 사업자등록번호는 재무제표 표지, 법인/개인 정보란, 사업자등록증 첨부 등에서 찾을 수 있습니다. 문서에 없으면 null로 두세요.
 
+━━━ 업체 정보 (표준재무제표증명 상단 납세자 정보란 등) ━━━
+- address: "사업장 소재지"(또는 "사업장소재지", "본점소재지", "주소") 주소 전체. 사업장 소재지가 있으면 그것을 우선.
+- business_type, business_item: "업태", "종목". 여러 개면 쉼표(,)로 구분해 문서 순서대로 모두 적고, 업태와 종목은 같은 순서로 짝을 맞추세요.
+- birth_date: 대표자의 "생년월일"을 "YYYY-MM-DD"로. 생년월일 칸이 없고 주민등록번호만 있으면 앞 6자리(YYMMDD)만 보고 생년월일로 바꾸세요. 주민등록번호 뒷자리는 절대 읽거나 적지 마세요. 법인등록번호는 생년월일이 아닙니다. 없으면 null.
+
 아래 JSON 형식으로만 응답하세요. 없는 항목은 null:
-{"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"current_assets":숫자또는null,"noncurrent_assets":숫자또는null,"current_liabilities":숫자또는null,
+{"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"birth_date":문자열또는null,"revenue":숫자또는null,"current_assets":숫자또는null,"noncurrent_assets":숫자또는null,"current_liabilities":숫자또는null,
 "noncurrent_liabilities":숫자또는null,"capital_stock":숫자또는null,"total_equity":숫자또는null,
 "operating_income":숫자또는null,"interest_expense":숫자또는null,"net_income":숫자또는null,
 "comment":"인식 관련 메모 1~2문장. 자체 검증에서 불일치가 있었다면 반드시 언급"}"""
@@ -888,6 +927,8 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
     if data is None:
         raise HTTPException(status_code=500, detail=f"AI 분석 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
 
+    if isinstance(data, dict):
+        _fin_biz_info(data)
     # 구독 → 전체 공개 / 예전 충전분이 있으면 1건 차감 후 전체 공개 / 둘 다 없으면 무료(일부 공개)
     if not consume:
         return {"data": data}

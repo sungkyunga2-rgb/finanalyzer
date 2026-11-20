@@ -2693,6 +2693,15 @@ function htFillFromFinancial(d) {
   setMoney("ht-y2-vat", num(d.revenue));
   const fin = { "ht-assets": sum(d.current_assets, d.noncurrent_assets), "ht-debt": sum(d.current_liabilities, d.noncurrent_liabilities),
                 "ht-capital": num(d.capital_stock), "ht-opincome": num(d.operating_income), "ht-interest": num(d.interest_expense), "ht-netincome": num(d.net_income) };
+  // 업체 정보: 지역·업태/종목(2개까지)·대표자 나이 — 인식된 값은 덮어씀
+  const bizKeys = ["location", "industry", "item", "industry2", "item2"].filter(k => d[k]);
+  if (bizKeys.length || d.rep_age) {
+    const cur = htReadForm();
+    bizKeys.forEach(k => { cur[k] = String(d[k]).trim(); });
+    if (d.industry || d.item) { cur.industry2 = d.industry2 || ""; cur.item2 = d.item2 || ""; }
+    if (d.rep_age) { cur.rep = cur.rep || {}; cur.rep.age = Number(d.rep_age); }
+    htFillForm(cur);
+  }
   const anyFin = Object.values(fin).some(v => v !== null);
   htToggleFin(true);
   if (anyFin) Object.entries(fin).forEach(([id, v]) => setMoney(id, v));
