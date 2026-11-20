@@ -3890,7 +3890,7 @@ function htAgeCalc(el) {
   if (!y || y < 1900 || y > ty || (m !== null && (m < 1 || m > 12 || dd < 1 || dd > 31))) { if (note) note.textContent = ""; return; }
   let a = ty - y;
   if (m !== null) { if (tm < m || (tm === m && td < dd)) a -= 1; if (note) note.textContent = ""; }
-  else if (note) note.textContent = `${y}년생 · 생일이 아직 안 지났으면 만 ${a - 1}세`;
+  else if (note) note.textContent = `생일 전 > 만 ${a - 1}세`;
   age.value = a; age.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
