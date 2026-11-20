@@ -961,6 +961,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
+#  · 완전자본잠식: 소진공(업력 7년 이상)·재단 불가, 중진공은 업력 5년 초과 + 당기 적자(모르면 적자로 봄)면 불가, 신보·기보는 '신청 어려움'
 #  · 신용점수(NICE, 없으면 KCB) 700 미만이면 한도는 줄이고(신용 조정), 종합 평가에 '금융거래가 어려울 수 있음' 안내
 #  · 청년 대표(만 39세 이하) 50%는 소진공·재단·신보만 — 중진공·기보는 30%
 #    - 2~3년 연속 조건(연속 적자·이자보상배수 등)은 1년치 재무로 판단할 수 없어 보지 않는다. 신보·기보는 공개 기준 없음
@@ -1176,6 +1177,7 @@ def ht_limit_context(inp, today=None):
     fin = inp.get("fin") or None
     eroded = False
     debt_ratio = None
+    net_income = _ht_num((fin or {}).get("net_income")) if fin else None
     if fin:
         a, li = _ht_num(fin.get("assets")), _ht_num(fin.get("liabilities"))
         if a is not None and li is not None and a > 0:
@@ -1192,7 +1194,7 @@ def ht_limit_context(inp, today=None):
         if mo >= 0: months = mo
     return {"vat_latest": vat_latest["vat"] if vat_latest else None, "ytd_annual": ytd_annual, "eroded": eroded,
             "loans": loans, "nice": nice, "kcb": kcb, "credit_score": nice if nice is not None else kcb, "biz_age_months": months,
-            "debt_ratio": debt_ratio}
+            "debt_ratio": debt_ratio, "net_income": net_income}
 
 
 def ht_estimate_limit(inp, today=None):
@@ -1209,8 +1211,10 @@ def ht_estimate_limit(inp, today=None):
             return {"available": False, "status": "none", "low": 0, "high": 0, "orgs": [], "text": "매출을 입력하면 예상 한도를 계산합니다."}
         base0 = {"available": True, "sales": 0}
         if ar == "has": return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [], "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
-        if ctx["eroded"]: return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [], "text": "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다."}
         k = _ht_startup_kibo(ctx)
+        if ctx["eroded"]:                    # 기보는 자본잠식이면 신청 어려움
+            k.update(status="blocked", hard=True, low=0, high=0)
+            return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [k], "text": "완전자본잠식 상태라 현재는 신청이 어렵습니다."}
         if k["status"] != "ok": return {**base0, "status": "low", "low": 0, "high": 0, "orgs": [k], "text": "기대출이 많아 추가 한도 여력이 부족합니다."}
         return {**base0, "status": "ok", "low": k["low"], "high": k["high"], "orgs": [k], "text": ""}
 
@@ -1277,10 +1281,18 @@ def ht_estimate_limit(inp, today=None):
     mature = bam is None or bam >= 84
     loan_total = sum((_ht_num(l.get("amount")) or 0) for l in ctx["loans"])
     over_borrow = loan_total > sales
-    def block(key):
+    def block(key, hard=False):
         for o in orgs:
             if o["key"] == key:
                 o["status"] = "blocked"; o["low"] = 0; o["high"] = 0
+                if hard: o["hard"] = True          # 화면에 '신청 어려움'
+    # 완전자본잠식(자산 ≤ 부채) — 기관별로
+    if ctx["eroded"]:
+        if mature: block("sojin")                                            # 소진공: 업력 7년 이상
+        ni = ctx["net_income"]
+        if (bam is None or bam > 60) and (ni is None or ni < 0): block("jungjin")   # 중진공 한계기업: 업력 5년 초과 + 적자(당기 기준)
+        block("jaedan")                                                      # 재단: 자기자본 전액 잠식
+        block("kodit", True); block("kibo", True)                            # 신보·기보: 신청 어려움
     if mature and ((dr is not None and dr > 700) or over_borrow):
         block("sojin")
     if mature and dr is not None and dr > _jj_dr_limit(inp) and not _ht_simple_book(inp, sales) \
@@ -1309,7 +1321,6 @@ def ht_estimate_limit(inp, today=None):
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if ar == "has": return {**base, "status": "blocked", "low": 0, "high": 0, "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
-    if ctx["eroded"]: return {**base, "status": "blocked", "low": 0, "high": 0, "text": "완전자본잠식 상태라 대부분의 기관에서 지원이 제한됩니다."}
     loan_sum = sum((_ht_num(l.get("amount")) or 0) for l in ctx["loans"])
     ok_keys = [o["key"] for o in orgs if o["status"] == "ok" and o["key"] != "miso"]
     tf = max(factors.get(k, 1) or 1 for k in ok_keys) if ok_keys else 1
@@ -1319,7 +1330,7 @@ def ht_estimate_limit(inp, today=None):
     if any(o["status"] == "blocked" for o in orgs):
         okd = {o["key"]: o for o in orgs if o["status"] == "ok"}
         if not okd:
-            return {**base, "status": "blocked", "low": 0, "high": 0, "text": "현재 재무 상태로는 신청 가능한 기관이 없습니다."}
+            return {**base, "status": "blocked", "low": 0, "high": 0, "text": "완전자본잠식 상태라 현재는 신청이 어렵습니다." if ctx["eroded"] else "현재 재무 상태로는 신청 가능한 기관이 없습니다."}
         grp = [okd[k] for k in ("jaedan", "kodit", "kibo") if k in okd]
         pick = [okd[k] for k in ("sojin", "jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
         t_low = min(t_low, sum(o["low"] for o in pick)); t_high = min(t_high, sum(o["high"] for o in pick))
