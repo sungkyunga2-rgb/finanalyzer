@@ -522,6 +522,12 @@
   .ht-auth-prog .ok { color: #1D9E75; font-weight: 700; }
   .ht-auth-prog .now { color: #185FA5; font-weight: 700; }
   .ht-auth-prog .no { color: var(--text3); }
+  .ht-verify { background:#FFF6D6 !important; border-color:#E8B931 !important; }
+  .ht-verify-bad { background:#FDECEC !important; border-color:#D9534F !important; }
+  .ht-doc-verify { text-align:left; border:1px solid #E8B931; background:#FFFBEA; border-radius:10px; padding:10px 12px; margin:0 0 14px; font-size:12.5px; color:#5b4a12; }
+  .ht-doc-verify b { display:block; font-size:13px; margin-bottom:4px; color:#7a5a00; }
+  .ht-doc-verify a { color:inherit; text-decoration:underline; cursor:pointer; }
+  .ht-doc-verify .bad { color:#A32D2D; }
   .ht-doc-prog { text-align: left; margin: 4px 0 14px; display: flex; flex-direction: column; gap: 8px; }
   .ht-doc-prog .row { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 13px; color: var(--text3); }
   .ht-doc-prog .row b { font-weight: 700; }
@@ -2621,6 +2627,78 @@ document.getElementById("allDocInput").addEventListener("change", e => {
   e.target.value = "";
   htHandleAllDocs(files);
 });
+// ── 서류로 채운 값 확인 ─────────────────────────────────────────
+// 한도를 크게 바꾸는 칸 — 서류로 채워지면 노란색, 이상값이면 빨간색으로 표시하고 확인 목록에 올린다
+const HT_VERIFY = [
+  { path: "fin.short_borrowings", ids: ["ht-short-borrow"], label: "단기차입금", money: true },
+  { path: "fin.long_borrowings", ids: ["ht-long-borrow"], label: "장기차입금", money: true },
+  { path: "founded", ids: ["ht-founded-y", "ht-founded-m"], label: "창업년월" },
+  { path: "employees", ids: ["ht-employees"], label: "직원 수", unit: "명" },
+  { path: "emp_avg", ids: ["ht-emp-avg"], label: "상시근로자 수", unit: "명" },
+  { path: "ytd.sales", ids: ["ht-ytd-sales"], label: "올해 매출", money: true },
+];
+const HT_CHECK_IDS = { short_borrowings: ["ht-short-borrow"], long_borrowings: ["ht-long-borrow"], founded: ["ht-founded-y", "ht-founded-m"],
+  employees: ["ht-employees"], emp_avg: ["ht-emp-avg"], age: ["ht-age"], operating_income: ["ht-opincome"], interest_expense: ["ht-interest"], revenue: ["ht-y2-vat"] };
+let htDocCheckSink = null;      // 서류 올리기 진행 중 서버 점검 결과를 모음
+function htMarkVerify(ids, bad, title) {
+  (ids || []).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add(bad ? "ht-verify-bad" : "ht-verify");
+    if (title) el.title = title;
+  });
+}
+// 서버가 보낸 점검 결과 — 잘못 읽어 비운 칸은 화면에서도 비우고 빨간색 표시
+function htApplyChecks(d) {
+  const list = (d && d.checks) || [];
+  list.forEach(c => {
+    const ids = HT_CHECK_IDS[c.field] || [];
+    if (c.cleared && (c.field === "short_borrowings" || c.field === "long_borrowings")) ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+    htMarkVerify(ids, true, c.msg);
+    if (htDocCheckSink) htDocCheckSink.push(c.msg);
+  });
+}
+// 화면 전체를 놓고 앞뒤가 안 맞는 값 찾기 (서류끼리·입력값끼리)
+function htSanityForm(f) {
+  const out = [];
+  const n = v => htNum(v);
+  const now = new Date();
+  const fm = String(f.founded || "").match(/^(\d{4})(?:-(\d{1,2}))?/);
+  const age = n(f.rep && f.rep.age);
+  if (fm) {
+    const fy = +fm[1], fmo = +(fm[2] || 1);
+    if (fy > now.getFullYear() || (fy === now.getFullYear() && fmo > now.getMonth() + 1)) out.push({ ids: ["ht-founded-y", "ht-founded-m"], msg: "창업년월이 오늘 이후예요." });
+    else if (age !== null && fy < now.getFullYear() - age + 15) out.push({ ids: ["ht-founded-y", "ht-founded-m"], msg: `창업년월(${fm[1]}년)이 대표자 나이(만 ${age}세)와 맞지 않아요. 생년월일을 창업일로 잘못 넣었는지 확인해 주세요.` });
+  }
+  const fin = f.fin || {};
+  const L = n(fin.liabilities), sb = n(fin.short_borrowings), lb = n(fin.long_borrowings);
+  if (L !== null && (sb || 0) + (lb || 0) > L + 1) out.push({ ids: ["ht-short-borrow", "ht-long-borrow"], msg: "단기·장기차입금 합계가 부채총계보다 커요." });
+  const emp = n(f.employees), avg = n(f.emp_avg);
+  if (emp !== null && avg !== null && avg > Math.max(emp * 2, emp + 5)) out.push({ ids: ["ht-emp-avg"], msg: "상시근로자 수가 현재 직원 수보다 지나치게 많아요." });
+  const ys = (f.years || []).filter(y => n(y.vat) !== null);
+  ys.forEach(y => { if (n(y.vat) < 0) out.push({ ids: [], msg: `${y.year}년 매출이 마이너스예요.` }); });
+  return out;
+}
+function htClearVerify() {
+  document.querySelectorAll(".ht-verify, .ht-verify-bad").forEach(el => { el.classList.remove("ht-verify", "ht-verify-bad"); el.removeAttribute("title"); });
+}
+// 직접 고치면 표시를 지운다
+document.addEventListener("input", e => { if (e.target && e.target.classList) e.target.classList.remove("ht-verify", "ht-verify-bad"); }, true);
+document.addEventListener("change", e => {
+  const t = e.target;
+  if (!t || !t.classList) return;
+  t.classList.remove("ht-verify", "ht-verify-bad");
+  if (t.id === "ht-founded-y" || t.id === "ht-founded-m") ["ht-founded-y", "ht-founded-m"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove("ht-verify", "ht-verify-bad"); });
+}, true);
+function htVerifyFocus(id) {
+  htDocModalClose();
+  const el = document.getElementById(id);
+  if (!el) return;
+  const box = el.closest("details"); if (box && !box.open) box.open = true;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  setTimeout(() => { try { el.focus(); } catch (e) {} }, 350);
+}
+
 function htDocModalClose() { document.getElementById("htDocModal").style.display = "none"; }
 function htDocRender(rows, done) {
   const esc = v => String(v || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -2652,6 +2730,10 @@ async function htHandleAllDocs(all) {
   document.getElementById("htDocModal").style.display = "flex";
   const rows = [{ key: "kind", label: "서류 종류 확인", files: files.map(f => f.name).join(", "), st: "now" }];
   htDocRender(rows);
+  document.getElementById("htDocVerify").style.display = "none";
+  const before = htReadForm();
+  htClearVerify();
+  const sink = htDocCheckSink = [];
   const cap = htDocCapture = [];
   const clean = m => m.replace(/\s*값을 확인[^.]*\.?\s*$/, "").replace(/\s*(채워진 값을 한 번 확인해 주세요|나머지 필수 항목을 입력한 뒤 분석해 주세요)\.?/g, "").trim();
   try {
@@ -2680,14 +2762,46 @@ async function htHandleAllDocs(all) {
       row.msg = (ok.length ? ok : got).map(x => clean(x.msg)).filter(Boolean).join("\n") || (row.st === "ok" ? "입력 칸을 채웠어요." : "");
       htDocRender(rows);
     }
+    await new Promise(r => setTimeout(r, 30));        // 칸 채운 뒤 점검 결과 반영이 끝나도록
   } catch (err) {
     const r = rows.find(x => x.st === "now") || rows[0];
     r.st = "fail"; r.msg = err.message;
   } finally {
     htDocCapture = null;
+    htDocCheckSink = null;
     btn.disabled = false; btn.innerHTML = btnHtml;
     htDocRender(rows, true);
+    try { htDocVerifyRender(before, sink); } catch (e) { console.warn(e); }
   }
+}
+// 안내 창 아래 — 서류로 바뀐 핵심 값 + 이상값 목록
+function htDocVerifyRender(before, serverMsgs) {
+  const after = htReadForm();
+  const esc = v => String(v == null ? "" : v).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const fmt = (k, v) => k.money ? htKwon(htNum(v)) : k.path === "founded" ? String(v).replace("-", "년 ") + "월" : v + (k.unit || "");
+  const changed = [];
+  HT_VERIFY.forEach(k => {
+    const a = htGet(after, k.path), b = htGet(before, k.path);
+    if (htEmpty(a) || String(a) === String(b)) return;
+    htMarkVerify(k.ids, false, "서류에서 읽은 값이에요. 맞는지 확인해 주세요.");
+    changed.push(`<li><a onclick="htVerifyFocus('${k.ids[0]}')">${esc(k.label)}</a>: ${esc(fmt(k, a))}</li>`);
+  });
+  // 연도별 매출
+  (after.years || []).forEach((y, i) => {
+    const old = (before.years || []).find(x => x.year === y.year);
+    if (htNum(y.vat) !== null && (!old || htNum(old.vat) !== htNum(y.vat))) {
+      const idx = (after.years || []).indexOf(y);
+      htMarkVerify([`ht-y${idx}-vat`], false, "서류에서 읽은 값이에요. 맞는지 확인해 주세요.");
+      changed.push(`<li><a onclick="htVerifyFocus('ht-y${idx}-vat')">${y.year}년 매출</a>: ${esc(htKwon(htNum(y.vat)))}</li>`);
+    }
+  });
+  const bad = (serverMsgs || []).slice();
+  htSanityForm(after).forEach(w => { htMarkVerify(w.ids, true, w.msg); bad.push(w.msg); });
+  const box = document.getElementById("htDocVerify");
+  if (!changed.length && !bad.length) { box.style.display = "none"; return; }
+  box.innerHTML = (bad.length ? `<b class="bad">⚠️ 다시 확인이 필요한 값</b><ul style="margin:0 0 8px;padding-left:18px;" class="bad">${[...new Set(bad)].map(m => `<li>${esc(m)}</li>`).join("")}</ul>` : "")
+    + (changed.length ? `<b>🔍 한도에 영향이 큰 값 — 서류와 같은지 확인해 주세요</b><ul style="margin:0;padding-left:18px;">${changed.join("")}</ul>` : "");
+  box.style.display = "";
 }
 // ── 인콜일지(상담 기록지) → 업체 정보·매출·신용·기대출·대표자 정보 ──
 async function htHandleIncallFiles(files) {
@@ -2707,7 +2821,8 @@ async function htHandleGeneralFiles(files) {
   } catch (err) { alertError(err.message); }
 }
 const HT_SIDO = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
-function htFillFromIncall(d, generalName) {   // generalName: 일반 서류(파일 이름) — 적힌 것만 채우고 나머지는 그대로
+function htFillFromIncall(d, generalName) {
+  setTimeout(() => htApplyChecks(d), 0);   // generalName: 일반 서류(파일 이름) — 적힌 것만 채우고 나머지는 그대로
   const n = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
   // 양식 빈칸 기호 정리: "( 홍길동 )" → "홍길동", "___", "( )", 앞뒤 ":" 제거 — "(주)" 같은 법인 표기는 유지
   const t = v => {
@@ -2929,6 +3044,7 @@ async function htHandleFinFiles(all) {
 }
 
 function htFillFromFinancial(d) {
+  setTimeout(() => htApplyChecks(d), 0);        // 칸을 채운 뒤 점검 결과 반영
   const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
   const sum = (a, b) => (num(a) === null && num(b) === null) ? null : (num(a) || 0) + (num(b) || 0);
   const setText = (id, v) => { const el = document.getElementById(id); if (el && v) { el.value = String(v).trim(); el.dispatchEvent(new Event("input")); } };
@@ -2971,6 +3087,7 @@ async function extractIncomeDoc() {
   try {
     const result = await api("POST", "/extract/income-doc", { images: Array.isArray(incomeDocImage) ? incomeDocImage : [incomeDocImage] });
     const d = result.data || {};
+    setTimeout(() => htApplyChecks(d), 0);
 
     const companyEl = document.getElementById("ht-company");
     const repEl      = document.getElementById("ht-rep");
@@ -5193,6 +5310,16 @@ async function doHometaxAnalyze() {
     return;
   }
 
+  // 앞뒤가 안 맞는 값이 있으면 분석 전에 한 번 확인
+  const warn = htSanityForm(input);
+  if (warn.length) {
+    warn.forEach(w => htMarkVerify(w.ids, true, w.msg));
+    if (!confirm(`확인이 필요한 값이 있어요.\n\n${warn.map(w => "· " + w.msg).join("\n")}\n\n그대로 분석할까요?`)) {
+      const first = warn.find(w => w.ids.length);
+      if (first) htVerifyFocus(first.ids[0]);
+      return;
+    }
+  }
   // Basic — 처음 분석하는 사업자로 고정되므로 한 번 확인
   if (userTier === "basic") {
     const biz = String(input.business_number || "").replace(/\D/g, "");
@@ -8285,6 +8412,7 @@ window.addEventListener("DOMContentLoaded", () => {
       <p class="ht-auth-desc" id="htDocDesc">서류마다 차례로 읽어서 입력 칸을 채워요. 최대 1~2분 걸릴 수 있어요.</p>
     </div>
     <div id="htDocProg" class="ht-doc-prog"></div>
+    <div id="htDocVerify" class="ht-doc-verify" style="display:none;"></div>
     <button type="button" class="btn btn-primary btn-full" id="htDocOk" onclick="htDocModalClose()" style="display:none;">확인</button>
   </div>
 </div>

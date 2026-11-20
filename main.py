@@ -719,19 +719,81 @@ async def extract_financial(
 ):
     return await _analyze_financial(body, user, db, consume=False)
 
+def _doc_num(v):
+    try:
+        return float(str(v).replace(",", "")) if v not in (None, "", "null") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _doc_check(data, field, label, why):
+    """이상값 → 칸을 비우고 이유를 남긴다 (화면의 서류 읽기 창에서 보여줌)"""
+    data[field] = None
+    data.setdefault("checks", []).append({"field": field, "cleared": True, "msg": f"{label} — {why} 서류에서 직접 확인해 주세요."})
+
+
+def _doc_note(data, field, label, why):
+    """값은 두되 확인이 필요하다고 남긴다"""
+    data.setdefault("checks", []).append({"field": field, "msg": f"{label} — {why}"})
+
+
 def _fin_borrow_check(data):
-    """단기차입금이 유동부채 합계와 똑같으면 빈 칸을 합계로 잘못 읽은 것 → 비움 (유동부채가 전부 차입금인 경우는 매우 드묾)"""
-    def n(v):
-        try:
-            return float(str(v).replace(",", "")) if v not in (None, "") else None
-        except (TypeError, ValueError):
-            return None
-    sb, cl = n(data.get("short_borrowings")), n(data.get("current_liabilities"))
-    if sb is not None and cl and abs(sb - cl) < 1:
-        data["short_borrowings"] = None
-    lb, tl = n(data.get("long_borrowings")), n(data.get("current_liabilities"))
-    if lb is not None and tl and abs(lb - tl) < 1 and lb != n(data.get("noncurrent_liabilities")):   # 장기차입금 칸에 유동부채 합계
-        data["long_borrowings"] = None
+    """재무제표 숫자 이상값 점검 — 빈 칸을 근처 합계로 읽는 등 AI 오인식을 걸러낸다"""
+    n = _doc_num
+    sb, lb = n(data.get("short_borrowings")), n(data.get("long_borrowings"))
+    cl, ncl = n(data.get("current_liabilities")), n(data.get("noncurrent_liabilities"))
+    tl = (cl or 0) + (ncl or 0) if (cl is not None or ncl is not None) else None
+    if sb is not None:
+        if sb < 0:
+            _doc_check(data, "short_borrowings", "단기차입금", "마이너스 금액이라 비웠어요.")
+        elif cl is not None and abs(sb - cl) < 1 and sb > 0:
+            _doc_check(data, "short_borrowings", "단기차입금", "유동부채 합계와 같아 잘못 읽은 것으로 보여 비웠어요.")
+        elif cl is not None and sb > cl + 1:
+            _doc_check(data, "short_borrowings", "단기차입금", "유동부채 합계보다 커서 비웠어요.")
+    if lb is not None:
+        if lb < 0:
+            _doc_check(data, "long_borrowings", "장기차입금", "마이너스 금액이라 비웠어요.")
+        elif ncl is not None and lb > ncl + 1:
+            _doc_check(data, "long_borrowings", "장기차입금", "비유동부채 합계보다 커서 비웠어요.")
+        elif cl is not None and abs(lb - cl) < 1 and lb > 0 and (ncl is None or abs(lb - ncl) >= 1):
+            _doc_check(data, "long_borrowings", "장기차입금", "유동부채 합계와 같아 잘못 읽은 것으로 보여 비웠어요.")
+    sb, lb = n(data.get("short_borrowings")), n(data.get("long_borrowings"))
+    if tl and (sb or 0) + (lb or 0) > tl + 1:
+        _doc_check(data, "short_borrowings", "단기차입금", "차입금 합계가 부채총계보다 커서 비웠어요.")
+        _doc_check(data, "long_borrowings", "장기차입금", "차입금 합계가 부채총계보다 커서 비웠어요.")
+    rev, ie, op = n(data.get("revenue")), n(data.get("interest_expense")), n(data.get("operating_income"))
+    if rev is not None and rev < 0:
+        _doc_check(data, "revenue", "매출액", "마이너스 금액이라 비웠어요.")
+    elif rev and op is not None and op > rev:
+        _doc_note(data, "operating_income", "영업이익", "매출액보다 커서 확인이 필요해요.")
+    if rev and ie is not None and ie > rev * 0.3:
+        _doc_note(data, "interest_expense", "이자비용", "매출액에 비해 너무 커서 확인이 필요해요.")
+
+
+def _founded_check(data, today=None, birth_year=None):
+    """창업년월 이상값 — 미래, 1950년 이전, 대표 출생 후 15년 이내면 비운다"""
+    f = _ht_s(data.get("founded"))
+    m = _re.match(r"^(\d{4})(?:-(\d{1,2}))?", f)
+    if not m:
+        return
+    today = today or (datetime.utcnow() + timedelta(hours=9)).date()
+    y, mo = int(m.group(1)), int(m.group(2) or 1)
+    if (y, mo) > (today.year, today.month):
+        _doc_check(data, "founded", "창업년월", "오늘 이후 날짜라 비웠어요.")
+    elif y < 1950:
+        _doc_check(data, "founded", "창업년월", "너무 오래된 날짜라 비웠어요.")
+    elif birth_year and y < birth_year + 15:
+        _doc_check(data, "founded", "창업년월", "대표자 생년과 너무 가까워 생년월일을 잘못 읽은 것으로 보여 비웠어요.")
+
+
+def _people_check(data):
+    """직원 수 이상값"""
+    e = _doc_num(data.get("employees"))
+    if e is not None and (e < 0 or e > 1000):
+        _doc_check(data, "employees", "직원 수", "범위를 벗어나 비웠어요.")
+    a = _doc_num(data.get("age"))
+    if a is not None and not (18 <= a <= 100):
+        _doc_check(data, "age", "대표자 나이", "범위를 벗어나 비웠어요.")
 
 
 def _fin_biz_info(data, today=None):
@@ -3622,7 +3684,11 @@ async def extract_incall(body: IncomeDocExtractRequest, user: models.User = Depe
     data, err = await _gemini_json(parts, INCALL_PROMPT + f"\n\n(오늘은 {now.year}년 {now.month}월입니다.)", max_tokens=3000)
     if data is None:
         raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
-    return {"data": data if isinstance(data, dict) else {}}
+    data = data if isinstance(data, dict) else {}
+    age = _doc_num(data.get("age"))
+    _founded_check(data, birth_year=(now.year - int(age) - 1) if age and 18 <= age <= 100 else None)
+    _people_check(data)
+    return {"data": data}
 
 
 GENERAL_DOC_PROMPT = """위에 업체(사업자) 관련 서류가 첨부돼 있습니다. 어떤 서류든 아래 항목 중 서류에서 확인되는 것만 옮기고, 확인되지 않는 항목은 모두 null로 두세요. 추측해서 채우지 마세요. 금액은 원 단위 숫자로 바꾸세요.
@@ -3720,6 +3786,8 @@ async def extract_general(body: IncomeDocExtractRequest, user: models.User = Dep
         if diff is not None:
             data["emp_increase"] = diff if diff >= 0 else None      # 줄었으면 유지·증가 아님
             data["emp_keep"] = diff >= 0
+    _founded_check(data)
+    _people_check(data)
     return {"data": data}
 
 
@@ -3889,11 +3957,15 @@ async def extract_income_doc(
         # 사업자등록증 → 원클릭 입력값 (창업년월·소재지·업태/종목 2개까지·개인/법인)
         od = re.sub(r"\D", "", data.get("open_date") or "")
         rb = re.sub(r"\D", "", str(data.pop("rep_birth", "") or ""))          # 생년월일은 확인에만 쓰고 돌려주지 않음
-        if len(od) >= 6 and rb and (od[:6] == rb[:6] or (len(rb) >= 4 and int(od[:4]) < int(rb[:4]) + 15)):
+        if len(od) >= 6 and rb and od[:6] == rb[:6]:
             od = ""                                                        # 생년월일을 개업일로 잘못 읽음
             data["open_date"] = None
+            data.setdefault("checks", []).append({"field": "founded", "cleared": True, "msg": "창업년월 — 생년월일과 같아 잘못 읽은 것으로 보여 비웠어요. 사업자등록증의 개업연월일을 확인해 주세요."})
         if len(od) >= 6 and od[:2] in ("19", "20"):
             data["founded"] = f"{od[:4]}-{od[4:6]}"
+            _founded_check(data, birth_year=int(rb[:4]) if len(rb) >= 4 and rb[:2] in ("19", "20") else None)
+            if not data.get("founded"):
+                data["open_date"] = None
         if data.get("address"):
             data["location"] = _sido(data["address"]) or None
         if data.get("business_type") or data.get("business_item"):
