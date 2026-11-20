@@ -1360,6 +1360,7 @@ _codef_token_cache = {"token": None, "exp": 0}
 CODEF_HOMETAX_PRODUCTS = {
     "registration": "/v1/kr/public/nt/proof-issue/corporate-registration",        # 사업자등록 증명
     "vat": "/v1/kr/public/nt/proof-issue/additional-tax-standard",                # 부가세과세표준증명
+    "taxfree": "/v1/kr/public/nt/proof-issue/tax-free-businessman-income",        # 부가가치세 면세사업자 수입금액증명 — 회원(0/5), 08~22시, 면세사업자만 발급
     "tax_payment": "/v1/kr/public/nt/proof-issue/tax-cert-all",                    # 납세증명서
     "financial": "/v1/kr/public/nt/proof-issue/standard-financial-statements",     # 재무제표(표준재무제표증명) — 08:00~22:00
     "employees": "/v1/kr/public/cw/kcomwel-employment/detail",                     # 근로복지공단 근로자고용정보현황 → 직원 수 (기관이 달라 간편인증 승인 1번 더)
@@ -1795,6 +1796,9 @@ def _hometax_calls(params, now, telecom=""):
     if params.get("loginType") == "5":        # 부가세과세표준증명은 회원만
         calls.append(("vat", dict(base, phoneNo=phone, startDate=f"{y - 3}01", endDate=_vat_end(now), isIdentityViewYN="0",
                                   usePurposes="99", submitTargets="99", applicationType="01", originDataYN="0")))
+    if params.get("loginType") == "5" and 8 <= now.hour < 22:   # 면세사업자 수입금액증명 — 면세사업자가 아니면 발급 안 됨(무시)
+        calls.append(("taxfree", dict(base, phoneNo=phone, startYear=str(y - 3), endYear=str(y - 1), isIdentityViewYN="0",
+                                      usePurposes="99", submitTargets="99", originDataYN="0")))
     calls.append(("tax_payment", dict(base, phoneNo=phone, isIdentityViewYN="0", isAddrViewYn="0", proofType="B0007",
                                       submitTargets="99", applicationType="01", originDataYN="0")))
     if 8 <= now.hour < 22:                    # 재무제표는 08~22시만. 법인/개인을 아직 모르니 둘 다 요청
@@ -1833,7 +1837,13 @@ def _ht_assemble(st, now, final):
         if ytd:
             fill["ytd"] = ytd
         got.append("부가세과세표준증명")
-    elif final:
+    tf = {}
+    for d in ok("taxfree"):
+        tf.update(_safe(_taxfree_revenues, d, default={}) or {})
+    if tf:
+        _merge_fin_years(fill, tf, now.year)
+        got.append("면세사업자 수입금액증명")
+    elif not (years or ytd) and final:
         failed.append("부가세과세표준증명")
     tax = R.get("tax_payment", [])
     arrears = None
@@ -2423,6 +2433,17 @@ async def _hometax_collect(params, reg_data, progress=None):
             failed.append("부가세과세표준증명")
     else:
         failed.append("부가세과세표준증명")
+    # ①-2 면세사업자 수입금액증명 — 면세사업자(또는 부가세 증명이 안 나온 경우)만
+    if params.get("loginType") in ("0", "5") and 8 <= now.hour < 22 and ("부가세과세표준증명" in failed or _safe(_is_taxfree, reg_data, default=False)):
+        step("면세사업자 수입금액증명")
+        data, err = await call("taxfree", {**ph("phoneNo"), "startYear": str(now.year - 3), "endYear": str(now.year - 1),
+                                           "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"})
+        tf = _safe(_taxfree_revenues, data, default={}) if data is not None else {}
+        if tf:
+            _merge_fin_years(fill, tf, now.year)
+            got.append("면세사업자 수입금액증명")
+            if "부가세과세표준증명" in failed:
+                failed.remove("부가세과세표준증명")      # 면세사업자는 부가세 증명이 없는 게 정상
 
     # ② 납세증명서 — 발급되면 체납 없음
     step("납세증명서")
@@ -2610,6 +2631,22 @@ def _fin_revenues(data):
                 out[int(yr)] = a
                 break
     return out
+
+
+def _taxfree_revenues(data):
+    """면세사업자 수입금액증명 → {귀속연도: 수입금액} (업종별 여러 줄이면 합계)"""
+    out = {}
+    for r in _codef_rows(data, ("commStartDate",)):
+        a = _codef_amt(r.get("resEarningsAmt"))
+        y = str(r.get("commStartDate") or r.get("commEndDate") or "")[:4]
+        if a is not None and y.isdigit():
+            out[int(y)] = out.get(int(y), 0) + a
+    return out
+
+
+def _is_taxfree(reg_data):
+    rows = reg_data if isinstance(reg_data, list) else [reg_data]
+    return any("면세" in str((r or {}).get("resBusinessmanType") or "") for r in rows if isinstance(r, dict))
 
 
 def _merge_fin_years(fill, revs, this_year):

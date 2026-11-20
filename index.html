@@ -4678,7 +4678,10 @@ function htAuthProgress(p) {
   if (!el) return;
   const norm = x => String(x).replace(/\s*(—|\().*$/, "");        // "재무제표(08~22시…)", "직원 수(고용보험) — 0명…" → 이름만
   const got = p.got || [], failed = (p.failed || p.pending || []).map(norm);
+  const TF = "면세사업자 수입금액증명";      // 면세사업자는 부가세 증명 자리에 표시
   el.innerHTML = HT_DOCS.concat(p.banks ? ["은행 대출"] : []).map(d => {
+    if (d === "부가세과세표준증명" && got.includes(TF) && !got.includes(d)) return `<div class="ok">✓ ${TF}</div>`;
+    if (d === "부가세과세표준증명" && p.doing === TF) return `<div class="now">⏳ ${TF} 조회 중…</div>`;
     if (got.includes(d)) return `<div class="ok">✓ ${d}</div>`;
     if (failed.includes(norm(d))) return `<div class="no">– ${d}</div>`;
     if (p.doing === d) return `<div class="now">⏳ ${d} 조회 중…</div>`;
