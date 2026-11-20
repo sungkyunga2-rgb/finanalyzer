@@ -2939,14 +2939,14 @@ function renderResults(d) {
       <div class="metric-value" style="font-size:32px;font-weight:700;color:${clsColor[drClass]};letter-spacing:-0.02em;">${dr !== null ? dr.toFixed(1) + "%" : "N/A"}</div>
       <div style="display:inline-block;background:${clsBg[drClass]};color:${clsColor[drClass]};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:6px;">${clsIcon[drClass]} ${clsLabel[drClass]}</div>
       ${drGauge}
-      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">400% 초과 시 위험 · 200% 이하 양호</div>
+      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">자본 대비 부채 규모</div>
     </div>
     <div style="background:#fff;border-radius:14px;padding:1.25rem;border:1px solid #e5e4e0;border-top:4px solid ${clsColor[iceClass]};">
       <div style="font-size:12px;color:#9b9a95;margin-bottom:6px;font-weight:500;">💰 이자보상배수</div>
       <div class="metric-value" style="font-size:${noInt ? 24 : 32}px;font-weight:700;color:${clsColor[iceClass]};letter-spacing:-0.02em;">${noInt ? "이자비용 없음" : (ice !== null ? ice.toFixed(2) + "배" : "N/A")}</div>
       <div style="display:inline-block;background:${clsBg[iceClass]};color:${clsColor[iceClass]};font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:6px;">${noInt ? "🎉 무차입" : `${clsIcon[iceClass]} ${clsLabel[iceClass]}`}</div>
       ${iceGauge}
-      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">${noInt ? "이자비용이 없어 이자 상환 부담이 없는 상태입니다" : "1배 미만 위험 · 2배 이상 양호"}</div>
+      <div style="font-size:11px;color:#9b9a95;margin-top:8px;">${noInt ? "이자비용이 없어 이자 상환 부담이 없는 상태입니다" : "영업이익으로 이자를 감당하는 정도"}</div>
     </div>
   `;
 
@@ -2958,7 +2958,7 @@ function renderResults(d) {
   if (capitalEroded) {
     comments.push(`📌 자본잠식 상태로 자본총계가 마이너스이며, 부채비율 산정이 무의미할 정도로 재무구조가 위험합니다. 시급한 자본 확충 또는 부채 축소가 필요합니다.`);
   } else if (dr !== null) {
-    if (dr > 400) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 위험 수준입니다. 부채가 자본의 4배를 초과하여 적극적인 부채 관리가 필요합니다.`);
+    if (dr > 400) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 위험 수준입니다. 적극적인 부채 관리가 필요합니다.`);
     else if (dr > 200) comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 주의 수준입니다. 부채 규모를 점진적으로 축소하는 것이 바람직합니다.`);
     else comments.push(`📌 부채비율이 ${dr.toFixed(1)}%로 양호한 수준입니다. 안정적인 재무구조를 유지하고 있습니다.`);
   }
@@ -5093,14 +5093,14 @@ function htReportBody(r, input) {
       : `<div class="kpi-card ${k(lvl)}"><div class="kpi-label">${label}</div><div class="kpi-value ${k(lvl)}">${value}</div><span class="kpi-badge ${k(lvl)}">${lvl === "danger" ? "위험" : lvl === "warn" ? "주의" : "양호"}</span><div class="kpi-hint">${hint}</div></div>`;
     let cards = "";
     if (f) {
-      cards += card("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass, "400% 초과 위험 · 200% 이하 양호");
-      cards += card("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass, "1배 미만 위험 · 2배 이상 양호");
+      cards += card("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass, "자본 대비 부채 규모");
+      cards += card("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass, "영업이익으로 이자를 감당하는 정도");
       cards += card("🏢 자본잠식", e(f.erosionStatus), f.erosionClass, f.erosionClass === "safe" ? "자본 건전" : "자본 확충 필요");
       const gl = f.pct >= 60 ? "safe" : f.pct >= 40 ? "warn" : "danger";
       cards += card("🏆 사업 안정성 종합점수", `${f.total}<span style="font-size:13px;">/${f.max}</span>`, gl, e(f.grade));
     } else {
-      cards += card("📊 부채비율", q && has(q.dr) ? q.dr + "%" : null, q ? q.drClass : "info", "400% 초과 위험 · 200% 이하 양호");
-      cards += card("💰 이자보상배수", q && has(q.icr) ? q.icr + "배" : null, q ? q.icrClass : "info", "1배 미만 위험 · 2배 이상 양호");
+      cards += card("📊 부채비율", q && has(q.dr) ? q.dr + "%" : null, q ? q.drClass : "info", "자본 대비 부채 규모");
+      cards += card("💰 이자보상배수", q && has(q.icr) ? q.icr + "배" : null, q ? q.icrClass : "info", "영업이익으로 이자를 감당하는 정도");
       cards += card("🏢 자본잠식", null, "info", "총자산·총부채 입력 시 판단");
       cards += card("🏆 사업 안정성 종합점수", null, "info", "재무 수치 입력 시 계산");
     }
@@ -5139,8 +5139,8 @@ function htReportBody(r, input) {
     const fail = [];
     if (arOk === false) fail.push("국세 체납");
     if (erosionOk === false) fail.push("자본잠식");
-    if (drOk === false) fail.push("부채비율 400% 초과");
-    if (iceOk === false) fail.push("이자보상배수 1배 미만");
+    if (drOk === false) fail.push("부채비율 위험 수준");
+    if (iceOk === false) fail.push("이자보상배수 부족");
     // 정책자금 연계는 예상 한도(기관별 기준) 결과를 따른다 — 신청 가능한 기관이 있으면 가능
     const okN = L0.available ? (L0.orgs || []).filter(x => x.status === "ok").length
               : (L0.status === "none" || L0.status === undefined) && typeof input.__okOrgs === "number" && input.__okOrgs > 0 ? input.__okOrgs : null;
@@ -5150,8 +5150,8 @@ function htReportBody(r, input) {
     const items = [
       { ok: has(input.business_number) ? true : null, text: has(input.business_number) ? "사업자 정보 확인 완료" : "사업자등록번호 미입력" },
       { ok: arOk, text: arOk === false ? "국세 체납 있음 (납세증명서 발급 불가)" : arOk ? "국세 체납 없음 (납세증명서 발급 가능)" : "국세 체납 여부 미확인" },
-      { ok: drOk, text: drOk === false ? "부채비율 400% 초과" : drOk ? "부채비율 400% 이하 유지" : "부채비율 미입력" },
-      { ok: iceOk, text: iceOk === false ? "이자보상배수 1배 미만 (이자 상환 능력 부족)" : iceOk ? "이자보상배수 1배 이상 유지 (이자 상환 능력)" : "이자보상배수 미입력" },
+      { ok: drOk, text: drOk === false ? "부채비율 위험 수준" : drOk ? "부채비율 적정 수준 유지" : "부채비율 미입력" },
+      { ok: iceOk, text: iceOk === false ? "이자보상배수 부족 (이자 상환 능력 부족)" : iceOk ? "이자보상배수 양호 (이자 상환 능력)" : "이자보상배수 미입력" },
       { ok: erosionOk, text: erosionOk === false ? "자본잠식 상태" : erosionOk ? "자본잠식 없음" : "자본잠식 여부 미입력" },
       { ok: profitOk, text: profitOk === false ? "당기순이익 적자 (수익성 미확보)" : profitOk ? "당기순이익 흑자 (수익성 확보)" : "당기순이익 미입력" },
       { ok: crOk, text: crOk === false ? "대표자 신용점수 낮음 (심사 시 불리할 수 있음)" : crOk ? "대표자 신용점수 양호" : "대표자 신용점수 미입력" },
@@ -6192,8 +6192,8 @@ function downloadResult() {
   // 정책자금 연계 불가능 사유를 조건별로 구체적으로 안내
   const policyFailReasons = [];
   if (isEroded) policyFailReasons.push('자본잠식 상태');
-  if (drOk === false) policyFailReasons.push('부채비율 400% 초과');
-  if (iceOk === false) policyFailReasons.push('이자보상배수 1배 미만');
+  if (drOk === false) policyFailReasons.push('부채비율 위험 수준');
+  if (iceOk === false) policyFailReasons.push('이자보상배수 부족');
   const policyFailText = policyFailReasons.length > 0
     ? `정책자금 연계 불가능 (${policyFailReasons.join(', ')})`
     : '정책자금 연계 불가능 (재무 기준 미충족)';
@@ -6201,8 +6201,8 @@ function downloadResult() {
   const checkItems = [
     { ok: true,  text: '사업자등록 및 법인 설립 여부 확인 완료' },
     { ok: true,  text: '재무제표 AI 자동 인식 및 수치 추출 완료' },
-    { ok: drOk,  text: drOk === false ? '부채비율 400% 초과' : '부채비율 400% 이하 유지 (권장 기준)' },
-    { ok: iceOk, text: iceOk === false ? '이자보상배수 1배 미만 (이자 상환 능력 부족)' : '이자보상배수 1배 이상 유지 (이자 상환 능력)' },
+    { ok: drOk,  text: drOk === false ? '부채비율 위험 수준' : '부채비율 적정 수준 유지' },
+    { ok: iceOk, text: iceOk === false ? '이자보상배수 부족 (이자 상환 능력 부족)' : '이자보상배수 양호 (이자 상환 능력)' },
     { ok: erosionOk, text: erosionOk ? '자본잠식 없음 (자본총계 > 자본금)' : '현재 자본잠식 상태' },
     { ok: profitOk,  text: profitOk ? '당기순이익 흑자 유지 (수익성 확보)' : '당기순이익 적자 (수익성 미확보)' },
     { ok: deficitOk, text: deficitOk ? '결손 없음 (누적 손실 미발생)' : '결손 발생 (누적 손실 존재)' },
@@ -6338,12 +6338,12 @@ function downloadResult() {
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
       <div style="background:#f9f9f8;border-radius:10px;padding:12px;border:1px solid #e5e4e0;">
-        <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;margin-bottom:4px;">■ 부채비율 <span style="font-weight:400;color:#9b9a95;">[(총부채/자본총계)×100]</span></div>
-        <div style="font-size:10px;color:#6b7a8d;line-height:1.6;">타인자본과 자기자본의 구성 관계를 나타내는 지표로, 일반적 표준비율인 200% 이하가 양호하다고 판단됩니다.</div>
+        <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;margin-bottom:4px;">■ 부채비율</div>
+        <div style="font-size:10px;color:#6b7a8d;line-height:1.6;">타인자본과 자기자본의 구성 관계를 나타내는 지표로, 낮을수록 재무구조가 안정적입니다.</div>
       </div>
       <div style="background:#f9f9f8;border-radius:10px;padding:12px;border:1px solid #e5e4e0;">
-        <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;margin-bottom:4px;">■ 부채자산비율 <span style="font-weight:400;color:#9b9a95;">[(총부채/총자산)×100]</span></div>
-        <div style="font-size:10px;color:#6b7a8d;line-height:1.6;">총자산 중 부채의 비중을 나타내며 낮을수록 양호합니다. 현재 값: <strong>${debtAssetRatio !== null ? debtAssetRatio.toFixed(1)+"%" : "미산정"}</strong> (※ 세부 차입금 항목이 없어 총부채 기준으로 근사 계산했습니다.)</div>
+        <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;margin-bottom:4px;">■ 부채자산비율</div>
+        <div style="font-size:10px;color:#6b7a8d;line-height:1.6;">총자산 중 부채의 비중을 나타내며 낮을수록 양호합니다. 현재 값: <strong>${debtAssetRatio !== null ? debtAssetRatio.toFixed(1)+"%" : "미산정"}</strong></div>
       </div>
     </div>
 
@@ -6359,11 +6359,6 @@ function downloadResult() {
             <tr><td style="padding:6px 8px;">차입상환기간(연)</td><td style="padding:6px 8px;text-align:right;font-weight:600;">${repayYears !== null ? repayYears.toFixed(1)+"년" : "미산정"}</td></tr>
           </tbody>
         </table>
-        <div style="font-size:9px;color:#9b9a95;line-height:1.6;">
-          ※ 이자보상배수(배) : 영업이익/이자비용<br>
-          ※ 차입상환기간(연) : 영업이익으로 총부채를 전액 상환하는데 소요될 것으로 예상되는 기간 (세부 차입금 항목이 없어 총부채 기준으로 근사 계산) — 참고 지표이며 등급 산정에는 반영되지 않음<br>
-          ※ 차입상환 능력 종합등급은 이자보상배수를 기준으로 산정되어, 상단 핵심 재무지표의 판정과 동일합니다.
-        </div>
       </div>
       <div>
         <div style="background:#fff;border:1px solid #e5e4e0;border-radius:10px;padding:12px;margin-bottom:8px;">
