@@ -963,7 +963,8 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
 #  · 소진공 특별자금(2026 신청 안내): 일시적경영애로(연매출 1.04억 미만·업력 7년 미만·매출 15%↓, 최대 7천만),
-#    재도전특별자금(재창업·희망리턴 교육·채무조정 성실 → 7천만 / 재기사업화 → 1억 / 재창업 2~7년+성장+소진공 성실상환 → 2억). 금액은 같은 산식, 최대 한도로 상한
+#    재도전특별자금(재창업·희망리턴 교육·채무조정 성실 → 7천만 / 재기사업화 → 1억 / 재창업 2~7년+성장+소진공 성실상환 → 2억). 금액은 같은 산식, 최대 한도로 상한.
+#    따로 표시하지 않고 소진공 한 줄로 묶음 (소진공 줄이 신용취약자금 등으로 작으면 이 금액까지)
 #  · 재단 재이용 제한: 서울은 최근 1년, 그 외 지역은 최근 6개월 안에 재단 자금을 받았으면 재단 불가(시기가 있을 때만)
 #  · 개인대출(구분 '개인')은 한도에서 빼지 않음 / 카드론·현금서비스·대부업이 합쳐서 3건 이상이면 신청 어려움(전체)
 #  · 재무제표 차입금이 있으면 기관 미상 기대출 대신 '단기차입금 전액 + 장기차입금(담보로 봄) 30%'를 차감
@@ -1010,7 +1011,8 @@ def _ht_loan_ym(v):
 
 
 def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u):
-    """소진공 일시적경영애로자금(최대 7천만)·재도전특별자금(일반 7천만/희망 1억/도약 2억) — 2026 소진공 신청 안내 기준"""
+    """소진공 일시적경영애로자금(최대 7천만)·재도전특별자금(일반 7천만/희망 1억/도약 2억) — 2026 소진공 신청 안내 기준.
+    따로 줄을 만들지 않고 소진공 한 줄로 묶음 (신용취약자금 등으로 소진공 줄이 작게 잡혔을 때 이 자금 요건에 맞으면 그 금액까지)"""
     R = HT_LIMIT_RULE
     sj = next((o for o in orgs if o["key"] == "sojin"), None)
     if not small or not sj or sj["status"] == "blocked":
@@ -1039,7 +1041,8 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
             return
         lo = min(max(lo, R["minAmount"]), hi)
         if lo == hi and hi >= 200000000: lo = hi - 100000000
-        orgs.append(dict(o, key=key, name=name, low=lo, high=hi, status="ok"))
+        if sj["status"] != "ok" or hi > sj["high"]:          # 같은 소진공 자금으로 묶어서 — 더 크면 소진공 줄을 그 금액으로
+            sj.update(low=lo, high=hi, status="ok")
 
     # 일시적경영애로자금: 연매출 1억 4백만원 미만 + 업력 7년 미만 + 매출 15% 이상 감소
     base_sales = last if last is not None else sales
@@ -1488,8 +1491,7 @@ def ht_estimate_limit(inp, today=None):
         if not okd:
             return {**base, "status": "blocked", "low": 0, "high": 0, "text": "완전자본잠식 상태라 현재는 신청이 어렵습니다." if ctx["eroded"] else "현재 재무 상태로는 신청 가능한 기관이 없습니다."}
         grp = [okd[k] for k in ("jaedan", "kodit", "kibo") if k in okd]
-        sj_fam = [o for k, o in okd.items() if k.startswith("sojin")]           # 소진공은 일반·특별자금 중 큰 것 하나
-        pick = ([max(sj_fam, key=lambda o: o["high"])] if sj_fam else []) + [okd[k] for k in ("jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
+        pick = [okd[k] for k in ("sojin", "jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
         t_low = min(t_low, sum(o["low"] for o in pick)); t_high = min(t_high, sum(o["high"] for o in pick))
     t_low, t_high = floor_u(t_low), floor_u(t_high)
     if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "부채 규모가 커 추가 한도 여력이 부족합니다." if capped else "기대출이 많아 추가 한도 여력이 부족합니다."}
