@@ -3389,6 +3389,7 @@ def _consume_analysis(db: Session, user, subscribed: bool):
 # (재무제표가 없는 개인사업자용 "직접 입력" 보조 기능 — 크레딧 차감 없음, 대출/자산은 서류에 없어 여전히 직접 입력 필요)
 class IncomeDocExtractRequest(BaseModel):
     images: list[ImageItem] = []
+    founded: str | None = None          # /extract/general — 입력된 창업년월 (상시근로자 산정 기간용)
 
 async def _gemini_json(image_parts, prompt, max_tokens=3000):
     """이미지 + 지시문 → Gemini JSON 응답 (모델 여러 개 순서대로 시도)"""
@@ -3567,7 +3568,8 @@ GENERAL_DOC_PROMPT = """위에 업체(사업자) 관련 서류가 첨부돼 있�
 - years: 연도별 매출 [{"year":2024,"sales":금액}] (올해 진행 중인 매출 제외) / ytd: 올해 현재까지 매출 {"year":..,"month":..,"sales":..}
 - kcb, nice: 대표자 신용점수
 - loans: 서류가 대출 내역일 때만 [{"org":"기관","date":"YYYY.MM","amount":금액,"kind":"personal"|"business"}], 아니면 null
-- members: 4대보험 사업장 가입자 명부·자격취득자 명부·고용보험 피보험자 명부처럼 사람별 취득일·상실일이 나오는 서류일 때만, 사람마다 한 줄 [{"acq":"YYYY-MM-DD"(자격취득일),"loss":"YYYY-MM-DD" 또는 null(자격상실일),"rep":대표자·사업주 본인이면 true}] — 이름·주민번호는 옮기지 마세요. 같은 사람이 여러 보험에 나오면 한 번만. 그 외 서류는 null
+- members: 4대보험 사업장 가입자 명부·자격취득자 명부·고용보험 피보험자 명부처럼 사람별 취득일·상실일이 나오는 서류일 때만, 모든 파일의 모든 줄을 그대로 [{"birth":"YYMMDD"(생년월일 6자리, 확인용),"acq":"YYYY-MM-DD"(자격취득일),"loss":"YYYY-MM-DD" 또는 null(자격상실일, '--'·빈칸이면 null),"pay":월평균보수(원, 숫자),"rep":대표자·사업주 본인이면 true}] — 이름·주민번호 뒷자리는 옮기지 마세요. 중복 정리는 하지 말고 보이는 대로 모두. 그 외 서류는 null
+- member_periods: 명부마다 조회 기간 [{"from":"YYYY-MM-DD","to":"YYYY-MM-DD"}] — '검색기준 2025/01/01 ~ 2025/12/31' 같은 기간. 기간이 없으면 from은 null, to는 발급일
 - employees: members가 없고 서류에 상시근로자 수·가입자 수가 숫자로 나오면 그 수(대표자 제외)
 - export_amount: 수출 실적 금액
 - certs: 벤처·이노비즈·메인비즈·기업부설연구소·연구개발전담부서·ISO·HACCP·특허등록·특허출원·사회적기업·스마트공장 등 인증·확인·등록 사실을 쉼표로 (예: "벤처, 특허등록 2건")
@@ -3575,30 +3577,58 @@ GENERAL_DOC_PROMPT = """위에 업체(사업자) 관련 서류가 첨부돼 있�
 - woman: 여성기업 확인서면 true
 
 JSON으로만 답하세요:
-{"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":..,"ytd":..,"kcb":..,"nice":..,"loans":..,"members":..,"employees":..,"export_amount":..,"certs":..,"smart_tech":..,"woman":..}"""
+{"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":..,"ytd":..,"kcb":..,"nice":..,"loans":..,"members":..,"member_periods":..,"employees":..,"export_amount":..,"certs":..,"smart_tech":..,"woman":..}"""
 
 
-def _ht_members_count(members, today, founded=None):
-    """가입자 명부(취득·상실일) → (현재 직원 수, 1년 전 대비 증감, 상시근로자 수(월말 평균)). 대표자 제외"""
+_HT_MIN_WAGE = {2023: 9620, 2024: 9860, 2025: 10030, 2026: 10320}       # 시간당 최저임금 (단시간 60시간 미만 추정용)
+
+
+def _ht_members_count(members, today, founded=None, periods=None):
+    """가입자 명부(취득·상실일) → (직원 수, 1년 전 대비 증감 또는 None, 상시근로자 수(월말 평균) 또는 None). 대표자 제외
+    · 명부 여러 장: 생년월일+취득일이 같은 줄은 한 사람 (상실일이 적힌 쪽이 나중 정보)
+    · 기준일: 명부 조회 기간의 끝(오늘보다 앞이면 그날) — 그 뒤 입·퇴사는 명부에 없으므로
+    · 상시근로자: 산정 기간의 월말이 모두 조회 기간 안에 있을 때만, 월평균보수가 최저임금 × 60시간 미만이면 단시간근로자로 보고 뺌"""
     def d(v):
         m = _re.match(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})", _ht_s(v))
         try:
             return datetime(int(m[1]), int(m[2]), int(m[3])).date() if m else None
         except ValueError:
             return None
-    ago = today.replace(year=today.year - 1) if not (today.month == 2 and today.day == 29) else today.replace(year=today.year - 1, day=28)
-    now_n = ago_n = 0
-    spans = []
+    def year_back(x):
+        return x.replace(year=x.year - 1, day=28) if (x.month == 2 and x.day == 29) else x.replace(year=x.year - 1)
+    people = {}
     for r in members:
         if not isinstance(r, dict) or r.get("rep") is True:
             continue
         a, l = d(r.get("acq")), d(r.get("loss"))
         if not a:
             continue
-        spans.append((a, l))
-        if a <= today and (l is None or l > today): now_n += 1
-        if a <= ago and (l is None or l > ago): ago_n += 1
-    return now_n, now_n - ago_n, _emp_avg_spans(spans, today, founded)
+        key = (_re.sub(r"\D", "", _ht_s(r.get("birth"))) or id(r), a)
+        old = people.get(key)
+        if old is None or (old[1] is None and l is not None):
+            people[key] = (a, l, _ht_num(r.get("pay")))
+    if not people:
+        return None, None, None
+    ps = [p for p in (periods or []) if isinstance(p, dict)]
+    froms = [x for x in (d(p.get("from")) for p in ps) if x]
+    tos = [x for x in (d(p.get("to")) for p in ps) if x]
+    cov_from = min(froms) if froms and len(froms) == len(ps) else None      # 기간 모르는 명부가 섞이면 시작은 모름
+    ref = min(today, max(tos)) if tos else today
+    now_n = sum(1 for a, l, _ in people.values() if a <= ref and (l is None or l > ref))
+    ago = year_back(ref)
+    diff = None
+    if cov_from and cov_from <= ago:                                            # 1년 전 시점도 명부에 다 잡혀 있을 때만
+        diff = now_n - sum(1 for a, l, _ in people.values() if a <= ago and (l is None or l > ago))
+    def short(a, pay):
+        w = _HT_MIN_WAGE.get(a.year) or _HT_MIN_WAGE[max(_HT_MIN_WAGE)]
+        return pay is not None and 0 < pay < w * 60
+    spans = [(a, l) for a, l, pay in people.values() if not short(a, pay)]
+    need = _emp_month_ends(today, founded)
+    ends = [e for e in need if e <= ref and (cov_from is None or e >= cov_from)]
+    if len(ends) < len(need):                    # 산정 기간이 명부에 다 안 잡히면 평균을 내지 않음 (반쪽 평균은 틀리기 쉬움)
+        ends = []
+    avg = round(sum(sum(1 for a, l in spans if a <= e and (l is None or l > e)) for e in ends) / len(ends), 1) if ends else None
+    return now_n, diff, avg
 
 
 @app.post("/extract/general")
@@ -3613,12 +3643,16 @@ async def extract_general(body: IncomeDocExtractRequest, user: models.User = Dep
         raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
     data = data if isinstance(data, dict) else {}
     members = data.pop("members", None)
+    periods = data.pop("member_periods", None)
     if isinstance(members, list) and members:
-        emp, diff, avg = _ht_members_count(members, now.date(), data.get("founded"))
-        data["employees"] = emp
-        data["emp_avg"] = avg
-        data["emp_increase"] = diff if diff >= 0 else None      # 줄었으면 유지·증가 아님
-        data["emp_keep"] = diff >= 0
+        emp, diff, avg = _ht_members_count(members, now.date(), data.get("founded") or body.founded, periods)
+        if emp is not None:
+            data["employees"] = emp
+        if avg is not None:
+            data["emp_avg"] = avg
+        if diff is not None:
+            data["emp_increase"] = diff if diff >= 0 else None      # 줄었으면 유지·증가 아님
+            data["emp_keep"] = diff >= 0
     return {"data": data}
 
 

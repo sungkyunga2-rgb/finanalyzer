@@ -2611,7 +2611,7 @@ async function htHandleIncallFiles(files) {
 async function htHandleGeneralFiles(files) {
   const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
   try {
-    const res = await api("POST", "/extract/general", { images: await Promise.all(files.slice(0, 5).map(read)) });
+    const res = await api("POST", "/extract/general", { images: await Promise.all(files.slice(0, 5).map(read)), founded: htReadForm().founded || null });
     htFillFromIncall(res.data || {}, files.map(f => f.name).join(", "));
   } catch (err) { alertError(err.message); }
 }
