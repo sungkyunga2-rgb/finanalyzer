@@ -944,7 +944,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #  · 기대출은 같은 기관 한도에서 차감. 기관을 특정할 수 없는 대출은 미소금융을 뺀 모든 기관에서 차감
 #  · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업 10인 이상) 소진공 제외
 #  · 업력 1년 미만 + (제조 · 콘텐츠 제작 · 특허) → 매출이 없어도 기보 5천만 ~ 1억
-#  · 중진공·신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
+#  · 중진공 최대 5억(운전자금 연 5억, 수출기업 10억) / 신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
 #  · 1천만 원 미만은 한도 없음 (미소금융만 500만 원)
 #  · 총 예상한도 = 기준 매출 × 25% ~ 30%(청년 50%) × 신용 조정 − 기대출 합계 (최대 10억)
 #  · 소진공 신용취약소상공인자금: 소상공인 + 업력 3개월 이상 + 개인신용평점 839 이하 → 최대 3천만 원 (소진공 줄을 이 금액으로)
@@ -982,6 +982,7 @@ HT_LIMIT_RULE = {
     "koditCautionFactor": 0.7, "misoKcb": 700, "misoNice": 749,
     "weakMax": 30000000, "weakScore": 839, "unit": 1000000,
     "totalMax": 1000000000,
+    "jungjinMax": 500000000, "jungjinExportMax": 1000000000,
 }
 
 _HT_IND = {
@@ -1246,7 +1247,10 @@ def ht_estimate_limit(inp, today=None):
         lo = floor_u(lo * f); hi = floor_u(hi * f)
         if key == "sojin": lo = min(lo, R["sojinMax"]); hi = min(hi, R["sojinMax"])
         if key == "jaedan": lo = min(lo, R["jaedanMax"]); hi = min(hi, R["jaedanMax"])
-        if key in ("jungjin", "kodit", "kibo"): lo = min(lo, R["fundMax"]); hi = min(hi, R["fundMax"])
+        if key in ("kodit", "kibo"): lo = min(lo, R["fundMax"]); hi = min(hi, R["fundMax"])
+        if key == "jungjin":                  # 중진공 운전자금 연 5억 (수출기업 10억) — 2026 융자계획
+            jm = R["jungjinExportMax"] if exporter else R["jungjinMax"]
+            lo = min(lo, jm); hi = min(hi, jm)
         if big_enough and key in ("jungjin", "kodit", "kibo"): lo = max(lo, R["fundMinAmount"]); hi = max(hi, R["fundMinAmount"])
         ded = used[key] + (0 if key == "miso" else other)
         low = max(0, lo - ded); high = max(0, hi - ded)
@@ -1363,6 +1367,7 @@ def ht_estimate_limit(inp, today=None):
         grp = [okd[k] for k in ("jaedan", "kodit", "kibo") if k in okd]
         pick = [okd[k] for k in ("sojin", "jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
         t_low = min(t_low, sum(o["low"] for o in pick)); t_high = min(t_high, sum(o["high"] for o in pick))
+    t_low, t_high = floor_u(t_low), floor_u(t_high)
     if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "부채 규모가 커 추가 한도 여력이 부족합니다." if capped else "기대출이 많아 추가 한도 여력이 부족합니다."}
     t_low = max(t_low, R["minAmount"])
     if t_low == t_high and t_high >= 200000000: t_low = t_high - 100000000                       # 한 금액이면 1억 아래까지 범위로
