@@ -923,7 +923,7 @@
         <input type="file" id="incomeDocInput" accept="image/*,application/pdf" multiple style="display:none" />
         <input type="file" id="allDocInput" accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style="display:none" />
         <button type="button" class="btn ht-doc-btn ht-doc-all" id="allDocBtn" onclick="document.getElementById('allDocInput').click()">
-          <span class="ht-doc-ic">📂</span><b>서류 올리기</b><span>재무제표 · 사업자등록증 · 부가세과세표준증명 · 면세사업자 수입금액증명 · 소득금액증명원 · 신용정보조회서(신용점수·대출 화면 캡처)<br>여러 서류를 한 번에 올려도 AI가 서류별로 알아서 읽어요</span>
+          <span class="ht-doc-ic">📂</span><b>서류 올리기</b><span>재무제표 · 사업자등록증 · 매출 증명 · 신용정보 · 4대보험 가입자 명부 · 각종 인증서 등 업체 서류는 무엇이든<br>여러 서류를 한 번에 올려도 AI가 서류별로 알아서 읽어요</span>
           <span class="ht-doc-drop">클릭하거나 파일을 끌어다 놓으세요</span></button>
         <div class="ht-doc-btns" style="display:none;">
           <button type="button" class="btn ht-doc-btn" id="finDocBtn" onclick="document.getElementById('finDocInput').click()">
@@ -2586,11 +2586,11 @@ async function htHandleAllDocs(all) {
     }
     const pick = k => files.filter((f, i) => types[i] === k);
     const fin = pick("financial"), inc = pick("income"), cred = pick("credit"), call = pick("incall"), other = pick("other");
-    if (call.length) { busy("인콜일지를 읽는 중..."); await htHandleIncallFiles(call); }
+    if (call.length) { busy("상담 기록을 읽는 중..."); await htHandleIncallFiles(call); }
     if (fin.length) { busy("재무제표를 읽는 중...", "최대 1분 정도 걸릴 수 있어요"); await htHandleFinFiles(fin); }
     if (inc.length) { busy("사업자등록증·매출 서류를 읽는 중..."); await htHandleIncomeFile(inc); }
     if (cred.length) { busy("신용정보를 읽는 중..."); await htHandleCreditFiles(cred); }
-    if (other.length) alertError(`${other.map(f => f.name).join(", ")}은(는) 채울 수 있는 서류가 아니라 건너뛰었어요.\n재무제표·사업자등록증·부가세과세표준증명·소득금액증명원·신용정보조회서·인콜일지를 올려 주세요.`);
+    if (other.length) { busy("서류를 읽는 중..."); await htHandleGeneralFiles(other); }
   } catch (err) {
     alertError(err.message);
   } finally {
@@ -2606,8 +2606,16 @@ async function htHandleIncallFiles(files) {
     htFillFromIncall(res.data || {});
   } catch (err) { alertError(err.message); }
 }
+// 정해진 종류가 아닌 서류(가입자 명부·인증서·확인서 등) → 확인되는 값만 채움
+async function htHandleGeneralFiles(files) {
+  const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
+  try {
+    const res = await api("POST", "/extract/general", { images: await Promise.all(files.slice(0, 5).map(read)) });
+    htFillFromIncall(res.data || {}, files.map(f => f.name).join(", "));
+  } catch (err) { alertError(err.message); }
+}
 const HT_SIDO = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
-function htFillFromIncall(d) {
+function htFillFromIncall(d, generalName) {   // generalName: 일반 서류(파일 이름) — 적힌 것만 채우고 나머지는 그대로
   const n = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
   // 양식 빈칸 기호 정리: "( 홍길동 )" → "홍길동", "___", "( )", 앞뒤 ":" 제거 — "(주)" 같은 법인 표기는 유지
   const t = v => {
@@ -2627,8 +2635,9 @@ function htFillFromIncall(d) {
   ["company_name", "industry", "item", "industry2", "item2"].forEach(k => set(k, t(d[k])));
   // 법인 표현((주)·주식회사·법인 등)이 없으면 개인사업자
   const corpHint = /\(주\)|㈜|주식회사|유한회사|법인/.test(`${t(d.company_name)} ${t(d.memo)}`);
-  cur.biz_type = (corpHint || d.biz_type === "corp") ? "corp" : "personal";
-  if (t(d.industry) && !t(d.industry2) && !t(d.item2)) { cur.industry2 = ""; cur.item2 = ""; }
+  if (!generalName) cur.biz_type = (corpHint || d.biz_type === "corp") ? "corp" : "personal";
+  else if (["corp", "personal"].includes(d.biz_type)) set("biz_type", d.biz_type);
+  if (!generalName && t(d.industry) && !t(d.industry2) && !t(d.item2)) { cur.industry2 = ""; cur.item2 = ""; }
   if (HT_SIDO.includes(t(d.location))) set("location", t(d.location));
   const fm = t(d.founded).match(/^(\d{4})(?:-(\d{1,2}))?/);
   if (fm) set("founded", `${fm[1]}-${String(fm[2] || 1).padStart(2, "0")}`);
@@ -2649,7 +2658,7 @@ function htFillFromIncall(d) {
     filled++;
   }
   if (t(d.arrears_other) && !/^(x|없음|-)$/i.test(t(d.arrears_other))) { cur.arrears.other = t(d.arrears_other); filled++; }
-  if (Array.isArray(d.loans)) {
+  if (Array.isArray(d.loans) && (!generalName || d.loans.length)) {
     cur.loans = d.loans.filter(l => l && (t(l.org) || n(l.amount) !== null)).map(l => ({ org: t(l.org), date: t(l.date), amount: n(l.amount), kind: ["personal", "business"].includes(l.kind) ? l.kind : "" }));
     cur.loans_none = !cur.loans.length; filled++;
   }
@@ -2666,9 +2675,13 @@ function htFillFromIncall(d) {
   if (n(d.export_amount) !== null) set("export_amount", n(d.export_amount));
   if (d.restart === true) { cur.retry = Object.assign({}, cur.retry, { restart: true }); filled++; }
   if (d.smart_tech === true) { cur.smart_tech = true; filled++; }
-  if (!filled) return alertError("인콜일지에서 채울 내용을 찾지 못했어요. 표가 잘 보이는 파일로 다시 올려 주세요.");
+  if (n(d.emp_increase) !== null) set("emp_increase", n(d.emp_increase));
+  if (typeof d.emp_keep === "boolean") { cur.emp_keep = d.emp_keep; filled++; }
+  const addCerts = htCertsFromText(t(d.certs)).filter(c => !(cur.cert_list || []).some(x => x.type === c.type));
+  if (addCerts.length) { cur.cert_list = (cur.cert_list || []).concat(addCerts); filled++; }
+  if (!filled) return alertError(generalName ? `${generalName}에서 채울 내용을 찾지 못했어요.` : "채울 내용을 찾지 못했어요. 표가 잘 보이는 파일로 다시 올려 주세요.");
   htFillForm(cur);
-  toast("인콜일지 내용으로 입력 칸을 채웠어요. 값을 확인해 주세요.");
+  toast("서류 내용으로 입력 칸을 채웠어요. 값을 확인해 주세요.");
 }
 // 드래그해서 놓기
 [["allDocBtn", fs => htHandleAllDocs(fs)], ["finDocBtn", fs => htHandleFinFiles(fs)], ["incomeDocBtn", fs => htHandleIncomeFile(fs)], ["creditDocBtn", fs => htHandleCreditFiles(fs)]].forEach(([id, fn]) => {

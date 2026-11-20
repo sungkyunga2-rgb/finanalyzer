@@ -3435,6 +3435,68 @@ async def extract_incall(body: IncomeDocExtractRequest, user: models.User = Depe
     return {"data": data if isinstance(data, dict) else {}}
 
 
+GENERAL_DOC_PROMPT = """위에 업체(사업자) 관련 서류가 첨부돼 있습니다. 어떤 서류든 아래 항목 중 서류에서 확인되는 것만 옮기고, 확인되지 않는 항목은 모두 null로 두세요. 추측해서 채우지 마세요. 금액은 원 단위 숫자로 바꾸세요.
+
+항목:
+- biz_type: 상호나 서류에 '(주)'·'주식회사'·'법인' 같은 법인 표기가 분명히 있으면 "corp", 개인사업자로 분명히 나오면 "personal", 모르면 null
+- company_name: 상호 / industry, item: 업태·종목 (두 번째가 있으면 industry2, item2)
+- location: 사업장 소재지 시·도 하나 (서울,부산,대구,인천,광주,대전,울산,세종,경기,강원,충북,충남,전북,전남,경북,경남,제주 중)
+- founded: 개업(창업)년월 "YYYY-MM"
+- years: 연도별 매출 [{"year":2024,"sales":금액}] (올해 진행 중인 매출 제외) / ytd: 올해 현재까지 매출 {"year":..,"month":..,"sales":..}
+- kcb, nice: 대표자 신용점수
+- loans: 서류가 대출 내역일 때만 [{"org":"기관","date":"YYYY.MM","amount":금액,"kind":"personal"|"business"}], 아니면 null
+- members: 4대보험 사업장 가입자 명부·자격취득자 명부·고용보험 피보험자 명부처럼 사람별 취득일·상실일이 나오는 서류일 때만, 사람마다 한 줄 [{"acq":"YYYY-MM-DD"(자격취득일),"loss":"YYYY-MM-DD" 또는 null(자격상실일),"rep":대표자·사업주 본인이면 true}] — 이름·주민번호는 옮기지 마세요. 같은 사람이 여러 보험에 나오면 한 번만. 그 외 서류는 null
+- employees: members가 없고 서류에 상시근로자 수·가입자 수가 숫자로 나오면 그 수(대표자 제외)
+- export_amount: 수출 실적 금액
+- certs: 벤처·이노비즈·메인비즈·기업부설연구소·연구개발전담부서·ISO·HACCP·특허등록·특허출원·사회적기업·스마트공장 등 인증·확인·등록 사실을 쉼표로 (예: "벤처, 특허등록 2건")
+- smart_tech: 키오스크·테이블오더·서빙로봇 등 스마트기술 도입이 서류에 나오면 true
+- woman: 여성기업 확인서면 true
+
+JSON으로만 답하세요:
+{"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":..,"ytd":..,"kcb":..,"nice":..,"loans":..,"members":..,"employees":..,"export_amount":..,"certs":..,"smart_tech":..,"woman":..}"""
+
+
+def _ht_members_count(members, today):
+    """가입자 명부(취득·상실일) → (현재 직원 수, 1년 전 대비 증감). 대표자 제외"""
+    def d(v):
+        m = _re.match(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})", _ht_s(v))
+        try:
+            return datetime(int(m[1]), int(m[2]), int(m[3])).date() if m else None
+        except ValueError:
+            return None
+    ago = today.replace(year=today.year - 1) if not (today.month == 2 and today.day == 29) else today.replace(year=today.year - 1, day=28)
+    now_n = ago_n = 0
+    for r in members:
+        if not isinstance(r, dict) or r.get("rep") is True:
+            continue
+        a, l = d(r.get("acq")), d(r.get("loss"))
+        if not a:
+            continue
+        if a <= today and (l is None or l > today): now_n += 1
+        if a <= ago and (l is None or l > ago): ago_n += 1
+    return now_n, now_n - ago_n
+
+
+@app.post("/extract/general")
+async def extract_general(body: IncomeDocExtractRequest, user: models.User = Depends(get_current_user)):
+    """정해진 종류가 아닌 서류(가입자 명부·인증서·확인서 등) → 확인되는 입력값만. 저장하지 않는다."""
+    if not body.images:
+        raise HTTPException(status_code=400, detail="서류 파일이 없습니다.")
+    parts = [{"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}} for img in body.images[:5]]
+    now = datetime.utcnow() + timedelta(hours=9)
+    data, err = await _gemini_json(parts, GENERAL_DOC_PROMPT + f"\n\n(오늘은 {now.year}년 {now.month}월 {now.day}일입니다.)", max_tokens=4000)
+    if data is None:
+        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+    data = data if isinstance(data, dict) else {}
+    members = data.pop("members", None)
+    if isinstance(members, list) and members:
+        emp, diff = _ht_members_count(members, now.date())
+        data["employees"] = emp
+        data["emp_increase"] = diff if diff >= 0 else None      # 줄었으면 유지·증가 아님
+        data["emp_keep"] = diff >= 0
+    return {"data": data}
+
+
 DOC_CLASSIFY_PROMPT = """위에 [파일 1], [파일 2] … 순서로 한국 서류(이미지 또는 PDF)가 첨부돼 있습니다. 각 파일이 어떤 서류인지 아래 중 하나로 분류하세요.
 - "financial": 재무제표 — 표준재무제표증명, 재무상태표(대차대조표), 손익계산서, 결산서
 - "income": 사업자등록증·사업자등록증명, 부가가치세 과세표준증명, 부가가치세 면세사업자 수입금액증명, 소득금액증명
