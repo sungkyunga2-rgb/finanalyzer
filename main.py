@@ -945,12 +945,14 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
                     )
                     if resp.status_code in (503, 429):
                         last_err = resp.text
+                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
                         if attempt == 0:
                             await asyncio.sleep(0.8)
                             continue  # 같은 모델로 한 번 더 시도
                         break  # 재시도까지 실패 → 다음 모델로
                     if resp.status_code != 200:
                         last_err = resp.text
+                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
                         break  # 다음 모델로
                     try:
                         candidate_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
@@ -1027,7 +1029,8 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
                     data["comment"] = (data.get("comment") or "") + f" ⚠️ 일부 수치 정합성 검증에 실패했습니다: {note}"
 
     if data is None:
-        raise HTTPException(status_code=500, detail=f"AI 분석 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
+        print(f"[gemini] 실패: {str(last_error)[:300]}")
+        raise HTTPException(status_code=500, detail=_gemini_fail(last_error))
 
     if isinstance(data, dict):
         _fin_biz_info(data)
@@ -3527,6 +3530,16 @@ class IncomeDocExtractRequest(BaseModel):
     images: list[ImageItem] = []
     founded: str | None = None          # /extract/general — 입력된 창업년월 (상시근로자 산정 기간용)
 
+def _gemini_fail(err) -> str:
+    """AI 호출 실패 → 화면 안내 문구 (사용량 한도 초과는 따로 알려줌)"""
+    e = str(err or "")
+    if "RESOURCE_EXHAUSTED" in e or "quota" in e.lower() or "rate limit" in e.lower():
+        return "AI 사용량 한도를 넘어 지금은 서류를 읽을 수 없어요. 잠시 후 다시 시도해 주세요. (계속되면 관리자에게 알려 주세요)"
+    if "API key" in e or "API_KEY" in e or "PERMISSION_DENIED" in e:
+        return "AI 연결 설정에 문제가 있어 서류를 읽을 수 없어요. 관리자에게 알려 주세요."
+    return "AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요."
+
+
 async def _gemini_json(image_parts, prompt, max_tokens=3000):
     """이미지 + 지시문 → Gemini JSON 응답 (모델 여러 개 순서대로 시도)"""
     import json, re
@@ -3543,12 +3556,14 @@ async def _gemini_json(image_parts, prompt, max_tokens=3000):
                               "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens}})
                     if resp.status_code in (503, 429):
                         last_err = resp.text
+                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
                         if attempt == 0:
                             await asyncio.sleep(0.8)
                             continue
                         break
                     if resp.status_code != 200:
                         last_err = resp.text
+                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
                         break
                     txt = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                     txt = re.sub(r"```json|```", "", txt).strip()
@@ -3558,6 +3573,7 @@ async def _gemini_json(image_parts, prompt, max_tokens=3000):
                     return json.loads(txt[a:b + 1]), None
                 except Exception as e:
                     last_err = str(e)
+                    print(f"[gemini] {model} 응답 처리 오류: {e!r}")
                     break
     return None, last_err
 
@@ -3690,7 +3706,8 @@ async def extract_incall(body: IncomeDocExtractRequest, user: models.User = Depe
     now = datetime.utcnow() + timedelta(hours=9)
     data, err = await _gemini_json(parts, INCALL_PROMPT + f"\n\n(오늘은 {now.year}년 {now.month}월입니다.)", max_tokens=3000)
     if data is None:
-        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+        print(f"[gemini] 실패: {str(err)[:300]}")
+        raise HTTPException(status_code=500, detail=_gemini_fail(err))
     data = data if isinstance(data, dict) else {}
     age = _doc_num(data.get("age"))
     _founded_check(data, birth_year=(now.year - int(age) - 1) if age and 18 <= age <= 100 else None)
@@ -3780,7 +3797,8 @@ async def extract_general(body: IncomeDocExtractRequest, user: models.User = Dep
     now = datetime.utcnow() + timedelta(hours=9)
     data, err = await _gemini_json(parts, GENERAL_DOC_PROMPT + f"\n\n(오늘은 {now.year}년 {now.month}월 {now.day}일입니다.)", max_tokens=4000)
     if data is None:
-        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+        print(f"[gemini] 실패: {str(err)[:300]}")
+        raise HTTPException(status_code=500, detail=_gemini_fail(err))
     data = data if isinstance(data, dict) else {}
     members = data.pop("members", None)
     periods = data.pop("member_periods", None)
@@ -3819,9 +3837,10 @@ async def extract_classify(body: IncomeDocExtractRequest, user: models.User = De
     for i, img in enumerate(body.images):
         parts.append({"text": f"[파일 {i + 1}]"})
         parts.append({"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}})
-    data, err = await _gemini_json(parts, DOC_CLASSIFY_PROMPT, max_tokens=500)
+    data, err = await _gemini_json(parts, DOC_CLASSIFY_PROMPT, max_tokens=2000)
     if data is None:
-        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+        print(f"[gemini] 실패: {str(err)[:300]}")
+        raise HTTPException(status_code=500, detail=_gemini_fail(err))
     types = data.get("types") if isinstance(data, dict) else None
     types = [t if t in ("financial", "income", "credit", "incall") else "other" for t in (types or [])][:len(body.images)]
     types += ["other"] * (len(body.images) - len(types))
@@ -3838,7 +3857,8 @@ async def extract_credit_doc(body: IncomeDocExtractRequest, user: models.User = 
     parts = [{"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}} for img in body.images]
     data, err = await _gemini_json(parts, CREDIT_DOC_PROMPT)
     if data is None:
-        raise HTTPException(status_code=500, detail="AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.")
+        print(f"[gemini] 실패: {str(err)[:300]}")
+        raise HTTPException(status_code=500, detail=_gemini_fail(err))
     return {"data": _credit_clean(data)}
 
 
@@ -3986,12 +4006,14 @@ async def extract_income_doc(
                     )
                     if resp.status_code in (503, 429):
                         last_err = resp.text
+                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
                         if attempt == 0:
                             await asyncio.sleep(0.8)
                             continue
                         break
                     if resp.status_code != 200:
                         last_err = resp.text
+                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
                         break
                     try:
                         candidate_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
@@ -4013,7 +4035,8 @@ async def extract_income_doc(
         data, last_error = await call_gemini(client)
 
     if data is None:
-        raise HTTPException(status_code=500, detail=f"AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요. ({last_error[:150] if last_error else ''})")
+        print(f"[gemini] 실패: {str(last_error)[:300]}")
+        raise HTTPException(status_code=500, detail=_gemini_fail(last_error))
 
     data = _income_doc_post(data)
     return {"data": data}
