@@ -383,6 +383,7 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
         "business_number": user.business_number,
         "subscribed": user_has_subscription_access(db, user),
         "tier": user_plan_tier(db, user),
+        "basic_biz": _basic_biz_of(db, user),
     }
 
 # 내 크레딧 조회
@@ -390,7 +391,7 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
 def me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     tier = user_plan_tier(db, user)
     _maybe_run_alerts()
-    return {"email": user.email, "credits": user.credits, "subscribed": bool(tier), "tier": tier}
+    return {"email": user.email, "credits": user.credits, "subscribed": bool(tier), "tier": tier, "basic_biz": _basic_biz_of(db, user)}
 
 # 비밀번호 재확인 후 상세 정보 조회
 class PasswordVerify(BaseModel):
@@ -6026,6 +6027,12 @@ def _basic_bind_check(db: Session, user, business_number):
         db.commit()
     elif team.basic_biz != biz:
         raise HTTPException(status_code=403, detail=f"Basic 요금제는 등록된 사업자({_biz_fmt(team.basic_biz)})만 분석할 수 있어요. 여러 업체를 분석하시려면 Pro 요금제를 이용해 주세요.")
+
+
+def _basic_biz_of(db: Session, user) -> str:
+    """Basic 요금제에 고정된 사업자번호 (000-00-00000, 없으면 "")"""
+    team, _m = get_membership(db, user)
+    return _biz_fmt(team.basic_biz or "") if team and team.basic_biz else ""
 
 
 def _ht_mask_basic(L):

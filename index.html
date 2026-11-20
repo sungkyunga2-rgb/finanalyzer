@@ -1871,6 +1871,7 @@ let userRepName = localStorage.getItem("fa_rep") || "";
 let userBizNumber = localStorage.getItem("fa_biz") || "";
 let uploadedImages = []; // {data, mime, name, isPdf} — 최대 10장
 let selectedPkg = null;
+let userBasicBiz = "";     // Basic 요금제에 고정된 사업자번호 ("" = 아직 없음)
 let userTier = "";          // "pro" / "basic" / "" — 서버가 알려줌 (화면 안내용, 실제 가림은 서버가 함)
 let userHasSub = false;   // 구독(팀 요금제)이 유효한지 — 서버가 로그인·/me 응답으로 알려줌
 
@@ -2169,7 +2170,7 @@ async function doLogin() {
   try {
     const d = await api("POST", "/auth/login", { email, password: pw });
     try { localStorage.setItem("fa_last_email", email); } catch (e) {}
-    token = d.token; userEmail = d.email; userCredits = d.credits; userHasSub = !!d.subscribed; userTier = d.tier || "";
+    token = d.token; userEmail = d.email; userCredits = d.credits; userHasSub = !!d.subscribed; userTier = d.tier || ""; userBasicBiz = d.basic_biz || "";
     userCompanyName = d.company_name || "";
     userRepName = d.rep_name || "";
     userBizNumber = d.business_number || "";
@@ -2232,7 +2233,7 @@ async function doFindPw() {
 }
 
 function doLogout() {
-  token = userEmail = null; userCredits = 0; userHasSub = false; userTier = ""; userCompanyName = ""; userRepName = ""; userBizNumber = "";
+  token = userEmail = null; userCredits = 0; userHasSub = false; userTier = ""; userBasicBiz = ""; userCompanyName = ""; userRepName = ""; userBizNumber = "";
   localStorage.removeItem("fa_token");
   localStorage.removeItem("fa_email");
   localStorage.removeItem("fa_credits");
@@ -5192,6 +5193,13 @@ async function doHometaxAnalyze() {
     return;
   }
 
+  // Basic — 처음 분석하는 사업자로 고정되므로 한 번 확인
+  if (userTier === "basic") {
+    const biz = String(input.business_number || "").replace(/\D/g, "");
+    if (biz.length !== 10) { alertError("Basic 요금제는 사업자등록번호를 입력해야 분석할 수 있어요."); return; }
+    const fmt = `${biz.slice(0, 3)}-${biz.slice(3, 5)}-${biz.slice(5)}`;
+    if (!userBasicBiz && !confirm(`Basic 요금제는 처음 분석한 사업자 1곳만 계속 분석할 수 있어요.\n\n분석하려는 사업자번호 ${fmt} 가 맞습니까?\n(확인을 누르면 이 사업자로 등록돼요. 이후 변경은 문의하기로 요청해 주세요)`)) return;
+  }
   const btn = document.getElementById("ht-analyze-btn");
   btn.disabled = true; btn.textContent = "분석 중...";
   let dr;
@@ -5199,6 +5207,7 @@ async function doHometaxAnalyze() {
     dr = await api("POST", "/hometax/limit", { input, consume: true });   // 이용 확인 + 예상 한도(서버 계산)
     input.__full = dr.full !== false;
     input.__okOrgs = dr.ok_orgs || 0;
+    if (dr.tier === "basic" && !userBasicBiz) { const b = String(input.business_number || "").replace(/\D/g, ""); userBasicBiz = `${b.slice(0, 3)}-${b.slice(3, 5)}-${b.slice(5)}`; }
     userCredits = dr.remaining_credits;
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
@@ -7416,7 +7425,7 @@ async function refreshMe() {
   try {
     const d = await api("GET", "/me");
     userCredits = d.credits;
-    userHasSub = !!d.subscribed; userTier = d.tier || "";
+    userHasSub = !!d.subscribed; userTier = d.tier || ""; userBasicBiz = d.basic_biz || "";
     localStorage.setItem("fa_credits", userCredits);
     updateCreditBadges();
   } catch (e) { /* 토큰 만료 등은 무시 — 다음 동작에서 로그인 안내 */ }
@@ -7429,7 +7438,7 @@ async function loadSubscription() {
   try {
     const d = await api("GET", "/subscription/me");
     subState = d;
-    userHasSub = !!d.access; userTier = d.tier || "";
+    userHasSub = !!d.access; userTier = d.tier || ""; userBasicBiz = d.basic_biz || "";
     updateCreditBadges();
     renderSubscription(d);
   } catch (e) {
