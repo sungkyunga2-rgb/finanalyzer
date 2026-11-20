@@ -349,6 +349,14 @@
   .plan-feats { margin:8px 0 0; padding-left:17px; font-size:12.5px; color:var(--text2); line-height:1.7; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
   .plan-feats li.hi { color:#185FA5; font-weight:700; }
+  .sub-upgrade { margin-top:1rem; border-radius:14px; padding:14px 16px; color:#fff; background:linear-gradient(160deg, #123f7a 0%, #185FA5 100%); }
+  .sub-upgrade .plan-feats { color:rgba(255,255,255,.85); }
+  .sub-upgrade .plan-feats li.hi { color:#FFD166; }
+  .sub-upgrade .plan-hot { background:#FFD166; color:#123f7a; }
+  .sub-upgrade .plan-cycle { background:rgba(255,255,255,.15); border-color:rgba(255,255,255,.25); }
+  .sub-upgrade .plan-cycle > span { color:rgba(255,255,255,.8); }
+  .sub-upgrade .plan-cycle > span.on { background:#fff; color:#123f7a; }
+  .sub-upgrade .btn-primary { background:#FFD166; color:#123f7a; border-color:#FFD166; }
   /* Pro(인기) 카드 — 배경색으로 구분, 차별 기능은 강조색 */
   .plan-card.featured { background:linear-gradient(160deg, #123f7a 0%, #185FA5 100%); border-color:#185FA5; color:#fff; }
   .plan-card.featured:hover { border-color:#5fa3e8; }
@@ -1594,6 +1602,16 @@
         <div class="diag-item"><div><div class="di-label">사용자 수</div></div><span id="sub-cur-seats" style="font-size:14px;font-weight:500;"></span></div>
       </div>
       <div id="sub-cur-msg" class="error-msg" style="display:none;"></div>
+      <div id="sub-upgrade-box" class="sub-upgrade hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div style="font-size:15px;font-weight:700;">Pro로 업그레이드 <span class="plan-hot">✦ 인기</span></div>
+          <div class="plan-cycle" id="upg-cycle"></div>
+        </div>
+        <ul class="plan-feats" style="margin-top:8px;"><li class="hi">업체 수 제한 없이 분석</li><li class="hi">신청 가능 기관 + 자금 명칭 + 기관별 한도</li></ul>
+        <div id="upg-quote" style="margin-top:10px;font-size:13px;line-height:1.7;"></div>
+        <button class="btn btn-primary btn-full" id="upg-btn" style="margin-top:10px;" onclick="upgradeToPro()">Pro로 전환하기</button>
+        <p style="font-size:11.5px;color:rgba(255,255,255,.7);margin-top:8px;line-height:1.6;">등록된 카드로 바로 결제돼요. Basic 남은 기간 금액은 빼고 결제하며, 이용기간은 오늘부터 새로 시작해요.</p>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:1rem;">
         <button class="btn btn-primary" onclick="goTeam()">팀 관리 (팀원 초대)</button>
         <button class="btn hidden" id="sub-cancel-btn" onclick="cancelSubscription()">구독 해지</button>
@@ -1675,7 +1693,7 @@
       ② 표시된 금액은 부가가치세를 포함한 금액이며, 월간 구독은 매월, 연간 구독은 매년 같은 금액이 결제됩니다. Basic의 분석 대상 사업자 변경은 [문의하기]로 요청할 수 있습니다.<br/>
       ③ 할인가는 회사의 정책에 따라 변경될 수 있으며, 변경하는 경우 제3조 ④에 따라 사전에 안내합니다.<br/>
       ④ 사용자 수에는 요금제를 결제한 대표 계정이 포함되며, 팀 초대는 초대받은 회원이 수락하여 팀에 합류한 시점에 사용자 수에 포함됩니다. 요금제의 사용자 수를 초과하여 합류할 수 없습니다.<br/>
-      ⑤ 요금제 변경이 필요한 경우 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.<br/>
+      ⑤ Basic 구독 중에는 [구독] 화면에서 Pro로 바로 전환할 수 있습니다. 전환하면 등록된 카드로 Pro 첫 이용기간 요금에서 Basic의 남은 이용기간에 해당하는 금액(일할 계산)을 뺀 금액이 즉시 결제되고, 이용기간은 전환한 날부터 새로 시작됩니다. 그 밖의 요금제 변경은 [문의하기]로 요청하거나, 기존 구독을 해지한 뒤 새 요금제로 다시 가입할 수 있습니다.<br/>
       ⑥ 구독하지 않은 회원도 매월 30회까지 무료로 분석할 수 있으며, 이 경우 분석 결과의 일부(기업 정보·종합 요약 등)만 제공되고 예상 한도·신청 가능 기관 등 나머지 결과는 구독 후 확인할 수 있습니다.</p>
       <br/>
       <p><strong>제3조 (결제 및 자동결제)</strong><br/>
@@ -7587,6 +7605,12 @@ function renderSubscription(d) {
     document.getElementById("sub-admin-text").textContent =
       `${d.admin_plan_label} 이용 중입니다${d.admin_plan_expires_on ? " (" + d.admin_plan_expires_on + "까지)" : ""}. 결제·요금제 변경은 문의하기로 알려주세요.`;
     document.getElementById("sub-admin-card").classList.remove("hidden");
+    if (d.tier === "basic") {           // 관리자가 지정한 Basic → Pro 결제로 전환
+      const pro = (d.plans || []).filter(p => p.tier === "pro");
+      selectedPlan = pro.length ? pro[0].id : null;
+      renderPlanCards(pro);
+      document.getElementById("sub-buy-wrap").classList.remove("hidden");
+    }
   } else {
     renderPlanCards(d.plans);
     document.getElementById("sub-buy-wrap").classList.remove("hidden");
@@ -7594,7 +7618,44 @@ function renderSubscription(d) {
 
 }
 
+// ── Basic → Pro 전환 ──
+let upgCycle = "month", upgQuote = null;
+async function renderUpgradeBox(sub) {
+  const box = document.getElementById("sub-upgrade-box");
+  const show = sub && sub.plan === "basic" && sub.status !== "past_due";
+  box.classList.toggle("hidden", !show);
+  if (!show) return;
+  const sw = document.getElementById("upg-cycle");
+  sw.onclick = () => { upgCycle = upgCycle === "year" ? "month" : "year"; renderUpgradeBox(sub); };
+  sw.innerHTML = `<span class="${upgCycle === "month" ? "on" : ""}">월간</span><span class="${upgCycle === "year" ? "on" : ""}">연간</span>`;
+  const q = document.getElementById("upg-quote"), btn = document.getElementById("upg-btn");
+  q.textContent = "결제금액 계산 중..."; btn.disabled = true; upgQuote = null;
+  try {
+    upgQuote = await api("GET", "/subscription/upgrade-quote?cycle=" + upgCycle);
+    const u = upgQuote;
+    q.innerHTML = `Pro ${u.cycle === "year" ? "연" : "월"} ${won(u.amount)}${u.credit ? ` − Basic 남은 기간 ${won(u.credit)}` : ""}<br>
+      <b style="font-size:17px;color:#FFD166;">오늘 ${won(u.charge)} 결제</b><br>
+      <span style="color:rgba(255,255,255,.75);">다음 결제: ${histDate(u.next_end)} · ${u.cycle === "year" ? "연" : "월"} ${won(u.amount)}</span>`;
+    btn.disabled = false;
+    btn.textContent = `Pro로 전환하기 · ${won(u.charge)} 결제`;
+  } catch (e) { q.textContent = e.message; }
+}
+async function upgradeToPro() {
+  const u = upgQuote;
+  if (!u) return;
+  if (!confirm(`Pro(${u.cycle === "year" ? "연간" : "월간"})로 전환할까요?\n\n등록된 카드로 지금 ${won(u.charge)}이 결제되고, 이용기간은 오늘부터 새로 시작해요.\n다음 결제부터는 ${u.cycle === "year" ? "매년" : "매월"} ${won(u.amount)}이 결제돼요.`)) return;
+  const btn = document.getElementById("upg-btn");
+  btn.disabled = true; btn.textContent = "결제 중... 창을 닫지 마세요";
+  try {
+    await api("POST", "/subscription/upgrade", { cycle: u.cycle, charge: u.charge });
+    userTier = "pro"; updateCreditBadges();
+    toast("Pro로 전환되었어요 🎉 이제 여러 업체를 분석하고 기관별 한도와 자금을 볼 수 있어요.");
+    loadSubscription();
+  } catch (e) { alertError(e.message); renderUpgradeBox({ plan: "basic", status: "active" }); }
+}
+
 function renderCurrentSubscription(sub) {
+  renderUpgradeBox(sub);
   document.getElementById("sub-cur-name").textContent = sub.plan_label;
   document.getElementById("sub-cur-amount").textContent = (sub.cycle === "year" ? "연 " : "월 ") + won(sub.amount);
   document.getElementById("sub-cur-amount-label").textContent = sub.cycle === "year" ? "연 결제금액 (연간 구독)" : "월 결제금액";

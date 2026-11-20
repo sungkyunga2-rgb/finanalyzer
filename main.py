@@ -6283,6 +6283,97 @@ def subscription_start(body: SubscriptionStartBody, user: models.User = Depends(
     db.refresh(sub)
     return {"message": "구독이 시작되었습니다.", "subscription": _sub_view(sub)}
 
+UPGRADE_TO = "fina_pro"
+
+
+def _upgrade_quote(sub, cycle: str, now: datetime) -> dict:
+    """Basic → Pro 전환 금액 — Pro 첫 결제금액에서 Basic 남은 기간 금액(일할)을 빼고 바로 결제, 이용기간은 오늘부터 새로 시작"""
+    plan = SUBSCRIPTION_PLANS[UPGRADE_TO]
+    cycle = "year" if (cycle == "year" and plan.get("year_month")) else "month"
+    new_amount = sub_cycle_amount(plan, cycle)
+    credit = 0
+    if sub.period_start and sub.period_end and sub.period_end > now:
+        total = max(1.0, (sub.period_end - sub.period_start).total_seconds())
+        left = (sub.period_end - now).total_seconds()
+        credit = int(_math.floor((sub.amount or 0) * left / total / 10) * 10)
+    charge = max(0, new_amount - credit)
+    return {"plan": UPGRADE_TO, "plan_label": plan["label"], "cycle": cycle, "amount": new_amount, "credit": credit, "charge": charge,
+            "next_end": sub_add_period(now, now.day, cycle).isoformat()}
+
+
+def _upgrade_target(db: Session, user):
+    sub = db.query(models.Subscription).filter(models.Subscription.user_id == user.id).first()
+    if not sub or sub.status not in SUB_LIVE_STATUSES:
+        raise HTTPException(status_code=400, detail="이용 중인 구독이 없어요.")
+    if SUBSCRIPTION_PLANS.get(sub.plan, {}).get("tier") != "basic":
+        raise HTTPException(status_code=400, detail="이미 Pro 요금제를 이용 중이에요.")
+    if sub.status == "past_due":
+        raise HTTPException(status_code=400, detail="이번 결제가 아직 처리되지 않았어요. 카드 결제 문제를 해결한 뒤 전환해 주세요.")
+    return sub
+
+
+@app.get("/subscription/upgrade-quote")
+def subscription_upgrade_quote(cycle: str = "month", user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    sub = _upgrade_target(db, user)
+    return _upgrade_quote(sub, cycle, datetime.utcnow())
+
+
+class SubscriptionUpgradeBody(BaseModel):
+    cycle: str = "month"
+    charge: int | None = None     # 화면에 보여준 결제금액 — 그사이 바뀌었으면 다시 확인 받음
+
+
+@app.post("/subscription/upgrade")
+def subscription_upgrade(body: SubscriptionUpgradeBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Basic → Pro 바로 전환 — 등록된 카드로 차액 결제, 이용기간은 오늘부터 새로 시작, 다음 결제부터 Pro 금액"""
+    sub = _upgrade_target(db, user)
+    if user.id in _SUB_BUSY:
+        raise HTTPException(status_code=409, detail="처리 중입니다. 잠시 후 다시 확인해주세요.")
+    now = datetime.utcnow()
+    q = _upgrade_quote(sub, body.cycle, now)
+    if body.charge is not None and abs(int(body.charge) - q["charge"]) > 100:
+        raise HTTPException(status_code=409, detail=f"결제금액이 바뀌었어요({q['charge']:,}원). 화면을 새로고침해서 다시 확인해 주세요.")
+    plan = SUBSCRIPTION_PLANS[UPGRADE_TO]
+    _SUB_BUSY.add(user.id)
+    try:
+        pid = ""
+        info = {}
+        if q["charge"] > 0:
+            pid = _new_sub_payment_id()
+            ok, info = _sub_charge(sub.billing_key, pid, UPGRADE_TO, q["charge"], user, q["cycle"])
+            if not ok:
+                raise HTTPException(status_code=400, detail=f"결제에 실패했습니다: {info}")
+        try:
+            _sub_revoke_schedules(sub)                        # 예약돼 있던 Basic 다음 결제 취소
+            sub.plan = UPGRADE_TO
+            sub.cycle = q["cycle"]
+            sub.amount = q["amount"]
+            sub.status = "active"
+            sub.anchor_day = now.day
+            sub.period_start = now
+            sub.period_end = sub_add_period(now, now.day, q["cycle"])
+            sub.cancel_requested_at = None
+            sub.fail_count = 0
+            sub.last_failed_at = None
+            sub.next_payment_id = ""
+            if pid:
+                sub.last_payment_id = pid
+                _sub_record_payment(db, user.id, pid, q["charge"], UPGRADE_TO, (info or {}).get("pgTxId", ""))
+            db.commit()
+            sub.next_payment_id = _sub_schedule(sub, user, sub.period_end)
+            db.commit()
+            set_team_plan(db, user, UPGRADE_TO)
+        except Exception as e:
+            db.rollback()
+            notify_admin(f"[피나] Pro 전환 결제는 되었으나 기록 실패 — {user.email}", f"결제번호 {pid}, 금액 {q['charge']}원. 오류: {e}\n포트원 콘솔 확인 후 수동 처리가 필요합니다.")
+            raise HTTPException(status_code=500, detail=f"결제는 완료되었으나 처리 중 오류가 발생했습니다. 결제번호 {pid} 로 문의해주세요.")
+    finally:
+        _SUB_BUSY.discard(user.id)
+    notify_admin(f"[피나] Basic → Pro 전환 — {user.email}", f"{user.email} 님이 Pro({'연간' if q['cycle'] == 'year' else '월간'})로 전환했습니다. 결제 {q['charge']:,}원 (Basic 남은 기간 {q['credit']:,}원 차감) / 결제번호 {pid or '-'}")
+    db.refresh(sub)
+    return {"message": "Pro로 전환되었습니다.", "subscription": _sub_view(sub), "quote": q}
+
+
 @app.post("/subscription/cancel")
 def subscription_cancel(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     sub = db.query(models.Subscription).filter(models.Subscription.user_id == user.id).first()
