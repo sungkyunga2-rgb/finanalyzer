@@ -719,8 +719,24 @@ async def extract_financial(
 ):
     return await _analyze_financial(body, user, db, consume=False)
 
+def _fin_borrow_check(data):
+    """단기차입금이 유동부채 합계와 똑같으면 빈 칸을 합계로 잘못 읽은 것 → 비움 (유동부채가 전부 차입금인 경우는 매우 드묾)"""
+    def n(v):
+        try:
+            return float(str(v).replace(",", "")) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+    sb, cl = n(data.get("short_borrowings")), n(data.get("current_liabilities"))
+    if sb is not None and cl and abs(sb - cl) < 1:
+        data["short_borrowings"] = None
+    lb, tl = n(data.get("long_borrowings")), n(data.get("current_liabilities"))
+    if lb is not None and tl and abs(lb - tl) < 1 and lb != n(data.get("noncurrent_liabilities")):   # 장기차입금 칸에 유동부채 합계
+        data["long_borrowings"] = None
+
+
 def _fin_biz_info(data, today=None):
     """재무제표에서 읽은 업체 정보 → 원클릭 입력값 (지역·업태/종목 2개까지·대표자 만 나이). 생년월일 원문은 돌려주지 않는다"""
+    _fin_borrow_check(data)
     def clean(v):
         v = ("" if v is None else str(v)).strip().strip('"').strip()
         return "" if v.lower() in ("", "null", "none", "n/a", "-", "없음", "미상", "불명") else v
@@ -777,6 +793,7 @@ async def _analyze_financial(body, user, db, consume: bool):
 - 부채및자본총계(Ⅰ+Ⅱ+Ⅲ+Ⅳ) → 유동자산+비유동자산(자산총계)과 반드시 일치해야 함
 - 유동자산(Ⅰ) → current_assets, 비유동자산(Ⅱ) → noncurrent_assets
 - 유동부채 하위 "단기차입금"(있으면 "유동성장기부채"도 더함) → short_borrowings, 비유동부채 하위 "장기차입금" → long_borrowings (세부 항목 "기타장기차입금" 등이 같이 있으면 상위 합계 행 하나만. 없으면 null)
+  ※ "단기차입금" 행의 금액 칸이 비어 있으면 short_borrowings는 null입니다. 바로 위 "Ⅰ.유동부채" 합계 금액을 단기차입금으로 옮기면 안 됩니다. (장기차입금도 같은 규칙)
 
 [표준손익계산서]
 - Ⅰ.매출액 → revenue
@@ -1135,13 +1152,14 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
     tags = f"{_ht_s(inp.get('company_name'))} {_ht_s(inp.get('certs'))} {_ht_s(inp.get('innov_note'))}"
     exporter = (_ht_num(inp.get("export_amount")) or 0) > 0 or bool(_ht_s(inp.get("export")).strip())
     innov_cap = 0
-    if exporter or grow2 or used.get("sojin", 0) > 0 or _ht_semas_grad(inp, ys, sales) or _re.search(r"스마트공장|강한\s*소상공인|로컬\s*크리에이터", tags):
+    grad = _ht_semas_grad(inp, ys, sales)
+    if exporter or grow2 or used.get("sojin", 0) > 0 or grad or _re.search(r"스마트공장|강한\s*소상공인|로컬\s*크리에이터", tags):
         innov_cap = 200000000
     elif inp.get("smart_tech") or _re.search(r"협동조합|사회적\s*(예비)?\s*기업|마을기업|자활기업|백년(가게|소공인|소상공인)|창업사관학교", tags):
         innov_cap = 100000000
     if innov_cap:
         make("sojin_innov", "소상공인시장진흥공단 (혁신성장촉진자금)", innov_cap,
-             f"혁신성장촉진자금({'혁신형' if innov_cap >= 200000000 else '일반형'})")
+             f"혁신성장촉진자금({'혁신형' + (' · 졸업후보기업' if grad else '') if innov_cap >= 200000000 else '일반형'})")
 
 
 def _ht_jaedan_recent(inp, loans, today):
@@ -3799,7 +3817,7 @@ async def extract_income_doc(
 
 [사업자등록증] (금액 정보는 없음 — revenue·income_amount는 null)
 - 제목 옆 괄호에 "(법인사업자)", "(일반과세자)", "(간이과세자)", "(면세사업자)" 등이 있습니다. 법인사업자면 biz_kind="법인", 그 외 개인이면 "개인".
-- "개업연월일"(예: 2019 년 05 월 10 일) → open_date를 "YYYY-MM-DD"로.
+- "개업연월일"(예: 2019 년 05 월 10 일) → open_date를 "YYYY-MM-DD"로. 같은 줄 오른쪽 등에 있는 대표자 "생년월일"은 개업연월일이 아닙니다 — 생년월일은 rep_birth("YYYY-MM-DD")에 따로 적으세요(확인용).
 - "사업장 소재지" 주소 전체 → address (본점 소재지가 따로 있어도 사업장 소재지 우선).
 - "사업의 종류" 아래 "업태"와 "종목" → business_type, business_item. 여러 개면 쉼표(,)로 구분해 문서 순서대로 모두 적으세요 (업태와 종목은 같은 순서로 짝을 맞춤).
 - 법인은 "법인명(단체명)"이 상호, "대표자"가 대표자명입니다. 개인은 "상호"와 "성명"입니다.
@@ -3807,7 +3825,7 @@ async def extract_income_doc(
 부가세·소득금액 서류에는 개업일·주소·업태가 없으면 null로 두세요. 대출·부채·자산 정보는 추출 대상이 아닙니다.
 
 아래 JSON 형식으로만 응답하세요. 문서에서 찾을 수 없는 항목은 null:
-{"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "면세사업자수입금액증명" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"periods":[{"start":"YYYY-MM","end":"YYYY-MM","amount":숫자}] 또는 null,"income_amount":숫자또는null,"open_date":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
+{"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "면세사업자수입금액증명" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"periods":[{"start":"YYYY-MM","end":"YYYY-MM","amount":숫자}] 또는 null,"income_amount":숫자또는null,"open_date":문자열또는null,"rep_birth":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
 
     GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.7-flash"]
 
@@ -3870,6 +3888,10 @@ async def extract_income_doc(
                 data[key] = _clean_text(data[key])
         # 사업자등록증 → 원클릭 입력값 (창업년월·소재지·업태/종목 2개까지·개인/법인)
         od = re.sub(r"\D", "", data.get("open_date") or "")
+        rb = re.sub(r"\D", "", str(data.pop("rep_birth", "") or ""))          # 생년월일은 확인에만 쓰고 돌려주지 않음
+        if len(od) >= 6 and rb and (od[:6] == rb[:6] or (len(rb) >= 4 and int(od[:4]) < int(rb[:4]) + 15)):
+            od = ""                                                        # 생년월일을 개업일로 잘못 읽음
+            data["open_date"] = None
         if len(od) >= 6 and od[:2] in ("19", "20"):
             data["founded"] = f"{od[:4]}-{od[4:6]}"
         if data.get("address"):
