@@ -1011,6 +1011,53 @@ def _ht_loan_ym(v):
     return (y, mo) if 1 <= mo <= 12 and 2000 <= y <= 2100 else None
 
 
+# 2026 소진공 [붙임2] 주된 업종별 소기업 규모 기준(평균매출액, 원). 위에서부터 먼저 맞는 것
+_HT_SMALL_MFG = [
+    (14_000_000_000, r"석유|코크스|연탄|1차\s*금속|제철|제강|주물|주조|식료품|식품|음료|의복|의류|봉제|모피|가죽|가방|신발|화학|의약품|비금속|시멘트|유리|레미콘|콘크리트|도자기"),
+    (12_000_000_000, r"금속|전자|컴퓨터|영상|음향|통신|반도체|전기|기계|장비|자동차|트레일러|가구"),
+    (8_000_000_000, r"."),          # 담배·섬유·목재·종이·인쇄·고무·플라스틱·정밀·기타 제품 제조업
+]
+_HT_SMALL_OTHER = [
+    (8_000_000_000, r"인쇄"),
+    (1_500_000_000, r"(기계|장비)\s*수리"),
+    (8_000_000_000, r"건설|공사"),
+    (12_000_000_000, r"전기\s*(공급|발전)|발전업|가스\s*공급|증기|수도업|운수|운송|창고|물류|화물|택배"),
+    (10_000_000_000, r"금융|보험|농업|임업|어업|축산|양식|광업"),
+    (6_000_000_000, r"도매|소매|도소매|유통|판매"),
+    (5_000_000_000, r"정보통신|소프트웨어|프로그램|정보\s*서비스|IT|출판|방송|통신|영화|음반|영상\s*제작"),
+    (4_000_000_000, r"하수|폐기물|재생|재활용|부동산"),
+    (1_500_000_000, r"숙박|음식|식당|카페|커피|주점|한식|중식|일식|분식|치킨|제과|베이커리|교육|학원|보건|의원|병원|사회복지|요양|미용|세탁|이용원|네일|피부|수리|개인\s*서비스"),
+    (3_000_000_000, r"전문|과학|기술\s*서비스|연구|엔지니어링|디자인|광고|컨설팅|경영|법무|회계|세무|설계|사업\s*(시설|지원)|임대|인력|경비|청소|여행|예술|스포츠|여가|오락|공연"),
+]
+
+
+def _ht_small_sales_cap(inp):
+    """주된 업종(첫 번째 업태·종목, 안 맞으면 두 번째)의 소기업 평균매출액 기준. 모르면 None"""
+    for a, b in (("industry", "item"), ("industry2", "item2")):
+        t = f"{_ht_s(inp.get(a))} {_ht_s(inp.get(b))}".strip()
+        if not t:
+            continue
+        table = _HT_SMALL_MFG if "제조" in t else _HT_SMALL_OTHER
+        for cap, pat in table:
+            if _re.search(pat, t):
+                return cap
+    return None
+
+
+def _ht_semas_grad(inp, ys, sales=None):
+    """소상공인 졸업후보기업 — 평균매출액이 소기업 기준의 30% 이상 + 상시근로자가 소상공인 상한보다 1~2명 적음"""
+    emp = _ht_num(inp.get("employees"))
+    if emp is None:
+        return False
+    lim = 10 if _re.search(r"제조|건설|운수|광업", _ht_ind_text(inp)) else 5
+    if not (lim - 2 <= emp < lim):
+        return False
+    cap = _ht_small_sales_cap(inp)
+    vals = [_ht_num(y["vat"]) for y in ys[-3:]]
+    avg = sum(vals) / len(vals) if vals else sales
+    return bool(cap and avg is not None and cap * 0.3 <= avg <= cap)
+
+
 def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u):
     """소진공 일시적경영애로자금(최대 7천만)·재도전특별자금(일반 7천만/희망 1억/도약 2억) — 2026 소진공 신청 안내 기준.
     따로 줄을 만들지 않고 소진공 한 줄로 묶음 (신용취약자금 등으로 소진공 줄이 작게 잡혔을 때 이 자금 요건에 맞으면 그 금액까지)"""
@@ -1060,13 +1107,13 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
     if cap:
         make("sojin_retry", "소상공인시장진흥공단 (재도전특별자금)", cap)
     # 혁신성장촉진자금(운전): 일반형 1억 — 스마트기술·사회연대경제(협동조합·사회적기업)·백년소상공인·신사업창업사관학교
-    #                       혁신형 2억 — 수출·2년 연속 매출 10%↑(첫해 5천만 이상)·스마트공장·강한소상공인/로컬크리에이터·소진공 직접대출 성실상환
+    #                       혁신형 2억 — 수출·2년 연속 매출 10%↑(첫해 5천만 이상)·스마트공장·강한소상공인/로컬크리에이터·소진공 직접대출 성실상환·졸업후보기업
     ys3 = [_ht_num(y["vat"]) for y in ys[-3:]]
     grow2 = len(ys3) == 3 and ys3[0] >= 50000000 and ys3[1] >= ys3[0] * 1.1 and ys3[2] >= ys3[1] * 1.1
     tags = f"{_ht_s(inp.get('company_name'))} {_ht_s(inp.get('certs'))} {_ht_s(inp.get('innov_note'))}"
     exporter = (_ht_num(inp.get("export_amount")) or 0) > 0 or bool(_ht_s(inp.get("export")).strip())
     innov_cap = 0
-    if exporter or grow2 or used.get("sojin", 0) > 0 or _re.search(r"스마트공장|강한\s*소상공인|로컬\s*크리에이터", tags):
+    if exporter or grow2 or used.get("sojin", 0) > 0 or _ht_semas_grad(inp, ys, sales) or _re.search(r"스마트공장|강한\s*소상공인|로컬\s*크리에이터", tags):
         innov_cap = 200000000
     elif inp.get("smart_tech") or _re.search(r"협동조합|사회적\s*(예비)?\s*기업|마을기업|자활기업|백년(가게|소공인|소상공인)|창업사관학교", tags):
         innov_cap = 100000000
