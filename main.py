@@ -761,6 +761,7 @@ async def _analyze_financial(body, user, db, consume: bool):
 - 자본총계(Ⅲ+Ⅳ) → total_equity ※ "자본금 + 당기순이익"과 반드시 일치해야 함. 절대 다른 항목(예: 영업외수익 등)을 여기 넣지 말 것
 - 부채및자본총계(Ⅰ+Ⅱ+Ⅲ+Ⅳ) → 유동자산+비유동자산(자산총계)과 반드시 일치해야 함
 - 유동자산(Ⅰ) → current_assets, 비유동자산(Ⅱ) → noncurrent_assets
+- 유동부채 하위 "단기차입금"(있으면 "유동성장기부채"도 더함) → short_borrowings, 비유동부채 하위 "장기차입금" → long_borrowings (세부 항목 "기타장기차입금" 등이 같이 있으면 상위 합계 행 하나만. 없으면 null)
 
 [표준손익계산서]
 - Ⅰ.매출액 → revenue
@@ -781,7 +782,7 @@ async def _analyze_financial(body, user, db, consume: bool):
 추출 항목: company_name(회사명, 문자열), rep_name(대표자명, 문자열), business_number(사업자등록번호, 문자열, 000-00-00000 형식), address(사업장 소재지), business_type(업태), business_item(종목), birth_date(대표자 생년월일 YYYY-MM-DD),
 revenue(매출액), current_assets(유동자산), noncurrent_assets(비유동자산), current_liabilities(유동부채),
 noncurrent_liabilities(비유동부채), capital_stock(자본금), total_equity(자본총계),
-operating_income(영업이익), interest_expense(이자비용), net_income(당기순이익)
+operating_income(영업이익), interest_expense(이자비용), net_income(당기순이익), short_borrowings(단기차입금), long_borrowings(장기차입금)
 
 대표자명과 사업자등록번호는 재무제표 표지, 법인/개인 정보란, 사업자등록증 첨부 등에서 찾을 수 있습니다. 문서에 없으면 null로 두세요.
 
@@ -793,7 +794,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 아래 JSON 형식으로만 응답하세요. 없는 항목은 null:
 {"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"birth_date":문자열또는null,"revenue":숫자또는null,"current_assets":숫자또는null,"noncurrent_assets":숫자또는null,"current_liabilities":숫자또는null,
 "noncurrent_liabilities":숫자또는null,"capital_stock":숫자또는null,"total_equity":숫자또는null,
-"operating_income":숫자또는null,"interest_expense":숫자또는null,"net_income":숫자또는null,
+"operating_income":숫자또는null,"interest_expense":숫자또는null,"net_income":숫자또는null,"short_borrowings":숫자또는null,"long_borrowings":숫자또는null,
 "comment":"인식 관련 메모 1~2문장. 자체 검증에서 불일치가 있었다면 반드시 언급"}"""
 
     # 다중 이미지(최대 10장) 지원. images가 있으면 우선 사용, 없으면 단일 image_base64로 하위호환 처리
@@ -961,6 +962,8 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
+#  · 재무제표 차입금이 있으면 기관 미상 기대출 대신 '단기차입금 전액 + 장기차입금(담보로 봄) 30%'를 차감
+#    (최근 1년 고용 유지·증가면 장기 25%). 정책기관 기대출은 그 기관에서 전액 차감하고, 차입금 차감분에서는 그만큼 뺌
 #  · 대출 후 부채비율 상한: 신보·기보 550%, 소진공 700%·중진공 업종별(업력 7년 이상만) → 기관 한도 ≤ 자본×기준 − 현재 부채
 #  · 완전자본잠식: 소진공(업력 7년 이상)·재단 불가, 중진공은 업력 5년 초과 + 당기 적자(모르면 적자로 봄)면 불가, 신보·기보 불가
 #  · 신용점수(NICE, 없으면 KCB) 700 미만이면 한도는 줄이고(신용 조정), 종합 평가에 '금융거래가 어려울 수 있음' 안내
@@ -983,7 +986,23 @@ HT_LIMIT_RULE = {
     "weakMax": 30000000, "weakScore": 839, "unit": 1000000,
     "totalMax": 1000000000,
     "jungjinMax": 500000000, "jungjinExportMax": 1000000000,
+    "collateralRate": 0.30, "collateralRateEmp": 0.25,      # 장기차입금(담보로 봄)은 30%만 차감 (최근 1년 고용 유지·증가면 25%)
 }
+
+
+def _ht_loan_amt(l, inp=None):
+    return _ht_num(l.get("amount")) or 0
+
+
+def _ht_fin_borrow(inp):
+    """재무제표 차입금 → 한도에서 뺄 금액 (단기 100% + 장기 30%/25%). 차입금 칸이 둘 다 비어 있으면 None"""
+    fin = inp.get("fin") or {}
+    sb, lb = _ht_num(fin.get("short_borrowings")), _ht_num(fin.get("long_borrowings"))
+    if sb is None and lb is None:
+        return None
+    emp = bool(inp.get("emp_keep")) or _ht_s(inp.get("emp_trend")) in ("up", "keep")
+    rate = HT_LIMIT_RULE["collateralRateEmp"] if emp else HT_LIMIT_RULE["collateralRate"]
+    return max(0, sb or 0) + max(0, lb or 0) * rate
 
 _HT_IND = {
     "restricted": _re.compile(r"도박|사행|슬롯|룰렛|경품|상품권|경마|경륜|경정|경주장|경주권|성인용\s*게임|성인오락|카지노|유흥주점|무도장|무도유흥|안마|룸살롱|룸싸롱|접객|나이트클럽|댄스홀|콜라텍|주거용\s*건물\s*(임대|개발|공급)|아파트\s*(임대|분양)|주택\s*(임대|분양)|비디오물\s*감상|비디오방|복권|점술|점집|역술|휴게텔|전화방"),
@@ -1144,14 +1163,17 @@ def _fund_round(v):
     return 80000000 if r == 90000000 else r
 
 
-def _ht_startup_kibo(ctx):
+def _ht_startup_kibo(ctx, inp=None):
     R = HT_LIMIT_RULE
     k_used = other = 0
     for l in ctx["loans"]:
-        k = _ht_loan_org(l.get("org")); a = _ht_num(l.get("amount")) or 0
+        k = _ht_loan_org(l.get("org")); a = _ht_loan_amt(l, inp or {})
         if a <= 0: continue
         if k == "kibo": k_used += a
         elif not k: other += a
+    fb = _ht_fin_borrow(inp or {})
+    if fb is not None:
+        other = max(0, fb - k_used)
     score = ctx["nice"] if ctx["nice"] is not None else ctx["kcb"]
     f = _ht_credit_factor("kibo", score)
     low = _fund_round(max(0, 50000000 * f - k_used - other)); high = _fund_round(max(0, 100000000 * f - k_used - other))
@@ -1215,7 +1237,7 @@ def ht_estimate_limit(inp, today=None):
             return {"available": False, "status": "none", "low": 0, "high": 0, "orgs": [], "text": "매출을 입력하면 예상 한도를 계산합니다."}
         base0 = {"available": True, "sales": 0}
         if ar == "has": return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [], "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
-        k = _ht_startup_kibo(ctx)
+        k = _ht_startup_kibo(ctx, inp)
         if ctx["eroded"]:                    # 기보는 자본잠식이면 신청 불가
             k.update(status="blocked", low=0, high=0)
             return {**base0, "status": "blocked", "low": 0, "high": 0, "orgs": [k], "text": "완전자본잠식 상태라 현재는 신청이 어렵습니다."}
@@ -1231,10 +1253,13 @@ def ht_estimate_limit(inp, today=None):
     used = {"sojin": 0, "jungjin": 0, "jaedan": 0, "kodit": 0, "kibo": 0, "miso": 0}
     other = 0
     for l in ctx["loans"]:
-        k = _ht_loan_org(l.get("org")); a = _ht_num(l.get("amount")) or 0
+        k = _ht_loan_org(l.get("org")); a = _ht_loan_amt(l, inp)
         if a <= 0: continue
         if k: used[k] += a
         else: other += a
+    fb = _ht_fin_borrow(inp)
+    if fb is not None:                       # 재무제표 차입금 기준 (정책기관 대출은 이미 차입금에 들어 있으므로 빼고)
+        other = max(0, fb - sum(v for kk, v in used.items() if kk != "miso"))
     c_score = ctx["nice"] if ctx["nice"] is not None else ctx["kcb"]
     ind = _ht_industry(ind_text)
     factors = {}
@@ -1273,7 +1298,7 @@ def ht_estimate_limit(inp, today=None):
     if kibo_ok or used["kibo"] > 0 or startup_kibo:
         kb = mk("kibo", "기술보증기금", per_std["low"], per_std["high"]) if (kibo_ok or used["kibo"] > 0) else None
         if startup_kibo:
-            sk = _ht_startup_kibo(ctx)
+            sk = _ht_startup_kibo(ctx, inp)
             if not kb or sk["high"] > kb["high"]: kb = sk
         g.append(kb)
     in_use = [o for o in g if o["used"] > 0]
@@ -1352,7 +1377,7 @@ def ht_estimate_limit(inp, today=None):
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if ar == "has": return {**base, "status": "blocked", "low": 0, "high": 0, "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
-    loan_sum = sum((_ht_num(l.get("amount")) or 0) for l in ctx["loans"])
+    loan_sum = sum(used.values()) + other
     ok_keys = [o["key"] for o in orgs if o["status"] == "ok" and o["key"] != "miso"]
     tf = max(factors.get(k, 1) or 1 for k in ok_keys) if ok_keys else 1
     # 총 예상한도 최대 10억 (기대출은 이 안에서 차감)
@@ -1482,6 +1507,32 @@ def _parse_employees(data):
             continue
         seen.add((r.get("resUserNm"), r.get("resUserIdentiyNo"), r.get("resOriginalNumber")))
     return len(seen)
+
+
+def _parse_emp_trend(data, today=None):
+    """근로자고용정보현황 → 최근 1년 고용 'up'(증가)/'keep'(유지)/'down'(감소). 고용보험 입사·퇴사일(없으면 산재) 기준"""
+    today = today or (datetime.utcnow() + timedelta(hours=9))
+    now_s = today.strftime("%Y%m%d")
+    ago_s = f"{today.year - 1}{now_s[4:]}"
+    def d8(v):
+        v = _re2.sub(r"\D", "", str(v or ""))
+        return v if len(v) == 8 else ""
+    now_n = ago_n = 0
+    seen = set()
+    for r in _codef_rows(data, ("resUserNm",)):
+        key = (r.get("resUserNm"), r.get("resUserIdentiyNo"), r.get("resOriginalNumber"), r.get("resJoinCompanyDate1"), r.get("resJoinCompanyDate"))
+        if key in seen:
+            continue
+        seen.add(key)
+        j = d8(r.get("resJoinCompanyDate1")) or d8(r.get("resJoinCompanyDate"))
+        q = d8(r.get("resResignDate1")) if d8(r.get("resJoinCompanyDate1")) else d8(r.get("resResignDate"))
+        if not j:
+            continue
+        if j <= now_s and (not q or q > now_s): now_n += 1
+        if j <= ago_s and (not q or q > ago_s): ago_n += 1
+    if now_n == 0:
+        return None
+    return "up" if now_n > ago_n else "keep" if now_n == ago_n else "down"
 
 
 def _codef_host():
@@ -1921,6 +1972,9 @@ def _ht_assemble(st, now, final):
         if n is not None:
             fill["employees"] = n
             got.append("직원 수(고용보험)")
+            tr = next((v for v in (_safe(_parse_emp_trend, d) for d in ok("employees")) if v), None)
+            if tr:
+                fill["emp_trend"] = tr
         elif final:
             fill["employees_default"] = 0      # 조회 못 함 → 칸이 비어 있으면 0명으로
             failed.append("직원 수(고용보험) — 0명으로 채움")
@@ -2557,6 +2611,9 @@ async def _hometax_collect(params, reg_data, progress=None):
         if n is not None:
             fill["employees"] = n
             got.append("직원 수(고용보험)")
+            tr = _safe(_parse_emp_trend, res.get("data")) if _codef_code(res) == "CF-00000" else None
+            if tr:
+                fill["emp_trend"] = tr
         else:
             fill["employees_default"] = 0
             failed.append("직원 수(고용보험) — 0명으로 채움")
@@ -2654,6 +2711,7 @@ _FIN_KEYS = {
     "assets": ("자산총계",), "liabilities": ("부채총계",), "capital_stock": ("자본금",),
     "operating_income": ("영업이익", "영업손익"), "interest_expense": ("이자비용",),
     "net_income": ("당기순이익", "당기순손익"), "_revenue": ("매출액", "수입금액"),
+    "short_borrowings": ("단기차입금",), "long_borrowings": ("장기차입금",),
 }
 
 

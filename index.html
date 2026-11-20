@@ -1088,6 +1088,7 @@
             <label class="ht-f"><span>내일채움공제</span><input type="text" id="ht-naeil" placeholder="가입 2명" /></label>
             <label class="ht-f"><span>노란우산공제</span><select id="ht-umbrella"><option value="">-</option><option value="yes">가입</option><option value="no">미가입</option></select></label>
           </div>
+          <label class="ht-check-line" style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);margin-top:8px;cursor:pointer;"><input type="checkbox" id="ht-emp-keep" style="width:auto;margin:0;" />최근 1년 고용 유지 또는 증가</label>
         </div>
       </div>
 
@@ -1117,6 +1118,8 @@
               <label class="ht-f"><span>영업이익 (연)</span><input type="text" inputmode="text" id="ht-opincome" oninput="htSignedMoney(this)" /></label>
               <label class="ht-f"><span>이자비용 (연)</span><input type="text" inputmode="numeric" id="ht-interest" oninput="formatMoneyInput(this)" /></label>
               <label class="ht-f"><span>당기순이익 (연)</span><input type="text" inputmode="text" id="ht-netincome" oninput="htSignedMoney(this)" /></label>
+              <label class="ht-f"><span>단기차입금</span><input type="text" inputmode="numeric" id="ht-short-borrow" oninput="formatMoneyInput(this)" /></label>
+              <label class="ht-f"><span>장기차입금</span><input type="text" inputmode="numeric" id="ht-long-borrow" oninput="formatMoneyInput(this)" /></label>
               <label class="ht-f"><span>부채비율 (자동)</span><input type="text" id="ht-dr-auto" class="ht-auto" readonly tabindex="-1" placeholder="총자산·총부채로 계산" /></label>
               <label class="ht-f"><span>이자보상배수 (자동)</span><input type="text" id="ht-icr-auto" class="ht-auto" readonly tabindex="-1" placeholder="영업이익·이자비용으로 계산" /></label>
             </div>
@@ -2692,7 +2695,8 @@ function htFillFromFinancial(d) {
   }
   setMoney("ht-y2-vat", num(d.revenue));
   const fin = { "ht-assets": sum(d.current_assets, d.noncurrent_assets), "ht-debt": sum(d.current_liabilities, d.noncurrent_liabilities),
-                "ht-capital": num(d.capital_stock), "ht-opincome": num(d.operating_income), "ht-interest": num(d.interest_expense), "ht-netincome": num(d.net_income) };
+                "ht-capital": num(d.capital_stock), "ht-opincome": num(d.operating_income), "ht-interest": num(d.interest_expense), "ht-netincome": num(d.net_income),
+                "ht-short-borrow": num(d.short_borrowings), "ht-long-borrow": num(d.long_borrowings) };
   // 업체 정보: 지역·업태/종목(2개까지)·대표자 나이 — 인식된 값은 덮어씀
   const bizKeys = ["location", "industry", "item", "industry2", "item2"].filter(k => d[k]);
   if (bizKeys.length || d.rep_age) {
@@ -3560,10 +3564,11 @@ const HT_FIELDS = [
 
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"],
-  ["employees", "ht-employees", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
+  ["employees", "ht-employees", "int"], ["emp_keep", "ht-emp-keep", "check"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
   ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
   ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
+  ["fin.short_borrowings", "ht-short-borrow", "money"], ["fin.long_borrowings", "ht-long-borrow", "money"],
 
 ];
 
@@ -4720,6 +4725,8 @@ function htAuthApply(res) {
   if (f.arrears) inc.arrears = f.arrears;
   if (f.loans && f.loans.length) inc.loans = f.loans;
   if (f.employees !== undefined && f.employees !== null) inc.employees = f.employees;
+  if (f.emp_trend === "up" || f.emp_trend === "keep") inc.emp_keep = true;       // 고용보험 입사·퇴사일로 본 최근 1년
+  else if (f.emp_trend === "down") inc.emp_keep = false;
   else if (f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
   htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
@@ -4761,6 +4768,7 @@ function htOverwriteForm(inc) {
     cur.years = Object.values(byYear).sort((a, b) => a.year - b.year).slice(-3);
   }
   if (inc.ytd) cur.ytd = Object.assign({}, cur.ytd, inc.ytd);
+  if (typeof inc.emp_keep === "boolean") cur.emp_keep = inc.emp_keep;
   if (inc.arrears && inc.arrears.status) cur.arrears = Object.assign({}, cur.arrears, inc.arrears);
   if (inc.loans && inc.loans.length) { cur.loans = inc.loans; cur.loans_none = false; }
   if (inc.fin) cur.fin = Object.assign({}, cur.fin || {}, Object.fromEntries(Object.entries(inc.fin).filter(([, v]) => v !== null && v !== undefined)));
