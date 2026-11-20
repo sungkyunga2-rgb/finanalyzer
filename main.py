@@ -1476,7 +1476,8 @@ CODEF_HOMETAX_PRODUCTS = {
     "registration": "/v1/kr/public/nt/proof-issue/corporate-registration",        # 사업자등록 증명
     "vat": "/v1/kr/public/nt/proof-issue/additional-tax-standard",                # 부가세과세표준증명
     "withholding": "/v1/kr/public/nt/report/withholding-tax",                     # 원천징수이행상황신고서 — 기관코드 0005, 근로소득 간이세액(A01) 인원 = 직원 수
-    "taxfree": "/v1/kr/public/nt/proof-issue/tax-free-businessman-income",        # 부가가치세 면세사업자 수입금액증명 — 회원(0/5), 08~22시, 면세사업자만 발급
+    "taxfree": "/v1/kr/public/nt/proof-issue/tax-free-businessman-income",
+    "disability": "/v1/kr/public/mw/certificate/disability",                     # 정부24 장애인 증명서 — 대표자 장애인 여부(해당/비해당)만 사용        # 부가가치세 면세사업자 수입금액증명 — 회원(0/5), 08~22시, 면세사업자만 발급
     "tax_payment": "/v1/kr/public/nt/proof-issue/tax-cert-all",                    # 납세증명서
     "financial": "/v1/kr/public/nt/proof-issue/standard-financial-statements",     # 재무제표(표준재무제표증명) — 08:00~22:00
     "employees": "/v1/kr/public/cw/kcomwel-employment/detail",                     # 근로복지공단 근로자고용정보현황 → 직원 수 (기관이 달라 간편인증 승인 1번 더)
@@ -1825,6 +1826,7 @@ class CodefCertBody(BaseModel):
     password: str
     business_number: str = ""
     banks: list[str] = []         # 대출을 불러올 거래 은행 기관코드 (선택, 최대 6곳)
+    check_disability: bool = False   # 대표자 장애인 여부 확인 (정부24, 민감정보 — 별도 동의한 경우만)
 
 
 def _codef_rsa(text):
@@ -1883,6 +1885,8 @@ def _hometax_cert_params(b: CodefCertBody, user_id: int):
     bn = _re2.sub(r"\D", "", b.business_number or "")
     if len(bn) == 10:
         p["_want_biz"] = bn      # 화면에 적힌 사업자번호는 '여러 사업장 중 고르기'에만 씀 (CODEF로 보내지 않음 — 보내면 정보 불일치 오류)
+    if getattr(b, "check_disability", False):
+        p["_check_dis"] = True   # '_'로 시작하는 값은 CODEF로 보내지 않음
     return p
 
 
@@ -2820,7 +2824,50 @@ async def _hometax_collect(params, reg_data, progress=None):
                 fill["emp_increase"] = wh_df
     else:
         fill["employees_default"] = 0
+    # ⑤ 대표자 장애인 여부 — 정부24 장애인 증명서 (별도 동의 + 개인사업자 대표 주민번호가 있을 때만). 해당 여부만 남기고 세부 내용은 버림
+    if params.get("_check_dis") and params.get("loginType") == "0":
+        rrn_d = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
+        if rrn_d and fill.get("rep_name"):
+            step("장애인 여부(정부24)")
+            dis = await _check_disability(params, fill["rep_name"], rrn_d, _safe(_reg_addr, reg_data, params.get("_want_biz", ""), default="") or "")
+            if dis is not None:
+                fill["rep_disabled"] = dis
+                got.append("장애인 여부")
+            else:
+                failed.append("장애인 여부(정부24)")
+        else:
+            failed.append("장애인 여부(정부24) — 법인 대표는 확인 불가")
     return {"status": "done", "fill": fill, "got": got, "pending": failed, "reason": "" if got else (errs[0] if errs else "")}
+
+
+def _reg_addr(reg_data, want_biz=""):
+    rows = reg_data if isinstance(reg_data, list) else [reg_data]
+    rows = [r for r in rows if isinstance(r, dict)]
+    digits = _re2.sub(r"\D", "", want_biz or "")
+    row = next((r for r in rows if digits and _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "") == digits), rows[0] if rows else {})
+    return str(row.get("resUserAddr") or "").strip()
+
+
+async def _check_disability(params, name, rrn, addr):
+    """정부24 장애인 증명서(비회원 인증서 로그인) → True(장애인 등록)/False(해당 없음)/None(확인 못 함). 주민번호·장애 내용은 저장·로그하지 않음"""
+    body = {"organization": "0001", "loginType": "3", "certType": params.get("certType", "1"), "certFile": params.get("certFile", ""),
+            "certPassword": params.get("certPassword", ""), "userName": name, "identity": rrn, "address": addr or "서울특별시",
+            "isIdentityViewYn": "0", "originDataYN": "0", "timeout": "120", "id": f"{params.get('id', 'fina')}-dis"}
+    if params.get("keyFile"):
+        body["keyFile"] = params["keyFile"]
+    try:
+        res = await _codef_post(CODEF_HOMETAX_PRODUCTS["disability"], body)
+    except Exception as e:
+        print(f"[CODEF] disability 호출 오류: {type(e).__name__}")
+        return None
+    code, msg = _codef_code(res), _codef_msg(res)
+    if code == "CF-00000":
+        rows = _codef_rows(res.get("data"), ("resRegNumber",)) or _codef_rows(res.get("data"), ("resMainDisability",))
+        return bool(rows)
+    print(f"[CODEF] disability 실패 {code}")
+    if any(k in (msg or "") for k in ("장애인으로 등록되어 있지", "등록되지 않", "대상자가 아", "발급 대상이 아", "해당 정보가 없", "조회된 정보가 없", "존재하지 않")):
+        return False
+    return None
 
 
 def _codef_amt(v):
@@ -3144,6 +3191,7 @@ INCALL_PROMPT = """아래는 정책자금 컨설팅 회사의 '인콜일지(상�
 양식의 빈칸 표시 기호( '(   )', '___', ':' 등 )는 값이 아니니 빼고 실제로 적힌 글자만 옮기세요. 단 '(주)'·'주식회사' 같은 상호 표기는 그대로 둡니다.
 
 항목:
+- biz_type: 업체명이나 메모에 '법인', '(주)', '주식회사', '㈜' 같은 법인 표현이 있으면 "corp", 없으면 모두 "personal"
 - company_name: 업체명 / industry, item: 업태·업종(사업자등록증 기준)의 업태와 종목. 두 번째 업태·종목이 있으면 industry2, item2
 - location: 사업장 소재지를 시·도 하나로 (서울,부산,대구,인천,광주,대전,울산,세종,경기,강원,충북,충남,전북,전남,경북,경남,제주 중 하나. 예: 목포 → 전남, 수원 → 경기)
 - founded: 창업년월 "YYYY-MM" (연도만 있으면 "YYYY")
@@ -3162,7 +3210,7 @@ INCALL_PROMPT = """아래는 정책자금 컨설팅 회사의 '인콜일지(상�
 - memo: ※ 추가사항에 적힌 상담 메모를 핵심만 3줄 이내로 요약 (분석에 참고할 사실 위주)
 
 JSON으로만 답하세요:
-{"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":[..],"ytd":..,"kcb":..,"nice":..,"co_kcb":..,"co_nice":..,"recovery":..,"arrears":..,"arrears_other":..,"loans":[..] 또는 null,"age":..,"career":..,"assets_note":..,"marital":..,"woman":..,"employees":..,"hire":..,"naeil":..,"umbrella":..,"export_amount":..,"factory":..,"memo":..}"""
+{"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":[..],"ytd":..,"kcb":..,"nice":..,"co_kcb":..,"co_nice":..,"recovery":..,"arrears":..,"arrears_other":..,"loans":[..] 또는 null,"age":..,"career":..,"assets_note":..,"marital":..,"woman":..,"employees":..,"hire":..,"naeil":..,"umbrella":..,"export_amount":..,"factory":..,"memo":..}"""
 
 
 def _docx_text(b64):

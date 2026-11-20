@@ -1091,6 +1091,7 @@
             <label class="ht-f"><span>혼인 여부</span><select id="ht-marital"><option value="">-</option><option value="married">기혼</option><option value="single">미혼</option></select></label>
           </div>
           <label class="ht-chk"><input type="checkbox" id="ht-woman" /> 여성 대표</label>
+          <label class="ht-chk"><input type="checkbox" id="ht-disabled" /> 장애인 대표</label>
         </div>
       </div>
 
@@ -1699,7 +1700,8 @@
       ③ 대표자 주민등록번호는 회원 본인의 요청에 따라 근로복지공단에서 직원 수(고용보험 근로자 수)를 조회하는 데에만 사용하며, 조회 요청을 위해 서버 메모리에서 일시적으로 처리할 뿐 저장·보관하지 않고 회원 화면이나 기록(로그)에도 남기지 않습니다.<br/>
       ④ 인증서 파일·인증서 비밀번호·휴대폰 인증 정보는 조회에만 사용하고 저장하지 않습니다. 은행 조회를 위해 코드에프에 등록한 인증서 정보는 조회가 끝나는 즉시 삭제를 요청합니다. 다만 회원이 '이 기기에 인증서 보관하기'를 선택한 경우 인증서 파일은 회원의 기기(브라우저)에만 보관되며 회사 서버에는 보관되지 않습니다.<br/>
       ⑤ 조회로 받은 결과(상호, 대표자명, 사업자등록번호, 업태·종목, 매출, 체납 여부, 재무수치, 직원 수, 대출 현황 등)는 입력 칸을 채우는 데 사용되며, 회원이 분석을 실행한 경우에 한해 제7조 ②에 따라 분석 결과로 보관됩니다.<br/>
-      ⑥ 회원은 자동 조회에 동의하지 않을 수 있으며, 이 경우 각 항목을 직접 입력하거나 서류를 올려 분석을 이용할 수 있습니다.</p>
+      ⑥ 회원은 자동 조회에 동의하지 않을 수 있으며, 이 경우 각 항목을 직접 입력하거나 서류를 올려 분석을 이용할 수 있습니다.<br/>
+      ⑦ (장애인 여부 확인 — 민감정보) 회원이 공동인증서 조회 화면에서 '대표자 장애인 여부 확인'에 별도로 동의한 경우에 한해, 코드에프를 통해 정부24에서 대표자의 장애인 증명서를 조회합니다. 이때 사업자등록증명상 대표자 성명·주민등록번호·사업장 주소와 인증서를 사용하며, 결과 중 장애인 해당 여부만 입력 칸('장애인 대표')에 반영하고 장애 종류·정도·등록번호 등은 저장하거나 화면·기록(로그)에 남기지 않습니다. 동의하지 않아도 다른 조회와 분석 이용에는 영향이 없습니다.</p>
       <br/>
       <p><strong>9. 고객 의견수렴 및 불만처리</strong></p>
       <p>회사는 개인정보보호와 관련하여 정보주체 및 회원의 의견과 불만을 제기할 수 있는 창구를 개설하고 있습니다. 개인정보와 관련한 불만이 있으신 분은 회사의 개인정보 관리책임자에게 의견을 주시면 접수 즉시 조치하여 처리결과를 통보해 드립니다.</p>
@@ -2615,6 +2617,9 @@ function htFillFromIncall(d) {
   let filled = 0;
   const set = (k, v) => { if (v !== null && v !== undefined && v !== "") { cur[k] = v; filled++; } };
   ["company_name", "industry", "item", "industry2", "item2"].forEach(k => set(k, t(d[k])));
+  // 법인 표현((주)·주식회사·법인 등)이 없으면 개인사업자
+  const corpHint = /\(주\)|㈜|주식회사|유한회사|법인/.test(`${t(d.company_name)} ${t(d.memo)}`);
+  cur.biz_type = (corpHint || d.biz_type === "corp") ? "corp" : "personal";
   if (t(d.industry) && !t(d.industry2) && !t(d.item2)) { cur.industry2 = ""; cur.item2 = ""; }
   if (HT_SIDO.includes(t(d.location))) set("location", t(d.location));
   const fm = t(d.founded).match(/^(\d{4})(?:-(\d{1,2}))?/);
@@ -3644,13 +3649,14 @@ function analyzeHometax(input, opts) {
   const profile = { industry: input.industry || "", product: input.main_product || "", work: input.actual_work || "",
                     location: input.location || "", founded: input.founded || "", bizAge,
                     employees: htNum(input.employees), hire: htNum(input.hire_plan),
-                    age: htNum(rp.age), career: htNum(rp.career), assets: rp.assets_note || "", marital: rp.marital || "", woman: !!rp.woman };
+                    age: htNum(rp.age), career: htNum(rp.career), assets: rp.assets_note || "", marital: rp.marital || "", woman: !!rp.woman, disabled: !!rp.disabled };
 
   // 9) 우대·참고 요소
   const prefs = [];
   if (profile.age !== null && profile.age <= 39) prefs.push({ tag: "청년 대표", text: `대표자 만 ${profile.age}세 — 청년 대표 우대 대상` });
   if (bizAge && bizAge.months < 84) prefs.push({ tag: "창업기업", text: `업력 ${bizAge.years}년 ${bizAge.rest}개월 — 창업기업 지원 대상` });
   if (profile.woman) prefs.push({ tag: "여성 대표", text: "여성기업 우대 대상 (여성기업 확인서 발급 여부 확인)" });
+  if (profile.disabled) prefs.push({ tag: "장애인 대표", text: "장애인기업 우대 대상 (장애인기업 확인서 발급 여부 확인)" });
   if (profile.career !== null && profile.career >= 10) prefs.push({ tag: "업계 경력", text: `동종업계 경력 ${profile.career}년` });
   if (profile.employees !== null && profile.employees < 5) prefs.push({ tag: "소상공인", text: `상시근로자 ${profile.employees}명 — 소상공인 해당 가능` });
   const empInc = htNum(input.emp_increase);
@@ -3709,7 +3715,7 @@ const HT_FIELDS = [
   ["loans_none", "ht-loans-none", "check"],
 
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
-  ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"],
+  ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"], ["rep.disabled", "ht-disabled", "check"],
   ["employees", "ht-employees", "int"], ["emp_keep", "ht-emp-keep", "check"], ["emp_increase", "ht-emp-inc", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
   ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
@@ -4718,7 +4724,7 @@ async function htCertStart() {
   htAuthShow(3);
   try {
     const res = await api("POST", "/codef/hometax/cert", {
-      cert_type: htCertFiles.type, cert_file: htCertFiles.cert, key_file: htCertFiles.key, password: pwEl.value, banks: htBanksSel.slice(),
+      cert_type: htCertFiles.type, cert_file: htCertFiles.cert, key_file: htCertFiles.key, password: pwEl.value, banks: htBanksSel.slice(), check_disability: !!(document.getElementById("htCertDis") || {}).checked,
       business_number: (document.getElementById("ht-biz") || {}).value || "",
     });
     pwEl.value = "";
@@ -4926,6 +4932,7 @@ function htAuthApply(res) {
   if (f.emp_trend === "up" || f.emp_trend === "keep") inc.emp_keep = true;       // 고용보험 입사·퇴사일로 본 최근 1년
   else if (f.emp_trend === "down") inc.emp_keep = false;
   if (typeof f.emp_increase === "number") inc.emp_increase = f.emp_increase;
+  if (typeof f.rep_disabled === "boolean") inc.rep_disabled = f.rep_disabled;
   if ((f.employees === undefined || f.employees === null) && f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
   htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
@@ -4995,6 +5002,7 @@ function htOverwriteForm(inc) {
   if (inc.ytd) cur.ytd = Object.assign({}, cur.ytd, inc.ytd);
   if (typeof inc.emp_keep === "boolean") cur.emp_keep = inc.emp_keep;
   if (typeof inc.emp_increase === "number") cur.emp_increase = inc.emp_increase;
+  if (typeof inc.rep_disabled === "boolean") { cur.rep = cur.rep || {}; cur.rep.disabled = inc.rep_disabled; }
   if (inc.arrears && inc.arrears.status) cur.arrears = Object.assign({}, cur.arrears, inc.arrears);
   if (inc.loans && inc.loans.length) { cur.loans = inc.loans; cur.loans_none = false; }
   if (inc.fin) cur.fin = Object.assign({}, cur.fin || {}, Object.fromEntries(Object.entries(inc.fin).filter(([, v]) => v !== null && v !== undefined)));
@@ -8062,6 +8070,7 @@ window.addEventListener("DOMContentLoaded", () => {
         </div>
         <div id="htBankHome"></div>
         <label class="ht-auth-grid" style="grid-template-columns:1fr;"><span style="display:block;font-size:12px;color:var(--text2);margin-bottom:4px;">인증서 비밀번호</span><input id="htCertPw" type="password" class="ht-auth-input" autocomplete="off" placeholder="인증서 비밀번호" /></label>
+        <label class="ht-auth-check"><input type="checkbox" id="htCertDis" /> (선택) 대표자 장애인 여부도 확인할게요 — 정부24 장애인 증명서 조회에 동의하며, 장애 여부(해당·비해당)만 입력 칸에 반영하고 장애 종류·정도는 저장하지 않아요. (개인사업자만)</label>
         <label class="ht-auth-check"><input type="checkbox" id="htCertAgree" /> 홈택스·근로복지공단·은행 자료 조회를 위해 인증서와 사업자등록증명상 대표자 주민등록번호(직원 수 조회용)를 인증 대행사(CODEF)에 제공하는 데 동의합니다. 비밀번호·주민등록번호는 저장하지 않아요.</label>
         <button type="button" class="btn btn-primary btn-full" id="htCertBtn" onclick="htCertStart()">공동인증서로 불러오기</button>
       </div>
