@@ -955,6 +955,12 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #  · 수출업체는 소진공·중진공·기보·신보 모두 가능 (신보 제한업종은 제외)
 #  · 신보 제한업종 제외 / 유의업종 70% / 재단 우선취급업종이면 신보 제외(매출 5억 이상이면 가능)
 #  · 이미 대출이 있는 기관은 조건과 관계없이 남은 한도를 보여준다
+#  · 부채비율(부채총계÷자본총계) 제한 — 창업년월이 있을 때만 업력 예외를 따지고, 없으면 업력 예외 없이 계산
+#    - 소진공: 업력 7년 이상이면 부채비율 700% 초과 또는 총차입금(기대출) > 매출 → 신청 불가
+#    - 중진공: 업력 7년 이상이면 업종별 제한부채비율(2026 융자계획 별표5) 초과 → 신청 불가
+#              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
+#    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
+#    - 2~3년 연속 조건(연속 적자·이자보상배수 등)은 1년치 재무로 판단할 수 없어 보지 않는다. 신보·기보는 공개 기준 없음
 # ══════════════════════════════════════════════════════════════
 import math as _math
 import re as _re
@@ -980,6 +986,83 @@ _HT_IND = {
     "kibo": _re.compile(r"제조|소프트웨어|정보통신|정보서비스|IT|아이티|프로그램\s*개발|앱\s*개발|시스템\s*(개발|통합)|플랫폼|연구개발|엔지니어링|디자인|콘텐츠|컨텐츠|영상|영화|방송|애니메이션|게임\s*(개발|제작|소프트웨어)|음반|음원|음악\s*제작|공연|연극|뮤지컬|무용|국악|오케스트라|출판|웹툰|전시\s*기획"),
 }
 _HT_CONTENT = _re.compile(r"콘텐츠|컨텐츠|영상|영화|방송|애니메이션|게임\s*(개발|제작)|음반|음원|음악\s*제작|공연|연극|뮤지컬|웹툰|출판")
+
+
+# 2026 중소기업 정책자금 융자계획 별표5 — 업종별 융자제한 부채비율(%). 위에서부터 먼저 맞는 것
+_JJ_DR_MFG = [   # 제조업 중분류 (종목·업태에서)
+    (r"음료|주류|생수|맥주|소주|막걸리", 387.6),
+    (r"식료품|식품|제과|제빵|빵|떡|육가공|수산물\s*가공|반찬|김치|소스|조미|도시락|두부|면류|과자|유제품|사료", 444.3),
+    (r"섬유|원단|방적|직물|편직|염색", 355.5),
+    (r"의복|의류|봉제|모피|액세서리", 354.9),
+    (r"가죽|가방|신발|구두", 329.7),
+    (r"목재|나무", 442.2),
+    (r"펄프|종이|골판지|지류", 344.7),
+    (r"인쇄|기록매체", 350.7),
+    (r"코크스|연탄|석유\s*정제", 283.2),
+    (r"의약|의료용\s*물질|제약|원료의약", 215.7),
+    (r"화학|화장품|세제|도료|페인트|비료|농약|접착제", 295.8),
+    (r"고무|플라스틱|비닐", 331.8),
+    (r"비금속|유리|시멘트|레미콘|콘크리트|도자기|요업|석재", 278.1),
+    (r"1차\s*금속|제철|제강|주조|주물|압연", 363.9),
+    (r"금속\s*가공|금속\s*제품|금형|철구조물|판금|용접|도금|볼트|너트", 363.9),
+    (r"전자부품|반도체|컴퓨터|영상|음향|통신\s*장비|디스플레이|PCB|인쇄회로", 280.8),
+    (r"의료기기|의료\s*용\s*기기|정밀|광학|시계|측정", 283.2),
+    (r"전기\s*장비|전동기|발전기|변압기|배터리|전지|조명|전선|케이블", 310.8),
+    (r"자동차|트레일러|차량\s*부품", 438.9),
+    (r"선박|항공|철도|운송장비|조선", 500.0),
+    (r"가구", 483.9),
+    (r"수리", 500.0),
+    (r"기계|장비|설비", 327.9),
+]
+_JJ_DR_BIG = [   # 대분류
+    (r"제조", 340.2),
+    (r"농업|작물|축산|원예|재배|양봉|임업", 500.0),
+    (r"어업|양식", 500.0),
+    (r"광업|채석|채굴", 500.0),
+    (r"전기.*공급|가스.*공급|증기|공기조절|발전업", 500.0),
+    (r"하수|폐기물|원료\s*재생|재활용|환경\s*복원", 318.0),
+    (r"건설|공사|토목|인테리어|실내\s*건축", 329.1),
+    (r"도매|소매|도소매|상품\s*중개|전자상거래|통신판매|무역", 393.0),
+    (r"운수|운송|창고|물류|택배|화물|보관", 500.0),
+    (r"숙박|음식|식당|카페|주점|외식", 500.0),
+    (r"정보통신|소프트웨어|프로그래밍|정보\s*서비스|출판|방송|통신업|시스템\s*통합|컴퓨터", 425.7),
+    (r"부동산", 500.0),
+    (r"전문|과학|기술\s*서비스|연구\s*개발|광고|컨설팅|디자인|설계|엔지니어링|법무|회계|세무", 427.8),
+    (r"사업\s*시설|사업\s*지원|임대\s*서비스|인력|경비|청소|방제", 500.0),
+    (r"교육|학원", 456.9),
+    (r"예술|스포츠|여가|공연|오락", 500.0),
+]
+
+
+def _jj_dr_limit(inp):
+    """중진공 업종별 제한부채비율 — 업태(+종목)로 중분류 → 대분류, 맞는 게 없으면 기타 500%"""
+    pairs = [(_ht_s(inp.get("industry")), _ht_s(inp.get("item"))), (_ht_s(inp.get("industry2")), _ht_s(inp.get("item2")))]
+    pairs = [(a, b) for a, b in pairs if a or b]
+    for ind, item in pairs:
+        if "제조" in ind or ("제조" in item):
+            for pat, v in _JJ_DR_MFG:
+                if _re.search(pat, item) or _re.search(pat, ind.replace("제조업", "")):
+                    return v
+            return 340.2
+        for pat, v in _JJ_DR_BIG:
+            if _re.search(pat, ind):
+                return v
+    for ind, item in pairs:
+        for pat, v in _JJ_DR_BIG:
+            if _re.search(pat, item):
+                return v
+    return 500.0
+
+
+def _ht_simple_book(inp, sales):
+    """간편장부대상 개인사업자(직전연도 수입금액 기준) — 중진공 부채비율 제한 제외"""
+    if inp.get("biz_type") == "corp" or not sales:
+        return False
+    t = _ht_ind_text(inp)
+    if _re.search(r"농업|임업|어업|광업|도매|소매|도소매|부동산\s*매매", t): cut = 300000000
+    elif _re.search(r"제조|숙박|음식|전기|가스|수도|건설|운수|운송|정보통신|출판|방송|금융|보험|폐기물|재생", t): cut = 150000000
+    else: cut = 75000000
+    return sales < cut
 
 
 def _ht_num(v):
@@ -1088,10 +1171,13 @@ def ht_limit_context(inp, today=None):
     ytd_annual = s / m * 12 if (m and 1 <= m <= 12 and s is not None) else None
     fin = inp.get("fin") or None
     eroded = False
+    debt_ratio = None
     if fin:
         a, li = _ht_num(fin.get("assets")), _ht_num(fin.get("liabilities"))
         if a is not None and li is not None and a > 0:
             eroded = (a - li) <= 0
+            if not eroded:
+                debt_ratio = li / (a - li) * 100
     loans = [l for l in (inp.get("loans") or []) if isinstance(l, dict) and (l.get("org") or l.get("date") or _ht_num(l.get("amount")) is not None)]
     cr = inp.get("credit") or {}
     nice, kcb = _ht_num(cr.get("nice")), _ht_num(cr.get("kcb"))
@@ -1101,7 +1187,8 @@ def ht_limit_context(inp, today=None):
         mo = (today.year - int(mm.group(1))) * 12 + (today.month - int(mm.group(2)))
         if mo >= 0: months = mo
     return {"vat_latest": vat_latest["vat"] if vat_latest else None, "ytd_annual": ytd_annual, "eroded": eroded,
-            "loans": loans, "nice": nice, "kcb": kcb, "credit_score": nice if nice is not None else kcb, "biz_age_months": months}
+            "loans": loans, "nice": nice, "kcb": kcb, "credit_score": nice if nice is not None else kcb, "biz_age_months": months,
+            "debt_ratio": debt_ratio}
 
 
 def ht_estimate_limit(inp, today=None):
@@ -1180,6 +1267,22 @@ def ht_estimate_limit(inp, today=None):
         for o in g:
             if o is not chosen: o["status"] = "blocked"; o["low"] = 0; o["high"] = 0
     orgs.extend(g)
+    # 부채비율·차입금 제한 (창업년월이 없으면 업력 예외 없이 = 7년 이상으로 봄)
+    dr = ctx["debt_ratio"]
+    mature = bam is None or bam >= 84
+    loan_total = sum((_ht_num(l.get("amount")) or 0) for l in ctx["loans"])
+    over_borrow = loan_total > sales
+    def block(key):
+        for o in orgs:
+            if o["key"] == key:
+                o["status"] = "blocked"; o["low"] = 0; o["high"] = 0
+    if mature and ((dr is not None and dr > 700) or over_borrow):
+        block("sojin")
+    if mature and dr is not None and dr > _jj_dr_limit(inp) and not _ht_simple_book(inp, sales) \
+            and "협동조합" not in _ht_s(inp.get("company_name")):
+        block("jungjin")
+    if over_borrow:
+        block("jaedan")
     kcb, nice = ctx["kcb"], ctx["nice"]
     miso_ok = (kcb is not None and kcb <= R["misoKcb"]) or (nice is not None and nice <= R["misoNice"])
     if inp.get("biz_type") != "corp" and miso_ok: orgs.append(mk("miso", "미소금융", R["miso"]["min"], R["miso"]["max"]))
@@ -1204,6 +1307,13 @@ def ht_estimate_limit(inp, today=None):
     tf = max(factors.get(k, 1) or 1 for k in ok_keys) if ok_keys else 1
     # 총 예상한도 최대 10억 (기대출은 이 안에서 차감)
     t_low = max(0, min(floor_u(per["low"] * tf), R["totalMax"]) - loan_sum); t_high = max(0, min(floor_u(per["high"] * tf), R["totalMax"]) - loan_sum)
+    if any(o["status"] == "blocked" for o in orgs):
+        okd = {o["key"]: o for o in orgs if o["status"] == "ok"}
+        if not okd:
+            return {**base, "status": "blocked", "low": 0, "high": 0, "text": "현재 재무 상태로는 신청 가능한 기관이 없습니다."}
+        grp = [okd[k] for k in ("jaedan", "kodit", "kibo") if k in okd]
+        pick = [okd[k] for k in ("sojin", "jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
+        t_low = min(t_low, sum(o["low"] for o in pick)); t_high = min(t_high, sum(o["high"] for o in pick))
     if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "기대출이 많아 추가 한도 여력이 부족합니다."}
     t_low = max(t_low, R["minAmount"])
     if t_low == t_high and t_high >= 200000000: t_low = t_high - 100000000                       # 한 금액이면 1억 아래까지 범위로
