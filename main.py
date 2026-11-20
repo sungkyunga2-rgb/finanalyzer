@@ -961,7 +961,8 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
-#  · 신보·기보: 신용점수(NICE, 없으면 KCB) 700 미만이면 불가는 아니지만 '승인이 어려울 수 있음' 표시
+#  · 신용점수(NICE, 없으면 KCB) 700 미만이면 한도는 줄이고(신용 조정), 종합 평가에 '금융거래가 어려울 수 있음' 안내
+#  · 청년 대표(만 39세 이하) 50%는 소진공·재단·신보만 — 중진공·기보는 30%
 #    - 2~3년 연속 조건(연속 적자·이자보상배수 등)은 1년치 재무로 판단할 수 없어 보지 않는다. 신보·기보는 공개 기준 없음
 # ══════════════════════════════════════════════════════════════
 import math as _math
@@ -1217,6 +1218,7 @@ def ht_estimate_limit(inp, today=None):
     age = _ht_num((inp.get("rep") or {}).get("age"))
     youth = age is not None and age <= R["youthAge"]
     per = {"low": floor_u(sales * R["minRatio"]), "high": floor_u(sales * (R["youthMaxRatio"] if youth else R["maxRatio"]))}
+    per_std = {"low": per["low"], "high": floor_u(sales * R["maxRatio"])}      # 청년 50%는 소진공·재단·신보만
     small = _ht_small_biz(inp)
     used = {"sojin": 0, "jungjin": 0, "jaedan": 0, "kodit": 0, "kibo": 0, "miso": 0}
     other = 0
@@ -1254,11 +1256,11 @@ def ht_estimate_limit(inp, today=None):
     kodit_ok = (not ind["restricted"]) and (exporter or (big_enough and ((not ind["priority"]) or sales >= R["koditPriorityException"])))
     kibo_ok = exporter or (big_enough and ind["kibo"])
     if small or exporter: orgs.append(mk("sojin", "소상공인시장진흥공단", per["low"], per["high"]))
-    if big_enough or exporter or used["jungjin"] > 0: orgs.append(mk("jungjin", "중소벤처기업진흥공단", per["low"], per["high"]))
+    if big_enough or exporter or used["jungjin"] > 0: orgs.append(mk("jungjin", "중소벤처기업진흥공단", per_std["low"], per_std["high"]))
     g = [mk("jaedan", "지역신용보증재단", per["low"], per["high"])]
     if kodit_ok or used["kodit"] > 0: g.append(mk("kodit", "신용보증기금", per["low"], per["high"]))
     if kibo_ok or used["kibo"] > 0 or startup_kibo:
-        kb = mk("kibo", "기술보증기금", per["low"], per["high"]) if (kibo_ok or used["kibo"] > 0) else None
+        kb = mk("kibo", "기술보증기금", per_std["low"], per_std["high"]) if (kibo_ok or used["kibo"] > 0) else None
         if startup_kibo:
             sk = _ht_startup_kibo(ctx)
             if not kb or sk["high"] > kb["high"]: kb = sk
@@ -1288,10 +1290,7 @@ def ht_estimate_limit(inp, today=None):
         block("jaedan")
     if dr is not None and dr > 550:
         block("kodit"); block("kibo")
-    if c_score is not None and c_score < 700:
-        for o in orgs:
-            if o["key"] in ("kodit", "kibo") and o["status"] == "ok":
-                o["caution"] = True
+
     kcb, nice = ctx["kcb"], ctx["nice"]
     miso_ok = (kcb is not None and kcb <= R["misoKcb"]) or (nice is not None and nice <= R["misoNice"])
     if inp.get("biz_type") != "corp" and miso_ok: orgs.append(mk("miso", "미소금융", R["miso"]["min"], R["miso"]["max"]))
@@ -1315,7 +1314,8 @@ def ht_estimate_limit(inp, today=None):
     ok_keys = [o["key"] for o in orgs if o["status"] == "ok" and o["key"] != "miso"]
     tf = max(factors.get(k, 1) or 1 for k in ok_keys) if ok_keys else 1
     # 총 예상한도 최대 10억 (기대출은 이 안에서 차감)
-    t_low = max(0, min(floor_u(per["low"] * tf), R["totalMax"]) - loan_sum); t_high = max(0, min(floor_u(per["high"] * tf), R["totalMax"]) - loan_sum)
+    t_per = per if any(o["status"] == "ok" and o["key"] in ("sojin", "jaedan", "kodit") for o in orgs) else per_std
+    t_low = max(0, min(floor_u(t_per["low"] * tf), R["totalMax"]) - loan_sum); t_high = max(0, min(floor_u(t_per["high"] * tf), R["totalMax"]) - loan_sum)
     if any(o["status"] == "blocked" for o in orgs):
         okd = {o["key"]: o for o in orgs if o["status"] == "ok"}
         if not okd:
