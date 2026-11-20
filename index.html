@@ -1092,6 +1092,13 @@
           </div>
           <label class="ht-chk"><input type="checkbox" id="ht-woman" /> 여성기업</label>
           <label class="ht-chk"><input type="checkbox" id="ht-disabled" /> 장애인기업</label>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:2px;">
+            <span style="font-size:11px;color:var(--text3);">재기 지원</span>
+            <label class="ht-chk"><input type="checkbox" id="ht-rt-restart" /> 재창업 (폐업 후 다시 창업)</label>
+            <label class="ht-chk"><input type="checkbox" id="ht-rt-edu" /> 희망리턴패키지 재창업교육 수료</label>
+            <label class="ht-chk"><input type="checkbox" id="ht-rt-revival" /> 재기사업화 완료·선정</label>
+            <label class="ht-chk"><input type="checkbox" id="ht-rt-debt" /> 채무조정·상환연장 성실상환 중</label>
+          </div>
         </div>
       </div>
 
@@ -2656,6 +2663,7 @@ function htFillFromIncall(d) {
   if (["yes", "no"].includes(d.umbrella)) set("umbrella", d.umbrella);
   if (["own", "rent", "none"].includes(d.factory)) set("factory", d.factory);
   if (n(d.export_amount) !== null) set("export_amount", n(d.export_amount));
+  if (d.restart === true) { cur.retry = Object.assign({}, cur.retry, { restart: true }); filled++; }
   if (!filled) return alertError("인콜일지에서 채울 내용을 찾지 못했어요. 표가 잘 보이는 파일로 다시 올려 주세요.");
   htFillForm(cur);
   toast("인콜일지 내용으로 입력 칸을 채웠어요. 값을 확인해 주세요.");
@@ -3716,6 +3724,7 @@ const HT_FIELDS = [
 
   ["rep.age", "ht-age", "int"], ["rep.career", "ht-career", "num"], ["rep.assets_note", "ht-rep-assets", "text"],
   ["rep.marital", "ht-marital", "text"], ["rep.woman", "ht-woman", "check"], ["rep.disabled", "ht-disabled", "check"],
+  ["retry.restart", "ht-rt-restart", "check"], ["retry.edu", "ht-rt-edu", "check"], ["retry.revival", "ht-rt-revival", "check"], ["retry.debt", "ht-rt-debt", "check"],
   ["employees", "ht-employees", "int"], ["emp_keep", "ht-emp-keep", "check"], ["emp_increase", "ht-emp-inc", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
   ["factory", "ht-factory", "text"],
   ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],

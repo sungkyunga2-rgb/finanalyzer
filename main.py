@@ -962,6 +962,8 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #              (간편장부대상 개인사업자·협동조합은 제외 / 업태로 중분류 → 없으면 대분류 → 기타 500%)
 #    - 지역신보재단: 총차입금(기대출) > 매출 → 신청 불가
 #    - 신보·기보: 부채비율 550% 초과 → 신청 불가 (업력 무관)
+#  · 소진공 특별자금(2026 신청 안내): 일시적경영애로(연매출 1.04억 미만·업력 7년 미만·매출 15%↓, 최대 7천만),
+#    재도전특별자금(재창업·희망리턴 교육·채무조정 성실 → 7천만 / 재기사업화 → 1억 / 재창업 2~7년+성장+소진공 성실상환 → 2억). 금액은 같은 산식, 최대 한도로 상한
 #  · 재단 재이용 제한: 서울은 최근 1년, 그 외 지역은 최근 6개월 안에 재단 자금을 받았으면 재단 불가(시기가 있을 때만)
 #  · 개인대출(구분 '개인')은 한도에서 빼지 않음 / 카드론·현금서비스·대부업이 합쳐서 3건 이상이면 신청 어려움(전체)
 #  · 재무제표 차입금이 있으면 기관 미상 기대출 대신 '단기차입금 전액 + 장기차입금(담보로 봄) 30%'를 차감
@@ -1005,6 +1007,54 @@ def _ht_loan_ym(v):
     if y < 100:
         y += 2000
     return (y, mo) if 1 <= mo <= 12 and 2000 <= y <= 2100 else None
+
+
+def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u):
+    """소진공 일시적경영애로자금(최대 7천만)·재도전특별자금(일반 7천만/희망 1억/도약 2억) — 2026 소진공 신청 안내 기준"""
+    R = HT_LIMIT_RULE
+    sj = next((o for o in orgs if o["key"] == "sojin"), None)
+    if not small or not sj or sj["status"] == "blocked":
+        return
+    young = bam is None or bam < 84                       # 업력 7년 미만 (창업년월 없으면 요건 없음으로 봄)
+    ys = sorted([y for y in (inp.get("years") or []) if isinstance(y, dict) and _ht_num(y.get("vat")) is not None and _ht_num(y.get("year"))],
+                key=lambda y: _ht_num(y.get("year")))
+    last = _ht_num(ys[-1]["vat"]) if ys else None
+    prev = _ht_num(ys[-2]["vat"]) if len(ys) >= 2 else None
+    ytd = inp.get("ytd") or {}
+    ym, ys_ = _ht_num(ytd.get("month")), _ht_num(ytd.get("sales"))
+    ytd_annual = ys_ / ym * 12 if (ym and 1 <= ym <= 12 and ys_ is not None) else None
+    drop = (prev and last is not None and last <= prev * 0.85) or (last and ytd_annual is not None and ytd_annual <= last * 0.85)
+    grow = (prev and last is not None and last >= prev * 1.05) or (last and ytd_annual is not None and ytd_annual >= last * 1.05)
+    emp = _ht_num(inp.get("employees")) or 0
+    rt = inp.get("retry") or {}
+    E, Lb = ctx.get("equity"), ctx.get("liabilities")
+
+    def make(key, name, cap):
+        o = mk("sojin", name, per["low"], per["high"])
+        hi, lo = o["high"], o["low"]
+        if mature and E is not None and Lb is not None and E > 0:          # 대출 후 부채비율 700% 상한 (업력 7년 이상)
+            hi = min(hi, floor_u(max(0, E * 7 - Lb)))
+        hi = min(hi, cap)
+        if hi < R["minAmount"]:
+            return
+        lo = min(max(lo, R["minAmount"]), hi)
+        if lo == hi and hi >= 200000000: lo = hi - 100000000
+        orgs.append(dict(o, key=key, name=name, low=lo, high=hi, status="ok"))
+
+    # 일시적경영애로자금: 연매출 1억 4백만원 미만 + 업력 7년 미만 + 매출 15% 이상 감소
+    base_sales = last if last is not None else sales
+    if base_sales is not None and base_sales < 104000000 and young and drop:
+        make("sojin_hard", "소상공인시장진흥공단 (일시적경영애로자금)", 70000000)
+    # 재도전특별자금: 희망형(재기사업화) 1억 / 도약형(재창업 2~7년 + 성장 + 소진공 성실상환) 2억 / 일반형 7천만
+    cap = 0
+    if rt.get("revival"):
+        cap = max(cap, 100000000)
+    if rt.get("restart") and (bam is None or 24 <= bam < 84) and (grow or emp >= 2 or (_ht_num(inp.get("emp_increase")) or 0) > 0) and used.get("sojin", 0) > 0:
+        cap = max(cap, 200000000)
+    if (rt.get("restart") and young) or rt.get("edu") or rt.get("debt"):
+        cap = max(cap, 70000000)
+    if cap:
+        make("sojin_retry", "소상공인시장진흥공단 (재도전특별자금)", cap)
 
 
 def _ht_jaedan_recent(inp, loans, today):
@@ -1415,6 +1465,9 @@ def ht_estimate_limit(inp, today=None):
             if fixed < R["minAmount"]: sj["low"] = 0; sj["high"] = 0; sj["status"] = "exhausted"
             else: sj["high"] = fixed; sj["low"] = max(R["minAmount"], fixed - 10000000); sj["status"] = "ok"
 
+    # 소진공 특별자금 — 요건에 맞으면 줄 추가 (금액은 같은 산식, 자금별 최대 한도로만 상한)
+    _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u)
+
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if jd_recent:
         base["jaedan_recent"] = jd_recent           # 12(서울) 또는 6 — 화면 안내용
@@ -1435,7 +1488,8 @@ def ht_estimate_limit(inp, today=None):
         if not okd:
             return {**base, "status": "blocked", "low": 0, "high": 0, "text": "완전자본잠식 상태라 현재는 신청이 어렵습니다." if ctx["eroded"] else "현재 재무 상태로는 신청 가능한 기관이 없습니다."}
         grp = [okd[k] for k in ("jaedan", "kodit", "kibo") if k in okd]
-        pick = [okd[k] for k in ("sojin", "jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
+        sj_fam = [o for k, o in okd.items() if k.startswith("sojin")]           # 소진공은 일반·특별자금 중 큰 것 하나
+        pick = ([max(sj_fam, key=lambda o: o["high"])] if sj_fam else []) + [okd[k] for k in ("jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
         t_low = min(t_low, sum(o["low"] for o in pick)); t_high = min(t_high, sum(o["high"] for o in pick))
     t_low, t_high = floor_u(t_low), floor_u(t_high)
     if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "부채 규모가 커 추가 한도 여력이 부족합니다." if capped else "기대출이 많아 추가 한도 여력이 부족합니다."}
@@ -3256,10 +3310,11 @@ INCALL_PROMPT = """아래는 정책자금 컨설팅 회사의 '인콜일지(상�
 - employees: 직원 수(4대보험 기준, 'x'·없음이면 0) / hire: 추가 채용 예정 인원
 - naeil: 내일채움공제 문구 / umbrella: 노란우산공제 가입이면 "yes", 미가입이면 "no"
 - export_amount: 수출 실적 금액 / factory: 공장 "own"(자가)|"rent"(임차)|"none"
+- restart: 메모에 예전 사업을 폐업하고 다시 창업했다는 내용(재창업, '폐업o' 등)이 있으면 true, 없으면 null
 - memo: ※ 추가사항에 적힌 상담 메모를 핵심만 3줄 이내로 요약 (분석에 참고할 사실 위주)
 
 JSON으로만 답하세요:
-{"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":[..],"ytd":..,"kcb":..,"nice":..,"co_kcb":..,"co_nice":..,"recovery":..,"arrears":..,"arrears_other":..,"loans":[..] 또는 null,"age":..,"career":..,"assets_note":..,"marital":..,"woman":..,"employees":..,"hire":..,"naeil":..,"umbrella":..,"export_amount":..,"factory":..,"memo":..}"""
+{"biz_type":..,"company_name":..,"industry":..,"item":..,"industry2":..,"item2":..,"location":..,"founded":..,"years":[..],"ytd":..,"kcb":..,"nice":..,"co_kcb":..,"co_nice":..,"recovery":..,"arrears":..,"arrears_other":..,"loans":[..] 또는 null,"age":..,"career":..,"assets_note":..,"marital":..,"woman":..,"employees":..,"hire":..,"naeil":..,"umbrella":..,"export_amount":..,"factory":..,"restart":..,"memo":..}"""
 
 
 def _docx_text(b64):
