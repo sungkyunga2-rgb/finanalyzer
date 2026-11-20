@@ -2343,15 +2343,33 @@ def _bank_loan_rows(data):
         for l in loans:
             if isinstance(l, dict) and str(l.get("resAccountDeposit") or "40") != "99":
                 out.append({"name": l.get("resAccountName") or "대출", "balance": _codef_amt(l.get("resAccountBalance")),
-                            "start": l.get("resAccountStartDate") or ""})
+                            "start": l.get("resAccountStartDate") or "", "account": l.get("resAccount") or "",
+                            "exec": l.get("resAccountLoanExecNo") or ""})
         deps = d.get("resDepositTrust") or []
         deps = deps if isinstance(deps, list) else [deps]
         for a in deps:     # 마이너스통장(한도대출)
             if isinstance(a, dict) and str(a.get("resOverdraftAcctYN")) == "1":
                 bal = _codef_amt(a.get("resLoanBalance"))
                 if bal:
-                    out.append({"name": a.get("resLoanKind") or "마이너스통장", "balance": abs(bal), "start": a.get("resLoanStartDate") or ""})
+                    out.append({"name": a.get("resLoanKind") or "마이너스통장", "balance": abs(bal), "start": a.get("resLoanStartDate") or a.get("resAccountStartDate") or "",
+                                "account": "", "exec": "", "overdraft": True})
     return out
+
+
+_LOAN_BIZ = _re2.compile(r"사업자|기업|운전|시설|소상공인|소호|SOHO|자영업|중소|보증서|신보|기보|재단|정책|사업|매출|카드가맹|가맹점|POS|창업|법인")
+_LOAN_PERSONAL = _re2.compile(r"주택|아파트|전세|월세|보금자리|디딤돌|신용대출|직장인|가계|생활|오토|자동차|학자금|햇살|사잇돌|공무원|군인|교직원|중도금|이주비|비상금|마이너스|종합통장|예금담보|적금담보")
+
+
+def _loan_kind(name, corp):
+    """대출 이름으로 사업자/개인 구분 — 법인은 모두 사업자. 개인은 이름으로 판단(애매하면 사업자로 보수적으로)"""
+    if corp:
+        return "business"
+    n = str(name or "")
+    if _LOAN_BIZ.search(n):
+        return "business"
+    if _LOAN_PERSONAL.search(n):
+        return "personal"
+    return "business"
 
 
 BANK_P_UNSUPPORTED = {"0020": "개인 조회는 출금계좌번호·계좌 비밀번호가 추가로 필요해 지원하지 않음"}   # CODEF 은행 로그인 파라미터표(2026.11.10)
@@ -2403,11 +2421,30 @@ async def _bank_loans(params, banks, corp):
                 bad.append((b, (r.get("result") or {}).get("message") or "조회 실패"))
                 continue
             ok_banks.append(b)
+            now_k = datetime.utcnow() + timedelta(hours=9)
             for l in _bank_loan_rows(r.get("data")):
                 d = _re2.sub(r"\D", "", str(l["start"]))
-                loans.append({"org": f"{CODEF_BANKS.get(b, b)} · {l['name']}".strip(" ·"),
+                kind_txt = l["name"]
+                disp = l["name"]
+                if len(d) < 6 and l.get("account"):        # 신규일이 없으면 대출 거래내역에서 신규일·대출종류
+                    q = {"connectedId": cid, "organization": b, "account": l["account"],
+                         "startDate": (now_k - timedelta(days=30)).strftime("%Y%m%d"), "endDate": now_k.strftime("%Y%m%d")}
+                    if l.get("exec"):
+                        q["accountLoanExecNo"] = l["exec"]
+                    t = await _safe_async(_codef_post(f"/v1/kr/bank/{'b' if corp else 'p'}/loan/transaction-list", q), default={})
+                    if _codef_code(t) == "CF-00000":
+                        td = t.get("data") or {}
+                        td = td[0] if isinstance(td, list) and td else td
+                        if isinstance(td, dict):
+                            d = _re2.sub(r"\D", "", str(td.get("resAccountStartDate") or ""))
+                            kind_txt = f"{kind_txt} {td.get('resLoanKind') or ''}"
+                            if td.get("resLoanKind"):
+                                disp = str(td["resLoanKind"]).strip()       # 계좌명보다 대출종류가 더 구체적
+                    else:
+                        print(f"[CODEF] {b} 대출 거래내역 실패 {_codef_code(t)}: {_codef_msg(t)}")
+                loans.append({"org": f"{CODEF_BANKS.get(b, b)} · {disp}".strip(" ·"),
                               "date": f"{d[:4]}.{d[4:6]}" if len(d) >= 6 else "", "amount": l["balance"],
-                              **({"kind": "business"} if corp else {})})
+                              "kind": _loan_kind(kind_txt, corp)})
     finally:      # 인증서 등록은 조회 후 바로 지운다
         await _safe_async(_codef_post("/v1/account/delete", {"connectedId": cid, "accountList": [
             {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "organization": b} for b in ok]}))
