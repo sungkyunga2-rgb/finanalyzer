@@ -1081,7 +1081,7 @@
         <div class="ht-head">대표자</div>
         <div class="ht-body">
           <div class="ht-line">
-            <label class="ht-f"><span>나이 (만)</span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" /></label>
+            <label class="ht-f"><span>나이 (만)</span><span style="display:flex;gap:6px;align-items:center;"><input type="text" inputmode="numeric" id="ht-age-birth" placeholder="출생 (1987 · 870315)" maxlength="10" oninput="htAgeCalc(this)" style="flex:1.4;min-width:0;" /><span style="color:var(--text3);font-size:12px;">→</span><input type="number" inputmode="numeric" id="ht-age" placeholder="38" style="flex:1;min-width:0;" /></span><small id="ht-age-note" style="font-size:11px;color:var(--text3);font-weight:400;"></small></label>
             <label class="ht-f"><span>동종업계 경력 (년)</span><input type="number" inputmode="decimal" id="ht-career" placeholder="10" step="0.5" /></label>
             <label class="ht-f"><span>보유 자산 (집, 차량)</span><input type="text" id="ht-rep-assets" placeholder="아파트 자가" /></label>
             <label class="ht-f"><span>혼인 여부</span><select id="ht-marital"><option value="">-</option><option value="married">기혼</option><option value="single">미혼</option></select></label>
@@ -3813,6 +3813,23 @@ function htToggleArrears() {
 }
 
 // 부채비율·이자보상배수 — 재무 수치로 자동 계산 (분석과 같은 기준)
+// 나이 계산기 — 출생연도(1987·87) 또는 생년월일(870315·19870315)을 쓰면 만 나이를 바로 채움
+function htAgeCalc(el) {
+  const d = String(el.value).replace(/\D/g, ""), note = document.getElementById("ht-age-note"), age = document.getElementById("ht-age");
+  const now = new Date(Date.now() + 9 * 3600 * 1000), ty = now.getUTCFullYear(), tm = now.getUTCMonth() + 1, td = now.getUTCDate();
+  const full = yy => (yy > ty % 100 ? 1900 : 2000) + yy;
+  let y = null, m = null, dd = null;
+  if (d.length === 4) y = +d;
+  else if (d.length === 2) y = full(+d);
+  else if (d.length === 6) { y = full(+d.slice(0, 2)); m = +d.slice(2, 4); dd = +d.slice(4, 6); }
+  else if (d.length === 8) { y = +d.slice(0, 4); m = +d.slice(4, 6); dd = +d.slice(6, 8); }
+  if (!y || y < 1900 || y > ty || (m !== null && (m < 1 || m > 12 || dd < 1 || dd > 31))) { if (note) note.textContent = ""; return; }
+  let a = ty - y;
+  if (m !== null) { if (tm < m || (tm === m && td < dd)) a -= 1; if (note) note.textContent = ""; }
+  else if (note) note.textContent = `${y}년생 · 생일이 아직 안 지났으면 만 ${a - 1}세`;
+  age.value = a; age.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function htFinAuto() {
   const v = id => { const el = document.getElementById(id); if (!el) return null; const n = parseFloat(String(el.value).replace(/[^\d.-]/g, "")); return isNaN(n) ? null : n; };
   const assets = v("ht-assets"), debt = v("ht-debt"), op = v("ht-opincome"), int = v("ht-interest");
