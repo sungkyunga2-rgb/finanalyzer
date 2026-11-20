@@ -2611,7 +2611,7 @@ function htFillFromIncall(d) {
   // 양식 빈칸 기호 정리: "( 홍길동 )" → "홍길동", "___", "( )", 앞뒤 ":" 제거 — "(주)" 같은 법인 표기는 유지
   const t = v => {
     if (v === null || v === undefined) return "";
-    let x = String(v).replace(/[_＿]+/g, " ").replace(/\(\s*\)|\[\s*\]|（\s*）/g, " ").trim();
+    let x = String(v).replace(/[_＿|｜¦‖ㄱ-ㅎㅏ-ㅣ*#~※"“”'‘’「」『』<>《》]+/g, " ").replace(/\(\s*\)|\[\s*\]|（\s*）/g, " ").trim();   // 구분선·홑자모(ㅣ)·기호 제거
     for (let i = 0; i < 3; i++) {
       const m = x.match(/^[(\[（]\s*([\s\S]*?)\s*[)\]）]$/);
       if (m && !/^(주|유|사|재|합|의|학)$/.test(m[1])) x = m[1].trim(); else break;
