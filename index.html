@@ -365,6 +365,7 @@
   .plan-cycle .cyc-off { color:#e5267a; font-size:11.5px; font-weight:700; margin-left:2px; }
   .rt-chip { display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; border:none; cursor:default; vertical-align:1px; margin-left:2px; }
   .rt-chip.ok { background:#E3F4EA; color:#1E7A46; } .rt-chip.check { background:#FFF3D6; color:#8A5A00; } .rt-chip.no { background:#FBE5E5; color:#A32D2D; }
+  .rt-chip.none { background:#EEF2F7; color:#3D5A80; }
   .rt-chip.pro { cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
   .rt-box { max-width:420px; }
   .rt-closed { background:#F5F7FA; border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.6; margin-bottom:12px; }
@@ -5301,14 +5302,23 @@ function htRtRender() {
   const el = document.getElementById("ht-rt-review");
   if (!el) return;
   const rv = htRestartReview, on = (document.getElementById("ht-rt-restart") || {}).checked;
-  if (!rv || !rv.status || !on) { el.innerHTML = ""; return; }
+  if (!on) { el.innerHTML = ""; return; }
+  if (!rv || !rv.status) {        // 인증으로 확인한 내역 없음 (직접 체크·메모) — Pro는 안내 창
+    el.innerHTML = userTier === "pro" ? `<button type="button" class="rt-chip none pro" onclick="htRtOpen()">내용 확인 ›</button>` : "";
+    return;
+  }
   const pro = Array.isArray(rv.checks) && rv.checks.length;
   el.innerHTML = pro ? `<button type="button" class="rt-chip ${rv.status} pro" onclick="htRtOpen()" title="검토 내역 보기">${HT_RT_LABEL[rv.status] || ""} ›</button>`
                      : `<span class="rt-chip ${rv.status}">${HT_RT_LABEL[rv.status] || ""}</span>`;
 }
 function htRtOpen() {
   const rv = htRestartReview;
-  if (!rv || !rv.checks) return;
+  if (!rv || !rv.checks) {
+    document.getElementById("rt-modal-body").innerHTML = `<div class="rt-closed">홈택스에서 확인된 폐업 사업장이 없어요.<br>
+      <span style="color:var(--text3);font-size:12px;">간편인증·공동인증서로 자료를 불러오면 대표자 명의 폐업사실증명으로 재창업 요건을 자동으로 검토해요. 폐업 이력이 다른 명의(법인 이사 등)라면 서류로 확인해 주세요.</span></div>`;
+    document.getElementById("rt-modal").classList.remove("hidden");
+    return;
+  }
   const c = rv.closed || {}, mark = { ok: "✓", check: "!", no: "✕" };
   document.getElementById("rt-modal-body").innerHTML =
     `<div class="rt-closed"><b>폐업 사업장</b>${c.count > 1 ? ` <span style="color:var(--text3);font-size:12px;">(가장 최근 폐업 · 총 ${c.count}곳)</span>` : ""}<br>
