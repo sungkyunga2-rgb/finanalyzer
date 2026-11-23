@@ -1187,7 +1187,9 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
     drop = (prev and last is not None and last <= prev * 0.85) or (last and ytd_annual is not None and ytd_annual <= last * 0.85)
     grow = (prev and last is not None and last >= prev * 1.05) or (last and ytd_annual is not None and ytd_annual >= last * 1.05)
     emp = _ht_num(inp.get("employees")) or 0
-    rt = inp.get("retry") or {}
+    rt = dict(inp.get("retry") or {})
+    if rt.get("restart") and (inp.get("restart_review") or {}).get("other_biz"):
+        rt["restart"] = False                 # 재창업: 신청 사업자 외 다른 사업자 보유 시 지원 제외
     E, Lb = ctx.get("equity"), ctx.get("liabilities")
 
     def make(key, name, cap, fund=None):
@@ -2146,15 +2148,17 @@ def _pair_biz(types_raw, items_raw):
     return types[0], items[0], ", ".join(types[1:]), ", ".join(items[1:])
 
 
+def _closure_rows(data):
+    rows = data if isinstance(data, list) else [data] if isinstance(data, dict) else []
+    return [r for r in rows if isinstance(r, dict)]
+
+
 def _closure_restart(data, founded="", cur_biz=""):
     """폐업사실증명 → 재창업이면 True. 지금 사업자가 아닌 다른 사업장을 현재 사업 개업 이전(같은 달 포함)에 폐업했으면 재창업.
     발급 안 됨(폐업 이력 없음)·판단 불가면 None — 체크박스를 건드리지 않는다."""
-    rows = data if isinstance(data, list) else [data] if isinstance(data, dict) else []
     cur = _re2.sub(r"\D", "", cur_biz or "")
     start = _re2.sub(r"\D", "", founded or "")[:6]
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
+    for r in _closure_rows(data):
         closed = _re2.sub(r"\D", "", r.get("resClosingDate") or "")[:6]
         biz = _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "")
         if len(closed) < 6 or (cur and biz == cur):
@@ -2162,6 +2166,93 @@ def _closure_restart(data, founded="", cur_biz=""):
         if len(start) < 6 or closed <= start:
             return True
     return None
+
+
+def _ymd(v):
+    d = _re2.sub(r"\D", "", v or "")[:8]
+    try:
+        return datetime(int(d[:4]), int(d[4:6]), int(d[6:8]) if len(d) >= 8 else 1).date() if len(d) >= 6 else None
+    except ValueError:
+        return None
+
+
+def _closure_review(datas, fill, today=None):
+    """폐업사실증명 → 재창업 초기단계 요건 검토 {restart, status, other_biz, closed:{..}, checks:[{t,s,d}]}
+    s: ok(충족) / no(미충족) / check(확인 필요). 재창업 대상(현재 개업 이전 폐업)이 없으면 None"""
+    today = today or (datetime.utcnow() + timedelta(hours=9)).date()
+    cur = _re2.sub(r"\D", "", fill.get("business_number", "") or "")
+    opened = _ymd(fill.get("founded", ""))
+    cands = []
+    for data in datas:
+        for r in _closure_rows(data):
+            c, o = _ymd(r.get("resClosingDate")), _ymd(r.get("resOpenDate"))
+            biz = _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "")
+            if not c or (cur and biz == cur):
+                continue
+            if opened and (c.year, c.month) > (opened.year, opened.month):
+                continue                       # 지금 사업 개업 뒤에 폐업 → 동시 운영, 재창업 아님
+            cands.append((c, o, biz, r))
+    if not cands:
+        return None
+    c, o, biz, r = max(cands, key=lambda x: x[0])        # 가장 최근에 폐업한 사업장 기준
+    ind = " / ".join(t.strip() for t in (r.get("resBusinessTypes") or "", r.get("resBusinessItems") or "") if t and t.strip())
+    old_years = round((c - o).days / 365.25, 1) if o and c >= o else None
+    checks = []
+    # 1) 재창업 기업 업력 7년 미만
+    if opened:
+        mon = (today.year - opened.year) * 12 + today.month - opened.month
+        checks.append({"t": "재창업 기업 업력 7년 미만", "s": "ok" if mon < 84 else "no", "d": f"업력 {mon // 12}년 {mon % 12}개월"})
+    else:
+        checks.append({"t": "재창업 기업 업력 7년 미만", "s": "check", "d": "개업일 확인 필요"})
+    # 2) 현재 대표가 폐업기업 대표
+    if fill.get("biz_type") == "corp":
+        checks.append({"t": "폐업기업 대표 = 현재 대표", "s": "check", "d": "법인 대표(이사) 경력은 서류로 확인 필요"})
+    else:
+        checks.append({"t": "폐업기업 대표 = 현재 대표", "s": "ok", "d": "대표자 본인 명의 폐업 사업장"})
+    # 3) 폐업기업 업종이 정책자금 지원 대상
+    restricted = bool(_HT_IND["restricted"].search(ind)) if ind else False
+    checks.append({"t": "폐업기업 업종 지원 대상", "s": "no" if restricted else ("ok" if ind else "check"), "d": ind or "업종 확인 필요"})
+    # 4) 폐업기업 매출실적 (폐업기업 업력 3년 이상이면 요건 제외)
+    if old_years is not None and old_years >= 3:
+        checks.append({"t": "폐업기업 매출실적", "s": "ok", "d": f"폐업기업 업력 {old_years}년 (매출실적 요건 제외)"})
+    else:
+        checks.append({"t": "폐업기업 매출실적", "s": "check", "d": (f"폐업기업 업력 {old_years}년 — " if old_years is not None else "") + "폐업 사업장 매출 신고 내역 확인 필요"})
+    # 5) 신청 사업자 외 다른 사업자 보유 → 지원 제외
+    others = [b for b in (fill.get("_business_list") or []) if _re2.sub(r"\D", "", b.get("business_number", "")) not in ("", cur)]
+    checks.append({"t": "신청 사업자 외 다른 사업자 없음", "s": "no" if others else "ok",
+                   "d": ("운영 중인 다른 사업자: " + ", ".join(b.get("company_name") or b.get("business_number", "") for b in others)) if others else "운영 중인 다른 사업자 없음"})
+    # 6) 법인전환·과세유형 변경 등 번호만 바뀐 경우는 재창업 아님
+    gap = (opened - c).days if opened else None
+    words = lambda t: {w for w in _re2.split(r"[\s/,·()]+", t or "") if len(w) >= 2}
+    same = bool(words(ind) & words(f"{fill.get('industry', '')} {fill.get('item', '')}"))
+    if gap is not None and gap <= 31 and same:
+        checks.append({"t": "실제 재창업 (번호만 변경 아님)", "s": "check", "d": "폐업 직후 같은 업종으로 개업 — 법인전환·과세유형 변경 여부 확인 필요"})
+    else:
+        checks.append({"t": "실제 재창업 (번호만 변경 아님)", "s": "ok", "d": f"폐업 후 {gap}일 뒤 개업" if gap is not None else "폐업 후 다시 개업"})
+    ss = [x["s"] for x in checks]
+    fmt = lambda d: d.strftime("%Y-%m-%d") if d else ""
+    return {
+        "restart": not restricted,
+        "status": "no" if "no" in ss else ("check" if "check" in ss else "ok"),
+        "other_biz": bool(others),
+        "closed": {"company": (r.get("resCompanyNm") or "").strip(), "business_number": f"{biz[:3]}-{biz[3:5]}-{biz[5:]}" if len(biz) == 10 else biz,
+                   "industry": ind, "opened": fmt(o), "closed": fmt(c), "count": len(cands)},
+        "checks": checks,
+    }
+
+
+def _closure_apply(fill, datas, got):
+    rv = _safe(_closure_review, datas, fill)
+    if rv:
+        fill["restart_review"] = rv
+        if rv["restart"]:
+            fill["retry"] = {"restart": True}
+        got.append("재창업 여부")
+
+
+def _restart_review_basic(rv):
+    """Basic — 결과만 (검토 내역은 Pro)"""
+    return {k: rv[k] for k in ("restart", "status", "other_biz") if k in rv} if isinstance(rv, dict) else rv
 
 
 def _parse_registration(data, want_biz=""):
@@ -2529,9 +2620,8 @@ def _ht_assemble(st, now, final):
     if dis is not None:
         fill["rep_disabled"] = dis
         got.append("장애인기업 여부")
-    if any(_safe(_closure_restart, d, fill.get("founded", ""), fill.get("business_number", "")) for d in ok("closure")):
-        fill["retry"] = {"restart": True}
-        got.append("재창업 여부")
+    if ok("closure"):
+        _closure_apply(fill, ok("closure"), got)
     return {"fill": fill, "got": got, "failed": failed}
 
 
@@ -3116,6 +3206,9 @@ def codef_hometax_job(job_id: str, user: models.User = Depends(get_current_user)
     if status == "running" and row.created_at and row.created_at < datetime.utcnow() - timedelta(minutes=8):
         status = "error"
         data = {"detail": "자료 조회가 너무 오래 걸려 중단됐어요. 다시 시도해 주세요."}
+    fl = data.get("fill") if isinstance(data, dict) else None
+    if isinstance(fl, dict) and fl.get("restart_review") and user_plan_tier(db, user) != "pro":
+        fl["restart_review"] = _restart_review_basic(fl["restart_review"])
     return dict(data, status=status)      # 오래된 작업은 새 작업을 만들 때 1시간 지나면 정리
 
 
@@ -3200,9 +3293,8 @@ async def _hometax_collect(params, reg_data, progress=None):
     try:
         cres = await _codef_post(CODEF_HOMETAX_PRODUCTS["closure"], dict(base, **ph("phoneNo"), usePurposes="99", submitTargets="99",
                                                                           isIdentityViewYn="0", applicationType="01", originDataYN="0", originDataYN1="0"))
-        if _codef_code(cres) == "CF-00000" and _safe(_closure_restart, cres.get("data"), fill.get("founded", ""), fill.get("business_number", "")):
-            fill["retry"] = {"restart": True}
-            got.append("재창업 여부")
+        if _codef_code(cres) == "CF-00000":
+            _closure_apply(fill, [cres.get("data")], got)
     except Exception as e:
         print(f"[CODEF] closure 호출 오류: {e}")
 

@@ -64,6 +64,10 @@ for c in cases.get("closure", []):
     r = main._closure_restart(c["data"], c["founded"], c["biz"])
     check("재창업: " + c["name"], r == c["expect"], f"기대 {c['expect']}, 결과 {r}")
 
+for c in cases.get("closure_review", []):
+    rv = main._closure_review(c["data"], c["fill"], D.date.fromisoformat(c["today"])) or {}
+    check_fields("재창업 검토: " + c["name"], rv, c["expect"])
+
 print()
 print(f"실패 {len(fails)}건" if fails else "모두 통과")
 sys.exit(1 if fails else 0)

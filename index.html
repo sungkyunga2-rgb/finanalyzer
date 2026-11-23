@@ -363,6 +363,16 @@
   .plan-cycle > span { font-size:13px; font-weight:600; color:var(--text2); padding:6px 14px; border-radius:999px; white-space:nowrap; transition:background .15s, color .15s; }
   .plan-cycle > span.on { background:var(--surface); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.12); }
   .plan-cycle .cyc-off { color:#e5267a; font-size:11.5px; font-weight:700; margin-left:2px; }
+  .rt-chip { display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; border:none; cursor:default; vertical-align:1px; margin-left:2px; }
+  .rt-chip.ok { background:#E3F4EA; color:#1E7A46; } .rt-chip.check { background:#FFF3D6; color:#8A5A00; } .rt-chip.no { background:#FBE5E5; color:#A32D2D; }
+  .rt-chip.pro { cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+  .rt-box { max-width:420px; }
+  .rt-closed { background:#F5F7FA; border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.6; margin-bottom:12px; }
+  .rt-row { display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-top:1px solid #EEF0F3; font-size:13px; }
+  .rt-row:first-child { border-top:none; }
+  .rt-mark { flex:none; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+  .rt-mark.ok { background:#E3F4EA; color:#1E7A46; } .rt-mark.check { background:#FFF3D6; color:#8A5A00; } .rt-mark.no { background:#FBE5E5; color:#A32D2D; }
+  .rt-row small { display:block; color:var(--text3); font-size:12px; margin-top:1px; }
   .plan-hot { display:inline-block; vertical-align:2px; margin-left:4px; font-size:11px; font-weight:700; color:#fff; background:#185FA5; padding:2px 8px; border-radius:999px; }
   .plan-feats { margin:8px 0 0; padding-left:17px; font-size:12.5px; color:var(--text2); line-height:1.7; }
   .plan-per { font-size:12px; color:var(--text3); margin-top:2px; }
@@ -1157,7 +1167,7 @@
           <label class="ht-chk"><input type="checkbox" id="ht-disabled" /> 장애인기업</label>
           <div style="display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:2px;">
             <span style="font-size:11px;color:var(--text3);">재기 지원</span>
-            <label class="ht-chk"><input type="checkbox" id="ht-rt-restart" /> 재창업 (폐업 후 다시 창업)</label>
+            <span style="display:inline-flex;align-items:center;gap:4px;"><label class="ht-chk"><input type="checkbox" id="ht-rt-restart" onchange="htRtRender()" /> 재창업 (폐업 후 다시 창업)</label><span id="ht-rt-review"></span></span>
             <label class="ht-chk"><input type="checkbox" id="ht-rt-edu" /> 희망리턴패키지 재창업교육 수료</label>
             <label class="ht-chk"><input type="checkbox" id="ht-rt-revival" /> 재기사업화 완료·선정</label>
             <label class="ht-chk"><input type="checkbox" id="ht-rt-debt" /> 채무조정·상환연장 성실상환 중</label>
@@ -1875,6 +1885,17 @@
     </div>
     <div id="bugreport-error" class="error-msg"></div>
     <button class="btn btn-primary btn-full" id="bugreport-submit-btn" onclick="submitBugReport()">신고 접수하기</button>
+  </div>
+</div>
+
+<!-- 재창업 요건 검토 (Pro) -->
+<div id="rt-modal" class="modal-overlay hidden" onclick="if(event.target===this) htRtClose()">
+  <div class="modal-box rt-box">
+    <div class="modal-header">
+      <div class="modal-title">재창업 요건 검토</div>
+      <button class="modal-close" onclick="htRtClose()">✕</button>
+    </div>
+    <div id="rt-modal-body"></div>
   </div>
 </div>
 
@@ -4287,6 +4308,7 @@ function htReadForm() {
   }
   input.loans = input.loans_none ? [] : htReadLoans();
   input.cert_list = htReadCerts();
+  if (htRestartReview && input.retry && input.retry.restart) input.restart_review = htRestartReview;
   input.certs = htCertText(input.cert_list);
   input.lab = input.cert_list.some(c => c.type === "기업부설연구소") ? "lab" : input.cert_list.some(c => c.type === "연구개발전담부서") ? "dept" : "";
   if (!Object.values(input.fin || {}).some(v => v !== null)) input.fin = null;
@@ -4310,6 +4332,7 @@ function htResetForm() {
 
 function htFillForm(input) {
   if (!input) return;
+  htRestartReview = input.restart_review || null;
   HT_FIELDS.forEach(([path, id, type]) => htWriteField(id, type, htGet(input, path)));
   const bt = document.querySelector(`input[name="ht-biztype"][value="${input.biz_type === "corp" ? "corp" : "personal"}"]`);
   if (bt) bt.checked = true;
@@ -4332,6 +4355,7 @@ function htFillForm(input) {
   htFinAuto();
   htShowInd2(!!(input.industry2 || input.item2), true);
   if (!document.getElementById("ht-ytd-year").value) document.getElementById("ht-ytd-year").value = new Date().getFullYear();
+  htRtRender();
 }
 
 // 두 번째 업태·종목 칸 보이기/숨기기 (keep: 숨길 때 값 유지)
@@ -5245,6 +5269,7 @@ function htAuthApply(res) {
   if (typeof f.emp_avg === "number") inc.emp_avg = f.emp_avg;
   if (typeof f.rep_disabled === "boolean") inc.rep_disabled = f.rep_disabled;
   if (f.retry && f.retry.restart === true) inc.restart = true;      // 폐업사실증명 — 예전 사업장 폐업 후 다시 창업
+  inc.restart_review = f.restart_review || null;                    // 재창업 요건 검토 (새로 인증하면 새 결과로)
   if ((f.employees === undefined || f.employees === null) && f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
   htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
@@ -5268,6 +5293,31 @@ function htAuthApply(res) {
   if (f._business_list && f._business_list.length > 1 && !htAuthState.bizChosen) htBizPickOpen(f._business_list, f.business_number);
   htAuthState.bizChosen = false;
 }
+
+// 재창업 요건 검토 — 폐업사실증명으로 확인한 결과. Basic은 결과만, Pro는 눌러서 검토 내역
+let htRestartReview = null;
+const HT_RT_LABEL = { ok: "요건 충족", check: "확인 필요", no: "요건 미충족" };
+function htRtRender() {
+  const el = document.getElementById("ht-rt-review");
+  if (!el) return;
+  const rv = htRestartReview, on = (document.getElementById("ht-rt-restart") || {}).checked;
+  if (!rv || !rv.status || !on) { el.innerHTML = ""; return; }
+  const pro = Array.isArray(rv.checks) && rv.checks.length;
+  el.innerHTML = pro ? `<button type="button" class="rt-chip ${rv.status} pro" onclick="htRtOpen()" title="검토 내역 보기">${HT_RT_LABEL[rv.status] || ""} ›</button>`
+                     : `<span class="rt-chip ${rv.status}">${HT_RT_LABEL[rv.status] || ""}</span>`;
+}
+function htRtOpen() {
+  const rv = htRestartReview;
+  if (!rv || !rv.checks) return;
+  const c = rv.closed || {}, mark = { ok: "✓", check: "!", no: "✕" };
+  document.getElementById("rt-modal-body").innerHTML =
+    `<div class="rt-closed"><b>폐업 사업장</b>${c.count > 1 ? ` <span style="color:var(--text3);font-size:12px;">(가장 최근 폐업 · 총 ${c.count}곳)</span>` : ""}<br>
+      ${escapeHtml(c.company || "상호 없음")}${c.business_number ? ` · ${escapeHtml(c.business_number)}` : ""}<br>
+      ${c.industry ? escapeHtml(c.industry) + "<br>" : ""}${escapeHtml(c.opened || "?")} 개업 → ${escapeHtml(c.closed || "?")} 폐업</div>` +
+    rv.checks.map(x => `<div class="rt-row"><span class="rt-mark ${x.s}">${mark[x.s] || ""}</span><div><b>${escapeHtml(x.t)}</b><small>${escapeHtml(x.d || "")}</small></div></div>`).join("");
+  document.getElementById("rt-modal").classList.remove("hidden");
+}
+function htRtClose() { document.getElementById("rt-modal").classList.add("hidden"); }
 
 // 사업장이 여러 곳 — 목록에서 골라 그 사업장으로 다시 불러오기 (다시 인증 필요)
 function htBizPickOpen(list, current) {
@@ -5317,6 +5367,7 @@ function htOverwriteForm(inc) {
   if (typeof inc.emp_avg === "number") cur.emp_avg = inc.emp_avg;
   if (typeof inc.rep_disabled === "boolean") { cur.rep = cur.rep || {}; cur.rep.disabled = inc.rep_disabled; }
   if (inc.restart === true) { cur.retry = cur.retry || {}; cur.retry.restart = true; }
+  if ("restart_review" in inc) cur.restart_review = inc.restart_review;
   if (inc.arrears && inc.arrears.status) cur.arrears = Object.assign({}, cur.arrears, inc.arrears);
   if (inc.loans && inc.loans.length) { cur.loans = inc.loans; cur.loans_none = false; }
   if (inc.fin) cur.fin = Object.assign({}, cur.fin || {}, Object.fromEntries(Object.entries(inc.fin).filter(([, v]) => v !== null && v !== undefined)));
