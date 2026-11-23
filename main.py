@@ -3702,6 +3702,8 @@ def _gemini_fail(err) -> str:
         return "AI 사용량 한도를 넘어 지금은 서류를 읽을 수 없어요. 잠시 후 다시 시도해 주세요. (계속되면 관리자에게 알려 주세요)"
     if "API key" in e or "API_KEY" in e or "PERMISSION_DENIED" in e:
         return "AI 연결 설정에 문제가 있어 서류를 읽을 수 없어요. 관리자에게 알려 주세요."
+    if "UNAVAILABLE" in e or "high demand" in e or "overloaded" in e.lower():
+        return "지금 AI 서버에 요청이 몰려 서류를 읽지 못했어요. 1~2분 뒤 다시 시도해 주세요."
     return "AI 인식 서버가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요."
 
 
@@ -3712,7 +3714,7 @@ async def _gemini_json(image_parts, prompt, max_tokens=3000):
     last_err = None
     async with httpx.AsyncClient(timeout=120) as client:
         for model in models_:
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
                     resp = await client.post(
                         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}",
@@ -3720,12 +3722,16 @@ async def _gemini_json(image_parts, prompt, max_tokens=3000):
                         json={"contents": [{"parts": [*image_parts, {"text": prompt}]}],
                               "generationConfig": dict({"temperature": 0, "maxOutputTokens": max_tokens},
                                                        **({"thinkingConfig": {"thinkingBudget": 0}} if model.startswith("gemini-2.5") else {}))})
-                    if resp.status_code in (503, 429):
+                    if resp.status_code == 503:          # 구글 서버 혼잡 — 잠깐 쉬었다가 같은 모델로 다시 (1.5초 → 3초), 그래도 안 되면 다음 모델
                         last_err = resp.text
-                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
-                        if attempt == 0:
-                            await asyncio.sleep(0.8)
+                        print(f"[gemini] {model} 503 (혼잡) {attempt + 1}회")
+                        if attempt < 2:
+                            await asyncio.sleep(1.5 * (attempt + 1))
                             continue
+                        break
+                    if resp.status_code == 429:          # 사용량 한도 — 같은 모델은 다시 해도 안 되므로 바로 다음 모델 (모델마다 한도가 따로)
+                        last_err = resp.text
+                        print(f"[gemini] {model} 429 (사용량 한도): {resp.text[:200]}")
                         break
                     if resp.status_code != 200:
                         last_err = resp.text
