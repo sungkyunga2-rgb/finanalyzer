@@ -2821,7 +2821,8 @@ async function htHandleAllDocs(all) {
     }
     rows[0].st = "ok"; rows[0].files = "";
     const GROUPS = [["incall", "상담 기록", htHandleIncallFiles], ["financial", "재무제표", htHandleFinFiles], ["income", "사업자등록증·매출 서류", htHandleIncomeFile],
-                    ["credit", "신용정보", htHandleCreditFiles], ["other", "그 밖의 서류", htHandleGeneralFiles]];
+                    ["credit", "신용정보", htHandleCreditFiles], ["other", "그 밖의 서류", htHandleGeneralFiles],
+                    ["closure", "폐업사실증명", htHandleClosureFiles]];     // 폐업사실증명은 마지막 — 개업년월·업종이 채워진 뒤에 검토
     const todo = GROUPS.map(([k, label, fn]) => ({ key: k, label, fn, list: files.filter((f, i) => types[i] === k) })).filter(g => g.list.length);
     todo.forEach(g => rows.push({ key: g.key, label: g.label, files: g.list.map(f => f.name).join(", "), st: "wait" }));
     htDocRender(rows);
@@ -2892,6 +2893,22 @@ async function htHandleGeneralFiles(files) {
   try {
     const res = await api("POST", "/extract/general", { images: await Promise.all(files.slice(0, 5).map(read)), founded: htReadForm().founded || null });
     htFillFromIncall(res.data || {}, files.map(f => f.name).join(", "));
+  } catch (err) { alertError(err.message); }
+}
+// 폐업사실증명 → 재창업 요건 검토 (Basic은 결과만, Pro는 검토 내역까지)
+async function htHandleClosureFiles(files) {
+  const read = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = ev => ok({ data: ev.target.result.split(",")[1], mime: f.type || "image/jpeg" }); r.onerror = no; r.readAsDataURL(f); });
+  try {
+    const f0 = htReadForm();
+    const res = await api("POST", "/extract/closure", { images: await Promise.all(files.slice(0, 5).map(read)),
+      fill: { business_number: f0.business_number || "", founded: f0.founded || "", biz_type: f0.biz_type || "", industry: f0.industry || "", item: f0.item || "" } });
+    const rv = res.review;
+    if (!rv) { toast(res.found ? "지금 사업 개업 전에 폐업한 사업장이 없어 재창업으로 보지 않았어요." : "폐업 사업장을 읽지 못했어요. 서류를 확인해 주세요."); return; }
+    const cur = htReadForm();
+    cur.restart_review = rv;
+    if (rv.restart) { cur.retry = cur.retry || {}; cur.retry.restart = true; }
+    htFillForm(cur);
+    toast(`재창업 ${HT_RT_LABEL[rv.status] || "검토"} — 재기 지원에서 확인해 주세요.`);
   } catch (err) { alertError(err.message); }
 }
 const HT_SIDO = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];

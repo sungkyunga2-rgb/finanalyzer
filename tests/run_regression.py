@@ -65,7 +65,7 @@ for c in cases.get("closure", []):
     check("재창업: " + c["name"], r == c["expect"], f"기대 {c['expect']}, 결과 {r}")
 
 for c in cases.get("closure_review", []):
-    rv = main._closure_review(c["data"], c["fill"], D.date.fromisoformat(c["today"])) or {}
+    rv = main._closure_review(c["data"], c["fill"], D.date.fromisoformat(c["today"]), c.get("biz_list_known", True)) or {}
     check_fields("재창업 검토: " + c["name"], rv, c["expect"])
 
 print()

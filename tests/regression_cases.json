@@ -720,6 +720,32 @@
       "expect": {
         "status": "no"
       }
+    },
+    {
+      "name": "서류로만 확인(사업장 목록 모름) → 다른 사업자 여부 확인 필요",
+      "today": "2026-11-23",
+      "biz_list_known": false,
+      "data": [
+        {
+          "resCompanyIdentityNo": "1111111111",
+          "resOpenDate": "20170301",
+          "resClosingDate": "20210630",
+          "resBusinessTypes": "소매업",
+          "resBusinessItems": "의류"
+        }
+      ],
+      "fill": {
+        "business_number": "222-22-22222",
+        "founded": "2023-05",
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식"
+      },
+      "expect": {
+        "restart": true,
+        "status": "check",
+        "other_biz": false
+      }
     }
   ]
 }

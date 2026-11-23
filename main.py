@@ -2176,7 +2176,7 @@ def _ymd(v):
         return None
 
 
-def _closure_review(datas, fill, today=None):
+def _closure_review(datas, fill, today=None, biz_list_known=True):
     """폐업사실증명 → 재창업 초기단계 요건 검토 {restart, status, other_biz, closed:{..}, checks:[{t,s,d}]}
     s: ok(충족) / no(미충족) / check(확인 필요). 재창업 대상(현재 개업 이전 폐업)이 없으면 None"""
     today = today or (datetime.utcnow() + timedelta(hours=9)).date()
@@ -2219,8 +2219,11 @@ def _closure_review(datas, fill, today=None):
         checks.append({"t": "폐업기업 매출실적", "s": "check", "d": (f"폐업기업 업력 {old_years}년 — " if old_years is not None else "") + "폐업 사업장 매출 신고 내역 확인 필요"})
     # 5) 신청 사업자 외 다른 사업자 보유 → 지원 제외
     others = [b for b in (fill.get("_business_list") or []) if _re2.sub(r"\D", "", b.get("business_number", "")) not in ("", cur)]
-    checks.append({"t": "신청 사업자 외 다른 사업자 없음", "s": "no" if others else "ok",
-                   "d": ("운영 중인 다른 사업자: " + ", ".join(b.get("company_name") or b.get("business_number", "") for b in others)) if others else "운영 중인 다른 사업자 없음"})
+    if others or biz_list_known:
+        checks.append({"t": "신청 사업자 외 다른 사업자 없음", "s": "no" if others else "ok",
+                       "d": ("운영 중인 다른 사업자: " + ", ".join(b.get("company_name") or b.get("business_number", "") for b in others)) if others else "운영 중인 다른 사업자 없음"})
+    else:                                  # 서류로만 확인 — 사업장 목록을 모름
+        checks.append({"t": "신청 사업자 외 다른 사업자 없음", "s": "check", "d": "운영 중인 다른 사업자 여부 확인 필요 (인증으로 불러오면 자동 확인)"})
     # 6) 법인전환·과세유형 변경 등 번호만 바뀐 경우는 재창업 아님
     gap = (opened - c).days if opened else None
     words = lambda t: {w for w in _re2.split(r"[\s/,·()]+", t or "") if len(w) >= 2}
@@ -3978,9 +3981,44 @@ async def extract_general(body: IncomeDocExtractRequest, user: models.User = Dep
     return {"data": data}
 
 
+CLOSURE_DOC_PROMPT = """위에 국세청 폐업사실증명이 첨부돼 있습니다. 증명서에 적힌 폐업 사업장마다 아래 값을 그대로 옮기세요. 확인되지 않는 값은 null. 추측하지 마세요.
+- company: 상호(법인명) / business_number: 사업자등록번호 숫자 10자리 / opened: 개업일 "YYYYMMDD" / closed: 폐업일 "YYYYMMDD"
+- industry: 업태 / item: 종목
+주민등록번호·주소·이름은 옮기지 마세요.
+JSON으로만 답하세요: {"rows": [{"company":..,"business_number":..,"opened":..,"closed":..,"industry":..,"item":..}]}"""
+
+
+class ClosureDocRequest(BaseModel):
+    images: list[ImageItem] = []
+    fill: dict = {}                     # 지금 입력된 사업자번호·개업년월·업종·사업자 구분 (요건 검토용)
+
+
+@app.post("/extract/closure")
+async def extract_closure(body: ClosureDocRequest, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """폐업사실증명 서류 → 재창업 요건 검토. 저장하지 않는다."""
+    if not body.images:
+        raise HTTPException(status_code=400, detail="서류 파일이 없습니다.")
+    parts = [{"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}} for img in body.images[:5]]
+    data, err = await _gemini_json(parts, CLOSURE_DOC_PROMPT, max_tokens=1500)
+    if data is None:
+        print(f"[gemini] 실패: {str(err)[:300]}")
+        raise HTTPException(status_code=500, detail=_gemini_fail(err))
+    rows = [{"resCompanyNm": _ht_s(r.get("company")), "resCompanyIdentityNo": _ht_s(r.get("business_number")),
+             "resOpenDate": _ht_s(r.get("opened")), "resClosingDate": _ht_s(r.get("closed")),
+             "resBusinessTypes": _ht_s(r.get("industry")), "resBusinessItems": _ht_s(r.get("item"))}
+            for r in ((data or {}).get("rows") or []) if isinstance(r, dict)]
+    f = body.fill or {}
+    fill = {k: _ht_s(f.get(k)) for k in ("business_number", "founded", "biz_type", "industry", "item")}
+    rv = _safe(_closure_review, [rows], fill, None, False) if rows else None
+    if rv and user_plan_tier(db, user) != "pro":
+        rv = _restart_review_basic(rv)
+    return {"review": rv, "found": len(rows)}
+
+
 DOC_CLASSIFY_PROMPT = """위에 [파일 1], [파일 2] … 순서로 한국 서류(이미지 또는 PDF)가 첨부돼 있습니다. 각 파일이 어떤 서류인지 아래 중 하나로 분류하세요.
 - "financial": 재무제표 — 표준재무제표증명, 재무상태표(대차대조표), 손익계산서, 결산서
-- "income": 사업자등록증·사업자등록증명, 부가가치세 과세표준증명, 부가가치세 면세사업자 수입금액증명, 소득금액증명
+- "closure": 폐업사실증명 (폐업일이 적힌 국세청 증명서)
+- "income": 사업자등록증·사업자등록증명(폐업사실증명 제외), 부가가치세 과세표준증명, 부가가치세 면세사업자 수입금액증명, 소득금액증명
 - "incall": 인콜일지·상담일지·상담 기록지 (업체명·매출·신용점수·기대출 등을 손으로/표로 적은 컨설팅 상담 양식)
 - "credit": 신용정보조회서(올크레딧·나이스지키미·크레딧포유), 신용점수 화면 캡처, 대출 내역 화면(은행·토스·카카오뱅크 등 앱 캡처 포함)
 - "other": 위에 해당하지 않음
@@ -4004,7 +4042,7 @@ async def extract_classify(body: IncomeDocExtractRequest, user: models.User = De
         print(f"[gemini] 실패: {str(err)[:300]}")
         raise HTTPException(status_code=500, detail=_gemini_fail(err))
     types = data.get("types") if isinstance(data, dict) else None
-    types = [t if t in ("financial", "income", "credit", "incall") else "other" for t in (types or [])][:len(body.images)]
+    types = [t if t in ("financial", "income", "credit", "incall", "closure") else "other" for t in (types or [])][:len(body.images)]
     types += ["other"] * (len(body.images) - len(types))
     return {"types": types}
 
