@@ -1579,7 +1579,7 @@ def _ht_estimate_limit_core(inp, today=None):
         ded = used["miso"] if key == "miso" else (sum(v for kk, v in used.items() if kk != "miso") + other)   # 다른 기관 정책자금도 모든 기관 한도에서 차감
         low = max(0, lo - ded); high = max(0, hi - ded)
         if key in ("kodit", "kibo"): low = _fund_round(low); high = _fund_round(high)
-        if key == "jungjin": low = floor_u(low); high = floor_u(high)
+        if key not in ("kodit", "kibo"): low = floor_u(low); high = floor_u(high)     # 원 단위 끝자리 정리
         if low == high and high >= 200000000: low = high - 100000000
         min_a = R["misoMinAmount"] if key == "miso" else R["minAmount"]
         if high < min_a: low = high = 0
