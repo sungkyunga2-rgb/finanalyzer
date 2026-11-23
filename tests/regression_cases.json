@@ -420,6 +420,94 @@
           }
         }
       }
+    },
+    {
+      "name": "신보 — 올해 연 환산 매출이 작년보다 33.7% 감소 → 줄어든 매출 기준(3.1억~3.7억)",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2018-03",
+        "employees": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 1890000000
+          },
+          {
+            "year": 2025,
+            "vat": 1900000000
+          }
+        ],
+        "ytd": {
+          "year": 2026,
+          "month": 6,
+          "sales": 630350000
+        }
+      },
+      "today": "2026-11-23",
+      "expect": {
+        "orgs": {
+          "kodit": {
+            "status": "ok",
+            "low": 310000000,
+            "high": 370000000
+          }
+        }
+      }
+    },
+    {
+      "name": "신보 — 올해 연 환산 매출이 작년보다 45% 감소 → 불가",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2018-03",
+        "employees": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2025,
+            "vat": 1000000000
+          }
+        ],
+        "ytd": {
+          "year": 2026,
+          "month": 6,
+          "sales": 275000000
+        }
+      },
+      "today": "2026-11-23",
+      "expect": {
+        "orgs": {
+          "kodit": {
+            "status": "blocked"
+          }
+        }
+      }
     }
   ]
 }

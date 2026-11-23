@@ -1235,15 +1235,25 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
 
 
 def _ht_sales_drop(inp):
-    """최근 연도 매출의 전년 대비 증감률(%) — 연간 매출이 두 해 이상 있을 때만"""
+    """전년 대비 매출 증감 → (증감률 %, 비교에 쓴 최근 매출) 또는 (None, None)
+    · 올해 매출(ytd)이 있으면 연 환산해서 작년 연간 매출과 비교
+    · 없으면 최근 두 해 연간 매출 비교"""
     ys = sorted([y for y in (inp.get("years") or []) if isinstance(y, dict) and _ht_num(y.get("vat")) is not None and _ht_num(y.get("year"))],
                 key=lambda y: _ht_num(y["year"]))
+    ytd = inp.get("ytd") or {}
+    m, s_, yy = _ht_num(ytd.get("month")), _ht_num(ytd.get("sales")), _ht_num(ytd.get("year"))
+    if m and 1 <= m <= 12 and s_ is not None and s_ >= 0:
+        prev = next((y for y in ys if yy and int(_ht_num(y["year"])) == int(yy) - 1), None) or (ys[-1] if ys else None)
+        a = _ht_num(prev["vat"]) if prev else None
+        if a and a > 0:
+            cur = s_ / m * 12
+            return (cur - a) / a * 100, cur
     if len(ys) < 2:
-        return None
+        return None, None
     a, b = _ht_num(ys[-2]["vat"]), _ht_num(ys[-1]["vat"])
     if int(_ht_num(ys[-1]["year"])) - int(_ht_num(ys[-2]["year"])) != 1 or not a or a <= 0:
-        return None
-    return (b - a) / a * 100
+        return None, None
+    return (b - a) / a * 100, b
 
 
 def _ht_jaedan_recent(inp, loans, today):
@@ -1594,7 +1604,12 @@ def _ht_estimate_limit_core(inp, today=None):
     if small or exporter: orgs.append(mk("sojin", "소상공인시장진흥공단", per["low"], per["high"]))
     if big_enough or exporter or used["jungjin"] > 0: orgs.append(mk("jungjin", "중소벤처기업진흥공단", per_std["low"], per_std["high"]))
     g = [mk("jaedan", "지역신용보증재단", per["low"], per["high"])]
-    if kodit_ok or used["kodit"] > 0: g.append(mk("kodit", "신용보증기금", per["low"], per["high"]))
+    # 신용보증기금: 전년 대비 매출 감소 — 40% 이상이면 불가(아래에서 막음), 25~40%면 줄어든 매출(올해 연 환산 등) 기준으로 계산
+    kodit_drop, kodit_cur = _ht_sales_drop(inp)
+    k_per = per
+    if kodit_drop is not None and -40 < kodit_drop <= -25 and kodit_cur:
+        k_per = {"low": floor_u(kodit_cur * R["minRatio"]), "high": floor_u(kodit_cur * (R["youthMaxRatio"] if youth else R["maxRatio"]))}
+    if kodit_ok or used["kodit"] > 0: g.append(mk("kodit", "신용보증기금", k_per["low"], k_per["high"]))
     if kibo_ok or used["kibo"] > 0 or startup_kibo:
         kb = mk("kibo", "기술보증기금", per_std["low"], per_std["high"]) if (kibo_ok or used["kibo"] > 0) else None
         if startup_kibo:
@@ -1637,9 +1652,7 @@ def _ht_estimate_limit_core(inp, today=None):
         block("jaedan")
     if dr is not None and dr > 550:
         block("kodit"); block("kibo")
-    # 신용보증기금: 전년 대비 매출 감소 — 40% 이상 감소면 불가, 25% 이상 감소면 위험(한도는 두고 안내만)
-    kodit_drop = _ht_sales_drop(inp)
-    if kodit_drop is not None and kodit_drop <= -40:
+    if kodit_drop is not None and kodit_drop <= -40:        # 신보: 전년 대비 매출 40% 이상 감소 → 불가
         block("kodit")
     # 대출 후에도 기관 부채비율 기준을 넘지 않는 금액까지만 (대출금만큼 부채 증가, 자본은 그대로)
     #   최대 = 자본 × 기준비율 − 현재 부채
