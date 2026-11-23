@@ -5755,7 +5755,7 @@ function htReportBody(r, input) {
   if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;
   html += sh("예상 한도 · 신청 가능 기관 (Expected Funding)") + limHTML;
 
-  // 재무 분석 (비율만 — 실제 금액은 표시하지 않는다)
+  // 재무 분석 (비율 카드) — 금액은 아래 재무건전성 진단·재무 수치에서
   const f = r.financial, q = r.ratios;
   {
     const k = l => (l === "info" ? "safe" : l);
@@ -5776,6 +5776,80 @@ function htReportBody(r, input) {
       cards += card("🏆 사업 안정성 종합점수", null, "info", "재무 수치 입력 시 계산");
     }
     html += sh("재무 분석 (Financial Ratios)") + `<div class="kpi-grid">${cards}</div>`;
+  }
+
+  // 재무건전성 진단 · 종합점수 상세 · 재무 수치 (금액 포함)
+  {
+    const fin = input.fin || {};
+    const N = v => htNum(v);
+    const won0 = v => v === null ? null : Math.round(v).toLocaleString() + "원";
+    const CC = { safe: "#0F6E56", warn: "#B8860B", danger: "#A32D2D", muted: "#9b9a95" };
+    const CB = { safe: "#E1F5EE", warn: "#FEF6D8", danger: "#FCEBEB", muted: "#f4f3ee" };
+    const CI = { safe: "✅", warn: "⚠️", danger: "🚨", muted: "⚪" };
+    const vatRows = (r.vat && r.vat.rows) || [];
+    const lastSales = vatRows.length ? vatRows[vatRows.length - 1] : null;
+    const sales = lastSales ? lastSales.vat : null;
+    const A = N(fin.assets), Lb = N(fin.liabilities), cap = N(fin.capital_stock);
+    const op = N(fin.operating_income), net = N(fin.net_income), intY = N(fin.interest_expense);
+    const sb = N(fin.short_borrowings), lb = N(fin.long_borrowings);
+    const eq = A !== null && Lb !== null ? A - Lb : null;
+    const dbox = (label, cls, text, wide) => `<div style="background:${CB[cls]};border:1px solid ${CC[cls]}33;border-radius:10px;padding:12px 14px;${wide ? "grid-column:1 / -1;" : ""}">
+        <div style="font-size:10.5px;color:#6b7a8d;font-weight:600;margin-bottom:6px;">${label}</div>
+        <div style="font-size:15px;font-weight:700;color:${CC[cls]};">${CI[cls]} ${text}</div></div>`;
+    // 재무건전성 진단
+    const ero = f ? [f.erosionClass, e(f.erosionStatus)] : ["muted", "미입력"];
+    const def = net === null ? ["muted", "미입력"] : net < 0 ? ["danger", "손실 " + won0(-net)] : ["safe", "이익 " + won0(net)];
+    const lr = Lb !== null && sales ? Lb / sales * 100 : null;
+    const lrc = lr === null ? "muted" : lr >= 30 ? "danger" : lr >= 15 ? "warn" : "safe";
+    const lrt = lr === null ? "미산정" : `${lr.toFixed(1)}% (${lrc === "safe" ? "적정" : lrc === "warn" ? "주의" : "과다"})`;
+    const strip = (label, v, color) => `<div style="flex:1;text-align:center;padding:4px 6px;"><div style="font-size:10px;color:#6b7a8d;margin-bottom:4px;">${label}</div><div style="font-size:13px;font-weight:700;color:${color};">${v === null ? '<span style="color:#b8c4cc;font-weight:400;">미입력</span>' : won0(v)}</div></div>`;
+    html += sh("재무건전성 진단 (Financial Health Diagnosis)") + `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        ${dbox("🏢 자본잠식 여부", ero[0], ero[1])}
+        ${dbox("📈 결손 여부", def[0], def[1])}
+        ${dbox("💳 매출 대비 부채 비율", lrc, lrt, true)}
+      </div>
+      <div style="display:flex;background:#fafaf8;border:1px solid #e5e4e0;border-radius:10px;padding:10px 4px;margin-bottom:10px;">
+        ${strip("총자산", A, "#1a1a18")}<div style="width:1px;background:#e5e4e0;"></div>
+        ${strip("부채총계", Lb, "#A32D2D")}<div style="width:1px;background:#e5e4e0;"></div>
+        ${strip("자본총계", eq, "#0F6E56")}
+      </div>`;
+    // 사업 안정성 종합점수 상세
+    if (f && (f.items || []).length) {
+      const gl = f.pct >= 60 ? "safe" : f.pct >= 40 ? "warn" : "danger";
+      const skipped = 100 - f.max;
+      html += `<div style="border:1px solid #e5e4e0;border-top:4px solid ${CC[gl]};border-radius:12px;padding:14px 16px;margin-bottom:10px;">
+        <div style="font-size:11px;color:#6b7a8d;font-weight:600;margin-bottom:6px;">🏆 사업 안정성 종합점수</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div style="font-size:30px;font-weight:800;color:${CC[gl]};">${f.total}<span style="font-size:15px;">/${f.max}</span></div>
+          <div><span style="display:inline-block;background:${CB[gl]};color:${CC[gl]};font-weight:700;font-size:12px;padding:3px 10px;border-radius:20px;">${e(f.grade)}</span>
+          <div style="font-size:10px;color:#9b9a95;margin-top:3px;">${f.max}점 만점 기준${skipped > 0 ? ` (일부 항목 산정불가로 ${skipped}점 제외)` : ""}</div></div>
+        </div>
+        <div style="height:7px;background:#e5e4e0;border-radius:20px;overflow:hidden;margin:10px 0;"><div style="height:100%;width:${f.pct}%;background:${CC[gl]};"></div></div>
+        <div style="display:grid;grid-template-columns:repeat(${f.items.length},1fr);gap:8px;">${f.items.map(it => {
+          const c2 = it.comment === "우수" ? "safe" : it.comment === "보통" || it.comment === "주의" ? "warn" : "danger";
+          return `<div style="background:#fafaf8;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:10px;color:#6b7a8d;">${e(it.label)}</div>
+            <div style="font-size:15px;font-weight:800;color:${CC[c2]};margin:3px 0;">${it.score}<span style="font-size:10px;color:#9b9a95;">/${it.max}</span></div>
+            <span style="font-size:9.5px;font-weight:700;color:${CC[c2]};background:${CB[c2]};padding:1px 7px;border-radius:10px;">${e(it.comment)}</span></div>`;
+        }).join("")}</div></div>`;
+    }
+    // 재무 수치
+    const rows = [
+      [lastSales ? `매출액 (${lastSales.year}년)` : "매출액", "손익계산서", sales],
+      ["총자산", "재무상태표", A], ["부채총계", "재무상태표", Lb], ["자본금", "재무상태표", cap], ["자본총계", "재무상태표", eq],
+      ["단기차입금", "재무상태표", sb], ["장기차입금", "재무상태표", lb],
+      ["영업이익", "손익계산서", op], ["당기순이익", "손익계산서", net],
+      ["이자비용 (연)", "손익계산서", intY], ["이자비용 (월)", "손익계산서", intY !== null ? intY / 12 : null],
+    ];
+    const dr = f && f.dr !== null ? f.dr.toFixed(1) + "%" : f && f.capitalEroded ? "자본잠식" : "미산정";
+    const der = [["총자산", A !== null ? won0(A) : "미입력"], ["총부채", Lb !== null ? won0(Lb) : "미입력"], ["부채비율", dr], ["매출 대비 부채 비율", lr !== null ? lr.toFixed(1) + "%" : "미산정"]];
+    html += sh("재무 수치 (Financial Data)") + `<table class="fin-table">
+      <thead><tr><th>항목</th><th class="cat">구분</th><th style="text-align:right;">금액</th></tr></thead>
+      <tbody>${rows.map(([l, c2, v]) => `<tr><td>${l}</td><td class="cat">${c2}</td><td class="val ${v === null ? "empty" : ""}">${v === null ? "미입력" : won0(v)}</td></tr>`).join("")}</tbody></table>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">${der.map(([l, v]) => `
+        <div style="background:#f7faff;border:1px solid #e2ecf9;border-radius:7px;padding:6px 8px;text-align:center;">
+          <div style="font-size:8.5px;color:#6b7a8d;margin-bottom:2px;">${l}</div>
+          <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;">${v}</div></div>`).join("")}</div>`;
   }
 
   // 국세 · 매출 현황
