@@ -51,6 +51,8 @@ for c in cases["limit"]:
     name = "한도: " + c["name"]
     if "status" in c["expect"]:
         check(f"{name} · 상태", L.get("status") == c["expect"]["status"], f"기대 {c['expect']['status']}, 결과 {L.get('status')}")
+    for k, v in c["expect"].get("top", {}).items():
+        check(f"{name} · {k}", L.get(k) == v, f"기대 {v}, 결과 {L.get(k)}")
     orgs = {o["key"]: o for o in L.get("orgs", [])}
     for key, e in c["expect"].get("orgs", {}).items():
         o = orgs.get(key) or {}

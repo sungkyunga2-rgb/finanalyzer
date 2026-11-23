@@ -3973,6 +3973,8 @@ function analyzeHometax(input, opts) {
     if (ks === "blocked") flags.push({ level: "danger", title: "신용보증기금 신청 어려움", text: "전년보다 매출이 크게 줄어 신용보증기금은 현재 신청이 어렵습니다." });
     else if (ks === "risk") flags.push({ level: "warn", title: "매출 감소 주의", text: "전년보다 매출이 많이 줄어 신용보증기금 한도가 줄었고, 심사에서도 불리할 수 있습니다." });
   }
+  if ((opts.limit || {}).jungjin_sales === "low")
+    flags.push({ level: "warn", title: "중진공 승인 가능성", text: "매출 규모가 중진공 주요 지원 기업보다 작아 중진공은 승인 가능성이 낮을 수 있습니다." });
   if (loans.filter(l => /카드|현금\s*서비스|대부|러시앤캐시|산와|리드코프/.test(l.org || "")).length >= 3)
     flags.push({ level: "danger", title: "카드론·현금서비스·대부업 이용", text: "카드론·현금서비스·대부업 이용이 많아 정책자금 신청이 어렵습니다." });
   const loansTotal = loans.reduce((a, l) => a + (htNum(l.amount) || 0), 0);

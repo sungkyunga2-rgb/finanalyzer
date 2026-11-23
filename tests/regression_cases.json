@@ -508,6 +508,211 @@
           }
         }
       }
+    },
+    {
+      "name": "중진공 — 소상공인 매출 4억이면 제외",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2020-03",
+        "employees": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 400000000
+          },
+          {
+            "year": 2025,
+            "vat": 400000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": null
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 직원 기준 중소기업이면 매출 4억이어도 가능",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2020-03",
+        "employees": 8,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 400000000
+          },
+          {
+            "year": 2025,
+            "vat": 400000000
+          }
+        ],
+        "emp_avg": 8
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "funds_contains": "창업기반지원자금"
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 청년(만 30세)·업력 3년 미만이면 매출 1억이어도 청년전용창업자금",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2025-01",
+        "employees": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 30
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2025,
+            "vat": 100000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "funds_contains": "청년전용창업자금"
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 소상공인 최근 7억·평균 10억 미만 → 가능하지만 가능성 낮음 표시",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2020-03",
+        "employees": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 600000000
+          },
+          {
+            "year": 2025,
+            "vat": 700000000
+          }
+        ]
+      },
+      "expect": {
+        "top": {
+          "jungjin_sales": "low"
+        },
+        "orgs": {
+          "jungjin": {
+            "status": "ok"
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 소상공인 평균 10억 이상이면 가능성 낮음 표시 없음",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2020-03",
+        "employees": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 1100000000
+          },
+          {
+            "year": 2025,
+            "vat": 1200000000
+          }
+        ]
+      },
+      "expect": {
+        "top": {
+          "jungjin_sales": null
+        },
+        "orgs": {
+          "jungjin": {
+            "status": "ok"
+          }
+        }
+      }
     }
   ],
   "closure": [

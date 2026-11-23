@@ -1101,6 +1101,8 @@ HT_LIMIT_RULE = {
     "weakMax": 30000000, "weakScore": 839, "unit": 1000000,
     "totalMax": 1000000000,
     "jungjinMax": 500000000, "jungjinExportMax": 1000000000,
+    "jungjinMinSales": 500000000, "jungjinAvgSales": 1000000000,   # 중진공(소상공인): 최근 매출 5억 미만 불가, 최근 3년 평균 10억 미만은 가능성 낮음
+    "exportUsd10k": 140000000,                                      # 수출실적 10만불 ≈ 1.4억 원 (수출기업화 / 글로벌화 구분)
     "collateralRate": 0.30, "collateralRateEmp": 0.25,      # 장기차입금(담보로 봄)은 30%만 차감 (최근 1년 고용 유지·증가면 25%)
 }
 
@@ -1407,6 +1409,29 @@ def _ht_emp_avg(inp):
     return v if v is not None else _ht_num(inp.get("employees"))
 
 
+def _ht_jungjin_funds(inp, bam, youth_startup, youth_only, exporter, ys):
+    """중진공 자금 — 2026 정책자금 융자계획 지원대상 기준"""
+    if youth_only:
+        return ["청년전용창업자금"]
+    R = HT_LIMIT_RULE
+    f = []
+    if youth_startup:
+        f.append("청년전용창업자금")
+    rt = inp.get("retry") or {}
+    if rt.get("restart") and not (inp.get("restart_review") or {}).get("other_biz") and (bam is None or bam < 84):
+        f.append("재창업자금")
+    if bam is not None and bam < 84:
+        f.append("창업기반지원자금")
+    else:
+        f.append("혁신성장지원자금")
+    if exporter:
+        ex = _ht_num(inp.get("export_amount")) or 0
+        f.append("수출기업 글로벌화자금" if ex >= R["exportUsd10k"] else "내수기업 수출기업화자금")
+    if len(ys) >= 2 and ys[-2] > 0 and ys[-1] <= ys[-2] * 0.9:
+        f.append("긴급경영안정자금(일시적경영애로)")
+    return f
+
+
 def _ht_small_biz(inp):
     emp = _ht_emp_avg(inp)
     if emp is None:
@@ -1606,7 +1631,16 @@ def _ht_estimate_limit_core(inp, today=None):
     kodit_ok = (not ind["restricted"]) and (exporter or (big_enough and ((not ind["priority"]) or sales >= R["koditPriorityException"])))
     kibo_ok = exporter or (big_enough and ind["kibo"])
     if small or exporter: orgs.append(mk("sojin", "소상공인시장진흥공단", per["low"], per["high"]))
-    if big_enough or exporter or used["jungjin"] > 0: orgs.append(mk("jungjin", "중소벤처기업진흥공단", per_std["low"], per_std["high"]))
+    # 중진공 — 중소기업(소상공인 아님)은 매출 기준 없음 / 소상공인은 최근 매출 5억 이상 (평균 10억 미만이면 가능성 낮음)
+    #          청년전용창업자금(대표 만 39세 이하 + 업력 3년 미만)은 매출 기준 없음
+    jj_ys = [v for v in (_ht_num(y.get("vat")) for y in sorted([y for y in (inp.get("years") or []) if isinstance(y, dict) and _ht_num(y.get("year"))],
+                                                                  key=lambda y: _ht_num(y.get("year")))) if v is not None and v > 0][-3:]
+    jj_avg = sum(jj_ys) / len(jj_ys) if jj_ys else sales
+    jj_youth = youth and bam is not None and bam < 36
+    jj_sales_ok = (not small) or sales >= R["jungjinMinSales"]
+    jj_low = small and jj_sales_ok and jj_avg < R["jungjinAvgSales"] and not exporter and used["jungjin"] <= 0
+    jj_youth_only = not (jj_sales_ok or exporter or used["jungjin"] > 0) and jj_youth
+    if jj_sales_ok or exporter or used["jungjin"] > 0 or jj_youth: orgs.append(mk("jungjin", "중소벤처기업진흥공단", per_std["low"], per_std["high"]))
     g = [mk("jaedan", "지역신용보증재단", per["low"], per["high"])]
     # 신용보증기금: 전년 대비 매출 감소 — 40% 이상이면 불가(아래에서 막음), 25~40%면 줄어든 매출(올해 연 환산 등) 기준으로 계산
     kodit_drop, kodit_cur = _ht_sales_drop(inp)
@@ -1706,10 +1740,15 @@ def _ht_estimate_limit_core(inp, today=None):
     _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u)
     if sj0 and sj0.get("funds"):              # 요건에 맞는 소진공 자금 이름 (Pro에서만 보여줌)
         sj0["funds"] = list(dict.fromkeys(sj0["funds"]))
+    jj = next((o for o in orgs if o["key"] == "jungjin" and o["status"] == "ok"), None)
+    if jj:                                    # 요건에 맞는 중진공 자금 이름 (Pro에서만 보여줌)
+        jj["funds"] = _ht_jungjin_funds(inp, bam, jj_youth, jj_youth_only, exporter, jj_ys)
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if jd_recent:
         base["jaedan_recent"] = jd_recent           # 12(서울) 또는 6 — 화면 안내용
+    if jj and jj_low and not jj_youth_only:
+        base["jungjin_sales"] = "low"               # 화면 안내용 — 중진공 주요 지원 규모보다 매출이 작음 (기준 숫자는 표시하지 않음)
     if kodit_drop is not None and kodit_drop <= -25:
         base["kodit_sales"] = "blocked" if kodit_drop <= -40 else "risk"     # 화면 안내용 (기준 숫자는 표시하지 않음)
     if ar == "has": return {**base, "status": "blocked", "low": 0, "high": 0, "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
