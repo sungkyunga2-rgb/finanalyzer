@@ -966,6 +966,173 @@
           }
         }
       }
+    },
+    {
+      "name": "중진공 — 운전자금 5억 상한 (우대 없음)",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "corp",
+        "industry": "제조업",
+        "item": "금형",
+        "location": "경남",
+        "founded": "2015-03",
+        "employees": 20,
+        "emp_avg": 20,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 50
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 2400000000
+          },
+          {
+            "year": 2025,
+            "vat": 2500000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "high": 500000000
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 여성기업은 별표3 우대로 운전자금 10억 상한",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "corp",
+        "industry": "제조업",
+        "item": "금형",
+        "location": "경남",
+        "founded": "2015-03",
+        "employees": 20,
+        "emp_avg": 20,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 50,
+          "woman": true
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 2400000000
+          },
+          {
+            "year": 2025,
+            "vat": 2500000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "high": 750000000
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 부동산업은 융자제외 업종",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "corp",
+        "industry": "부동산업",
+        "item": "부동산 개발",
+        "location": "경남",
+        "founded": "2015-03",
+        "employees": 20,
+        "emp_avg": 20,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 50
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 2400000000
+          },
+          {
+            "year": 2025,
+            "vat": 2500000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "blocked"
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 건설업(실내건축)은 융자제외, 전기공사업은 가능",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "corp",
+        "industry": "건설업",
+        "item": "전기공사",
+        "location": "경남",
+        "founded": "2015-03",
+        "employees": 20,
+        "emp_avg": 20,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 50
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 2400000000
+          },
+          {
+            "year": 2025,
+            "vat": 2500000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok"
+          }
+        }
+      }
     }
   ],
   "closure": [

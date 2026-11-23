@@ -5335,11 +5335,13 @@ function htRtRender() {
 function htRtOpen() {
   const rv = htRestartReview;
   if (!rv || !rv.checks) {
+    document.querySelector("#rt-modal .modal-title").textContent = "재창업 요건 검토";
     document.getElementById("rt-modal-body").innerHTML = `<div class="rt-closed">홈택스에서 확인된 폐업 사업장이 없어요.<br>
       <span style="color:var(--text3);font-size:12px;">간편인증·공동인증서로 자료를 불러오면 대표자 명의 폐업사실증명으로 재창업 요건을 자동으로 검토해요. 폐업 이력이 다른 명의(법인 이사 등)라면 서류로 확인해 주세요.</span></div>`;
     document.getElementById("rt-modal").classList.remove("hidden");
     return;
   }
+  document.querySelector("#rt-modal .modal-title").textContent = "재창업 요건 검토";
   const c = rv.closed || {}, mark = { ok: "✓", check: "!", no: "✕" };
   document.getElementById("rt-modal-body").innerHTML =
     `<div class="rt-closed"><b>폐업 사업장</b>${c.count > 1 ? ` <span style="color:var(--text3);font-size:12px;">(가장 최근 폐업 · 총 ${c.count}곳)</span>` : ""}<br>
@@ -5361,6 +5363,18 @@ function htRtSet(i, has) {
   const ss = rv.checks.map(c => c.s);
   rv.status = ss.includes("no") ? "no" : ss.includes("check") ? "check" : "ok";
   htRtRender(); htRtOpen();
+}
+// 중진공 정책우선도 지표 (Pro) — 마지막 한도 결과에서
+let htJjPri = null;
+function htJjPriOpen() {
+  const p = htJjPri;
+  if (!p) return;
+  const mark = { ok: "✓", check: "!", no: "✕" };
+  document.querySelector("#rt-modal .modal-title").textContent = "중진공 정책우선도";
+  document.getElementById("rt-modal-body").innerHTML =
+    `<div class="rt-closed">해당 지표 <b>${p.count}개</b> / ${p.total}개<br><span style="color:var(--text3);font-size:12px;">신청이 많을 때 심사 기회를 먼저 주는 사전평가예요. 해당 지표가 많을수록 유리해요.</span></div>` +
+    p.items.map(x => `<div class="rt-row"><span class="rt-mark ${x.s}">${mark[x.s] || ""}</span><div><b>${escapeHtml(x.t)}</b><small>${escapeHtml(x.d || "")}</small></div></div>`).join("");
+  document.getElementById("rt-modal").classList.remove("hidden");
 }
 function htRtClose() { document.getElementById("rt-modal").classList.add("hidden"); }
 
@@ -5713,6 +5727,7 @@ function htKwon(n) {
 }
 
 function htLimitCard(L) {
+  htJjPri = ((L && L.orgs) || []).map(o => o.key === "jungjin" && o.priority).find(Boolean) || null;
   if (!L || !L.available) {
     return `<div class="card" style="border-top:4px solid #185FA5;">
       <div class="card-title">💰 예상 한도</div>
@@ -5743,7 +5758,7 @@ function htLimitCard(L) {
     <div style="margin-top:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 기관</div>
       <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
-        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}${o.status === "ok" && htOrgFunds(o) ? `<span style="display:block;font-size:11.5px;font-weight:500;color:#6b7a8d;margin-top:2px;">${escapeHtml(htOrgFunds(o))}</span>` : ""}</span>
+        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}${o.status === "ok" && htOrgFunds(o) ? `<span style="display:block;font-size:11.5px;font-weight:500;color:#6b7a8d;margin-top:2px;">${escapeHtml(htOrgFunds(o))}</span>` : ""}${o.status === "ok" && o.priority ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htJjPriOpen()">정책우선도 ${o.priority.count}/${o.priority.total} ›</button>` : ""}</span>
         <span style="font-weight:600;color:${o.status === "ok" ? "#185FA5" : "#9b9a95"};white-space:nowrap;">${htOrgAmt(o, true)}</span></div>`).join("")}</div>
       ${htBasicNote(L)}
     </div>
@@ -5871,7 +5886,7 @@ function htReportBody(r, input) {
   }
   if (L.available && (L.orgs || []).length) {
     limHTML += `<table class="fin-table"><thead><tr><th>신청 가능 기관</th><th style="text-align:right;">예상 금액</th></tr></thead><tbody>${L.orgs.map(g =>
-      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">${e(htOrgFunds(g))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
+      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">${e(htOrgFunds(g))}</div>` : ""}${g.status === "ok" && g.priority ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">정책우선도 해당 ${g.priority.count}/${g.priority.total}: ${e(g.priority.items.filter(x => x.s === "ok").map(x => x.t).join(", "))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
     limHTML += htBasicNote(L, true);
   }
   if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;

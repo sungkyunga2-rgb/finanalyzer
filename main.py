@@ -1413,6 +1413,63 @@ def _ht_emp_avg(inp):
     return v if v is not None else _ht_num(inp.get("employees"))
 
 
+# 2026 중소기업 정책자금 융자계획 — 중점지원분야(참고1 혁신성장·1-1 초격차·신산업·2 지역주력·3 뿌리·4 소부장) 키워드
+_JJ_FOCUS = _re.compile(
+    r"반도체|디스플레이|이차전지|2차전지|배터리|전지|로봇|드론|무인기|항공|우주|위성|발사체|방산|자율주행|전기차|수소|연료전지|모빌리티|자동차\s*부품|선박|조선|"
+    r"바이오|의약|제약|의료기기|진단|헬스케어|디지털\s*헬스|화장품\s*원료|천연물|인공지능|AI|빅데이터|데이터|클라우드|소프트웨어|SW|플랫폼|블록체인|메타버스|"
+    r"사물인터넷|IoT|정보보안|사이버\s*보안|5G|6G|통신\s*장비|실감|가상현실|VR|AR|3D\s*프린팅|스마트\s*팩토리|스마트\s*공장|자율제조|머신비전|센서|"
+    r"신소재|나노|탄소|복합재|세라믹|소재|부품|장비|금형|주조|용접|열처리|표면처리|도금|소성가공|단조|정밀\s*가공|사출|기계요소|"
+    r"신재생|태양광|풍력|에너지\s*저장|ESS|원전|원자력|친환경|자원순환|재활용|탄소\s*저감|스마트\s*팜|스마트\s*농업|양자|엔지니어링|콘텐츠|게임\s*개발")
+# 중진공 융자제외 업종(별표1) — 사행·향락, 부동산, 금융·보험, 법무·회계·세무, 보건업, 입시교육, 주점, 주류·담배 소매, 건설업(일부 공사업 제외) 등
+_JJ_EXCLUDE = _re.compile(
+    r"도박|사행|경품|상품권|성인용품|다단계|주점|호프|유흥|주류\s*(도매|소매)|담배|부동산|주택\s*임대|분양|금융업|보험|대부|가상\s*자산|가상\s*화폐|암호\s*화폐|"
+    r"법무사|변호사|법률\s*사무|회계사|회계\s*(사무|법인|서비스)|세무사|세무\s*(사무|대리|서비스|회계)|노무사|감정평가|수의|동물\s*병원|병원|의원|치과|한의원|약국|탐정|흥신소|입시|보습\s*학원|교습소|점술|역술|무도장|경주장|"
+    r"비디오물\s*감상|게임\s*아이템\s*중개")
+_JJ_CONSTRUCT_OK = _re.compile(r"전기\s*공사|통신\s*공사|정보통신\s*공사|소방|배관|냉난방|냉\s*·?\s*난방|기계\s*설비|승강|방음|방진|내화|조경|환경\s*설비|산업\s*생산\s*시설")
+
+
+def _ht_jungjin_excluded(ind_text):
+    """중진공 융자제외 업종이면 True (건설업은 지원 가능 공사업만 예외)"""
+    if _JJ_EXCLUDE.search(ind_text):
+        return True
+    return bool(_re.search(r"건설|토목|건축\s*공사|인테리어|실내\s*건축", ind_text)) and not _JJ_CONSTRUCT_OK.search(ind_text)
+
+
+def _ht_jungjin_priority(inp, ind_text, used_jj, ys):
+    """중진공 정책우선도 평가 지표 10개 — 입력값으로 확인되는 것만 (배점은 공개되지 않아 해당 여부만)
+    s: ok(해당) / no(미해당) / check(확인 필요)"""
+    certs = f"{_ht_s(inp.get('certs'))} {' '.join(_ht_s((c or {}).get('type')) for c in (inp.get('cert_list') or []) if isinstance(c, dict))}"
+    rep = inp.get("rep") or {}
+    items = []
+    add = lambda t, s, d: items.append({"t": t, "s": s, "d": d})
+    focus = _JJ_FOCUS.search(ind_text)
+    add("혁신성장분야", "ok" if focus else "check", f"업종에 '{focus.group(0)}' 포함" if focus else "중점지원분야 품목 해당 여부 확인 필요")
+    add("첫거래 기업", "no" if used_jj > 0 else "ok", "중진공 기대출 있음" if used_jj > 0 else "중진공 이용 이력 없음 (가점 큼)")
+    inc = _ht_num(inp.get("emp_increase"))
+    add("고용창출실적", "ok" if inc and inc > 0 else ("no" if inc is not None else "check"),
+        f"최근 1년 {int(inc)}명 증가" if inc and inc > 0 else ("최근 1년 고용 증가 없음" if inc is not None else "고용 증감 확인 필요"))
+    naeil = _ht_s(inp.get("naeil")).strip()
+    naeil_yes = bool(naeil) and not _re.search(r"없음|미가입|무|^x$|^no$", naeil, _re.I)
+    add("고용유지활동", "ok" if naeil_yes else ("ok" if inp.get("emp_keep") else "check"),
+        f"내일채움공제 {naeil}" if naeil_yes else ("최근 1년 고용 유지·증가" if inp.get("emp_keep") else "내일채움공제 가입 등 확인 필요"))
+    ip = _re.search(r"특허|실용신안|디자인\s*등록|상표", certs)
+    add("최근 3년 내 지식재산권", "ok" if ip else "check", f"{ip.group(0)} 보유 (등록 시기 확인)" if ip else "지식재산권 확인 필요")
+    tech = _re.search(r"벤처|이노비즈|Inno|메인비즈|Main|기업부설연구소|연구개발전담|뿌리기술|녹색기술|NET|NEP", certs, _re.I)
+    add("기술경영혁신분야", "ok" if tech else "check", f"{tech.group(0)} 인증" if tech else "벤처·이노비즈·메인비즈 등 인증 확인 필요")
+    ex = _ht_num(inp.get("export_amount")) or 0
+    add("직접수출실적", "ok" if ex > 0 else "check", "수출실적 있음 (직접수출 여부 확인)" if ex > 0 else "수출실적 확인 필요")
+    pol = [n for n, ok in (("여성기업", rep.get("woman")), ("장애인기업", rep.get("disabled")),
+                           ("사회적경제기업", _re.search(r"사회적기업|협동조합|마을기업|자활기업|소셜벤처", f"{certs} {_ht_s(inp.get('company_name'))}")),
+                           ("소재·부품·장비", _re.search(r"소재|부품|장비", ind_text))) if ok]
+    add("정부정책 우대기업", "ok" if pol else "check", ", ".join(pol) if pol else "여성·장애인·사회적경제기업 등 해당 여부 확인 필요")
+    grow = len(ys) >= 2 and ys[-2] > 0 and ys[-1] >= ys[-2] * 1.1
+    add("성장잠재력 AI평가", "ok" if grow else "check", "최근 매출 10% 이상 성장 (중진공 자체 평가)" if grow else "중진공 자체 평가")
+    loc = _ht_s(inp.get("location"))
+    add("지역가점", "ok" if loc and loc not in ("서울", "경기", "인천") else ("no" if loc else "check"),
+        f"비수도권({loc})" if loc and loc not in ("서울", "경기", "인천") else (f"수도권({loc})" if loc else "소재지 확인 필요"))
+    return {"count": sum(1 for x in items if x["s"] == "ok"), "total": len(items), "items": items}
+
+
 def _ht_jungjin_funds(inp, bam, youth_startup, youth_only, exporter, ys):
     """중진공 자금 — 2026 정책자금 융자계획 지원대상 기준"""
     if youth_only:
@@ -1616,7 +1673,7 @@ def _ht_estimate_limit_core(inp, today=None):
         if key == "jaedan": lo = min(lo, R["jaedanMax"]); hi = min(hi, R["jaedanMax"])
         if key in ("kodit", "kibo"): lo = min(lo, R["fundMax"]); hi = min(hi, R["fundMax"])
         if key == "jungjin":                  # 중진공 운전자금 연 5억 (수출기업 10억) — 2026 융자계획
-            jm = R["jungjinExportMax"] if (exporter or emp_up10) else R["jungjinMax"]
+            jm = R["jungjinExportMax"] if (exporter or emp_up10 or jj_pref) else R["jungjinMax"]
             if used["jungjin"] > 0: jm = R["jungjinExportMax"]      # 긴급경영안정(일시적경영애로) 10억
             if jj_youth_only: jm = R["jungjinYouthFocusMax"] if jj_focus else R["jungjinYouthMax"]   # 청년전용창업자금만 해당 → 기업당 1억 (제조·중점지원분야 2억)
             lo = min(lo, jm); hi = min(hi, jm)
@@ -1644,11 +1701,15 @@ def _ht_estimate_limit_core(inp, today=None):
     jj_avg = sum(jj_ys) / len(jj_ys) if jj_ys else sales
     # 청년전용창업자금: 대표 만 39세 이하 + 업력 3년 미만 + 중소기업(소상공인 제외) — 제조업·중점지원분야는 인원 무관,
     #                  유통·서비스업은 고용보험 가입자(대표 제외) 5인 이상. 기업당 1억 이내
-    jj_focus = "제조" in ind_text or bool(ind["kibo"])
+    jj_focus = "제조" in ind_text or bool(_JJ_FOCUS.search(ind_text))
     jj_youth = youth and bam is not None and bam < 36 and ((not small) or jj_focus)
     jj_sales_ok = (not small) or sales >= R["jungjinMinSales"]
     jj_low = small and jj_sales_ok and jj_avg < R["jungjinAvgSales"] and not exporter and used["jungjin"] <= 0
     jj_youth_only = not (jj_sales_ok or exporter or used["jungjin"] > 0) and jj_youth
+    # 별표3 용도별 대출한도 우대(운전 10억): 고용 10인↑(emp_up10) · 여성기업 · 장애인기업 · 매출 증가(직전 30억↑ + 최근 3년 연평균 20%↑)
+    jj_rep = inp.get("rep") or {}
+    jj_cagr = len(jj_ys) >= 3 and jj_ys[0] > 0 and (jj_ys[-1] / jj_ys[0]) ** (1 / (len(jj_ys) - 1)) >= 1.2
+    jj_pref = bool(jj_rep.get("woman")) or bool(jj_rep.get("disabled")) or (bool(jj_ys) and jj_ys[-1] >= 3000000000 and jj_cagr)
     if jj_sales_ok or exporter or used["jungjin"] > 0 or jj_youth: orgs.append(mk("jungjin", "중소벤처기업진흥공단", per_std["low"], per_std["high"]))
     g = [mk("jaedan", "지역신용보증재단", per["low"], per["high"])]
     # 신용보증기금: 전년 대비 매출 감소 — 40% 이상이면 불가(아래에서 막음), 25~40%면 줄어든 매출(올해 연 환산 등) 기준으로 계산
@@ -1754,6 +1815,9 @@ def _ht_estimate_limit_core(inp, today=None):
     jj_ym, jj_ysales = _ht_num(jj_ytd.get("month")), _ht_num(jj_ytd.get("sales"))
     jj_ytd_annual = jj_ysales / jj_ym * 12 if (jj_ym and 1 <= jj_ym <= 12 and jj_ysales is not None) else None
     jj_drop10 = (len(jj_ys) >= 2 and jj_ys[-1] <= jj_ys[-2] * 0.9) or (bool(jj_ys) and jj_ytd_annual is not None and jj_ytd_annual <= jj_ys[-1] * 0.9)
+    jj_fin = inp.get("fin") or {}
+    if _ht_jungjin_excluded(ind_text) or (_ht_num(jj_fin.get("assets")) or 0) > 70000000000 or (ctx["equity"] or 0) > 20000000000:
+        block("jungjin")                      # 융자제외 업종(별표1) / 민간금융 이용 가능 우량기업(자본 200억·자산 700억 초과)
     jj_again = None
     if used["jungjin"] > 0:
         jj_again = "hard" if jj_drop10 else "used"
@@ -1762,6 +1826,7 @@ def _ht_estimate_limit_core(inp, today=None):
     jj = next((o for o in orgs if o["key"] == "jungjin" and o["status"] == "ok"), None)
     if jj:                                    # 요건에 맞는 중진공 자금 이름 (Pro에서만 보여줌)
         jj["funds"] = ["긴급경영안정자금(일시적경영애로)"] if jj_again == "hard" else _ht_jungjin_funds(inp, bam, jj_youth, jj_youth_only, exporter, jj_ys)
+        jj["priority"] = _ht_jungjin_priority(inp, ind_text, used["jungjin"], jj_ys)     # 정책우선도 지표 (Pro)
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if jd_recent:
