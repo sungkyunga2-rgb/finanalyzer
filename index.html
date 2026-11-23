@@ -5341,8 +5341,22 @@ function htRtOpen() {
     `<div class="rt-closed"><b>폐업 사업장</b>${c.count > 1 ? ` <span style="color:var(--text3);font-size:12px;">(가장 최근 폐업 · 총 ${c.count}곳)</span>` : ""}<br>
       ${escapeHtml(c.company || "상호 없음")}${c.business_number ? ` · ${escapeHtml(c.business_number)}` : ""}<br>
       ${c.industry ? escapeHtml(c.industry) + "<br>" : ""}${escapeHtml(c.opened || "?")} 개업 → ${escapeHtml(c.closed || "?")} 폐업</div>` +
-    rv.checks.map(x => `<div class="rt-row"><span class="rt-mark ${x.s}">${mark[x.s] || ""}</span><div><b>${escapeHtml(x.t)}</b><small>${escapeHtml(x.d || "")}</small></div></div>`).join("");
+    rv.checks.map((x, i) => `<div class="rt-row"><span class="rt-mark ${x.s}">${mark[x.s] || ""}</span><div><b>${escapeHtml(x.t)}</b><small>${escapeHtml(x.d || "")}</small>${
+      x.k === "other_biz" && (x.s === "check" || x.mine) ? `<div style="display:flex;gap:6px;margin-top:6px;">
+        <button type="button" class="btn" style="padding:4px 10px;font-size:12px;${x.mine && x.s === "ok" ? "background:#E3F4EA;color:#1E7A46;" : ""}" onclick="htRtSet(${i}, false)">다른 사업자 없음</button>
+        <button type="button" class="btn" style="padding:4px 10px;font-size:12px;${x.mine && x.s === "no" ? "background:#FBE5E5;color:#A32D2D;" : ""}" onclick="htRtSet(${i}, true)">있음</button></div>` : ""}</div></div>`).join("");
   document.getElementById("rt-modal").classList.remove("hidden");
+}
+// 서류로만 확인돼 '확인 필요'인 항목 — 직접 확인한 결과로 바꿈 (다른 사업자 있으면 재창업 자금 제외)
+function htRtSet(i, has) {
+  const rv = htRestartReview, x = rv && rv.checks && rv.checks[i];
+  if (!x) return;
+  x.mine = true; x.s = has ? "no" : "ok";
+  x.d = has ? "직접 확인 — 운영 중인 다른 사업자 있음 (재창업 지원 제외)" : "직접 확인 — 운영 중인 다른 사업자 없음";
+  if (x.k === "other_biz") rv.other_biz = has;
+  const ss = rv.checks.map(c => c.s);
+  rv.status = ss.includes("no") ? "no" : ss.includes("check") ? "check" : "ok";
+  htRtRender(); htRtOpen();
 }
 function htRtClose() { document.getElementById("rt-modal").classList.add("hidden"); }
 

@@ -2220,10 +2220,10 @@ def _closure_review(datas, fill, today=None, biz_list_known=True):
     # 5) 신청 사업자 외 다른 사업자 보유 → 지원 제외
     others = [b for b in (fill.get("_business_list") or []) if _re2.sub(r"\D", "", b.get("business_number", "")) not in ("", cur)]
     if others or biz_list_known:
-        checks.append({"t": "신청 사업자 외 다른 사업자 없음", "s": "no" if others else "ok",
+        checks.append({"k": "other_biz", "t": "신청 사업자 외 다른 사업자 없음", "s": "no" if others else "ok",
                        "d": ("운영 중인 다른 사업자: " + ", ".join(b.get("company_name") or b.get("business_number", "") for b in others)) if others else "운영 중인 다른 사업자 없음"})
     else:                                  # 서류로만 확인 — 사업장 목록을 모름
-        checks.append({"t": "신청 사업자 외 다른 사업자 없음", "s": "check", "d": "운영 중인 다른 사업자 여부 확인 필요 (인증으로 불러오면 자동 확인)"})
+        checks.append({"k": "other_biz", "t": "신청 사업자 외 다른 사업자 없음", "s": "check", "d": "운영 중인 다른 사업자 여부 확인 필요 (인증으로 불러오면 자동 확인)"})
     # 6) 법인전환·과세유형 변경 등 번호만 바뀐 경우는 재창업 아님
     gap = (opened - c).days if opened else None
     words = lambda t: {w for w in _re2.split(r"[\s/,·()]+", t or "") if len(w) >= 2}
