@@ -5715,9 +5715,11 @@ function htReportBody(r, input) {
     ["기업 인증", input.cert_list ? htCertText(input.cert_list) : (input.certs || "")],
     ["연구소 · 공장", [labMap[input.lab] || "", facMap[input.factory] ? "공장 " + facMap[input.factory] : ""].filter(Boolean).join(" · ")],
     ["수출실적", htNum(input.export_amount) > 0 ? htKwon(htNum(input.export_amount)) : (input.export || "")],
+    ["국세 체납", { __html: ar.status === "has" ? `<span style="color:#A32D2D;font-weight:700;">체납 있음${r.arrears && r.arrears.amount ? " · " + htKwon(r.arrears.amount) : ""}</span>${ar.other ? ` <span style="color:#8a6d00;font-weight:400;">· 기타: ${e(ar.other)}</span>` : ""}`
+      : ar.status === "none" ? `<span style="color:#0F6E56;font-weight:700;">체납 없음</span>${ar.other ? ` <span style="color:#8a6d00;font-weight:400;">· 기타: ${e(ar.other)}</span>` : ""}` : "" }],
   ];
   const ovRows = [];
-  const cell = v => has(v) ? e(v) : '<span style="color:#b8c4cc;font-weight:400;">미입력</span>';
+  const cell = v => v && v.__html !== undefined ? (v.__html || '<span style="color:#b8c4cc;font-weight:400;">미확인</span>') : has(v) ? e(v) : '<span style="color:#b8c4cc;font-weight:400;">미입력</span>';
   for (let i = 0; i < ov.length; i += 2) {
     const a = ov[i], b = ov[i + 1];
     ovRows.push(`<tr><td class="cat" style="width:18%;">${a[0]}</td><td style="width:32%;font-weight:600;">${cell(a[1])}</td>${b ? `<td class="cat" style="width:18%;">${b[0]}</td><td style="width:32%;font-weight:600;">${cell(b[1])}</td>` : "<td></td><td></td>"}</tr>`);
@@ -5852,14 +5854,11 @@ function htReportBody(r, input) {
           <div style="font-size:10.5px;font-weight:700;color:#0d3b7c;">${v}</div></div>`).join("")}</div>`;
   }
 
-  // 국세 · 매출 현황
-  const arTxt = ar.status === "has" ? `<span style="color:#A32D2D;font-weight:700;">체납 있음${r.arrears && r.arrears.amount ? " · " + htKwon(r.arrears.amount) : ""}</span>`
-    : ar.status === "none" ? `<span style="color:#0F6E56;font-weight:700;">체납 없음</span>` : "미확인";
+  // 매출 현황 (국세 체납은 기업 개요로)
   const yoyCell = v => `<td class="val" style="color:${v === null ? "#9b9a95" : v < 0 ? "#A32D2D" : "#0F6E56"};">${v === null ? "-" : htPctText(v)}</td>`;
   let salesRows = ((r.vat && r.vat.rows) || []).map(x => `<tr><td>${x.year}년</td><td class="val">${htKwon(x.vat)}</td>${yoyCell(x.vatYoy)}</tr>`).join("");
   if (r.vat && r.vat.ytd) salesRows += `<tr><td>${r.vat.ytd.year}년 ${r.vat.ytd.month}월까지</td><td class="val">${htKwon(r.vat.ytd.sales)} <span style="color:#6b7a8d;font-weight:400;">(연 환산 ${htKwon(r.vat.ytd.annual)})</span></td>${yoyCell(r.vat.ytd.yoy)}</tr>`;
-  html += sh("국세 · 매출 현황 (Tax &amp; Sales)") +
-    `<table class="fin-table"><tbody><tr><td class="cat" style="width:22%;">국세 체납</td><td>${arTxt}${ar.other ? ` <span style="color:#8a6d00;">· 기타: ${e(ar.other)}</span>` : ""}</td></tr></tbody></table>` +
+  html += sh("매출 현황 (Sales)") +
     `<table class="fin-table"><thead><tr><th>기간</th><th style="text-align:right;">매출(부가세 과세표준)</th><th style="text-align:right;">전년 대비</th></tr></thead><tbody>${salesRows || '<tr><td>매출</td><td class="val empty">미입력</td><td class="val empty">-</td></tr>'}</tbody></table>`;
 
   // 기대출 현황
@@ -6064,12 +6063,11 @@ function htResultCardHTML(r, input, full, opts) {
         + kpi("🏢 자본잠식", miK, "info") + kpi("🏆 사업 안정성 점수", miK, "info")
       : kpi("📊 부채비율", miK, "info") + kpi("💰 이자보상배수", miK, "info") + kpi("🏢 자본잠식", miK, "info") + kpi("🏆 사업 안정성 점수", miK, "info");
     const sales = ((r.vat && r.vat.rows) || []).map(x => `<div class="ht-rp-row"><span>${x.year}년 매출</span><b>${htKwon(x.vat)}${x.vatYoy !== null ? ` <span style="color:${x.vatYoy < 0 ? "#A32D2D" : "#0F6E56"};font-weight:600;">(${htPctText(x.vatYoy)})</span>` : ""}</b></div>`).join("");
-    const arRow = `<div class="ht-rp-row"><span>국세 체납</span><b>${ar.status === "has" ? '<span style="color:#A32D2D;">있음</span>' : ar.status === "none" ? "없음" : '<span class="ht-mi">미입력</span>'}</b></div>`;
     const loanRows = r.loans && r.loans.list.length
       ? r.loans.list.map(l => `<div class="ht-rp-row"><span>${e(l.org || "기관 미입력")}${HT_LOAN_KIND[l.kind] ? ` · ${HT_LOAN_KIND[l.kind]}` : ""}${l.date ? ` <span style="color:#9b9a95;">(${e(l.date)})</span>` : ""}</span><b>${htNum(l.amount) !== null ? htKwon(htNum(l.amount)) : '<span class="ht-mi">미입력</span>'}</b></div>`).join("")
       : `<div class="ht-rp-row"><span>기대출</span><b>${r.loans && r.loans.none ? "없음" : '<span class="ht-mi">미입력</span>'}</b></div>`;
     lockedInner = lim + sh("재무 분석") + `<div class="srp-kpi-grid">${fin}</div>` +
-      sh("국세 · 매출 현황") + arRow + (sales || `<div class="ht-rp-row"><span>매출</span><b><span class="ht-mi">미입력</span></b></div>`) +
+      sh("매출 현황") + (sales || `<div class="ht-rp-row"><span>매출</span><b><span class="ht-mi">미입력</span></b></div>`) +
       sh("기대출 현황") + loanRows +
       sh("우대 · 참고 요소") + (r.prefs && r.prefs.length ? r.prefs.map(p2 => `<div class="ht-rp-row"><span>${e(p2.tag)}</span><b style="font-weight:500;">${e(p2.text)}</b></div>`).join("") : `<div class="ht-rp-row"><span>우대 요소</span><b><span class="ht-mi">미입력</span></b></div>`);
   } else {
@@ -6077,7 +6075,7 @@ function htResultCardHTML(r, input, full, opts) {
     const ph = w => `<div style="height:12px;width:${w}%;background:#dfe5ee;border-radius:6px;margin:9px 0;"></div>`;
     lockedInner = `<div class="ht-rp-total" style="color:#c3cfdd;">약 ■억 ■천만원 ~ ■억 ■천만원</div>${[80, 65, 72, 58].map(ph).join("")}` +
       sh("재무 분석") + `<div class="srp-kpi-grid"><div class="srp-kpi" style="border-left-color:#c3cfdd;">${ph(60)}${ph(40)}</div><div class="srp-kpi" style="border-left-color:#c3cfdd;">${ph(60)}${ph(40)}</div></div>` +
-      sh("국세 · 매출 현황") + [85, 70, 75].map(ph).join("") + sh("우대 · 참고 요소") + [60, 75].map(ph).join("");
+      sh("매출 현황") + [85, 70, 75].map(ph).join("") + sh("우대 · 참고 요소") + [60, 75].map(ph).join("");
   }
 
   const cta = opts.sample
