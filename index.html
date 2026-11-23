@@ -3913,6 +3913,19 @@ function analyzeHometax(input, opts) {
     });
     if (recent) flags.push({ level: "danger", title: "최근 재단 자금 이용", text: `최근 ${lim === 12 ? "1년" : "6개월"} 안에 지역신용보증재단에서 받은 자금이 있어, 재단은 추가 신청이 어렵습니다. (재단 한도 없음)` });
   }
+  {  // 신용보증기금 — 전년 대비 매출이 크게 줄면 위험·불가 (기준 숫자는 표시하지 않음)
+    const L0 = opts.limit || {};
+    let ks = L0.kodit_sales || null;
+    if (!ks && rows.length >= 2) {
+      const a = rows[rows.length - 2], b = rows[rows.length - 1];
+      if (b.year - a.year === 1 && a.vat > 0 && b.vat !== null) {
+        const d = (b.vat - a.vat) / a.vat * 100;
+        ks = d <= -40 ? "blocked" : d <= -25 ? "risk" : null;
+      }
+    }
+    if (ks === "blocked") flags.push({ level: "danger", title: "신용보증기금 신청 어려움", text: "전년보다 매출이 크게 줄어 신용보증기금은 현재 신청이 어렵습니다." });
+    else if (ks === "risk") flags.push({ level: "warn", title: "매출 감소 주의", text: "전년보다 매출이 많이 줄어 신용보증기금 심사에서 불리할 수 있습니다." });
+  }
   if (loans.filter(l => /카드|현금\s*서비스|대부|러시앤캐시|산와|리드코프/.test(l.org || "")).length >= 3)
     flags.push({ level: "danger", title: "카드론·현금서비스·대부업 이용", text: "카드론·현금서비스·대부업 이용이 많아 정책자금 신청이 어렵습니다." });
   const loansTotal = loans.reduce((a, l) => a + (htNum(l.amount) || 0), 0);

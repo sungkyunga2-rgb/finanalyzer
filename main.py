@@ -1234,6 +1234,18 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
              f"혁신성장촉진자금({'혁신형' + (' · 졸업후보기업' if grad else '') if innov_cap >= 200000000 else '일반형'})")
 
 
+def _ht_sales_drop(inp):
+    """최근 연도 매출의 전년 대비 증감률(%) — 연간 매출이 두 해 이상 있을 때만"""
+    ys = sorted([y for y in (inp.get("years") or []) if isinstance(y, dict) and _ht_num(y.get("vat")) is not None and _ht_num(y.get("year"))],
+                key=lambda y: _ht_num(y["year"]))
+    if len(ys) < 2:
+        return None
+    a, b = _ht_num(ys[-2]["vat"]), _ht_num(ys[-1]["vat"])
+    if int(_ht_num(ys[-1]["year"])) - int(_ht_num(ys[-2]["year"])) != 1 or not a or a <= 0:
+        return None
+    return (b - a) / a * 100
+
+
 def _ht_jaedan_recent(inp, loans, today):
     """최근 재단 자금 이용 — 서울 12개월 / 그 외 6개월 이내면 그 개월 수, 아니면 None"""
     lim = 12 if _ht_s(inp.get("location")).startswith("서울") else 6
@@ -1625,6 +1637,10 @@ def _ht_estimate_limit_core(inp, today=None):
         block("jaedan")
     if dr is not None and dr > 550:
         block("kodit"); block("kibo")
+    # 신용보증기금: 전년 대비 매출 감소 — 40% 이상 감소면 불가, 25% 이상 감소면 위험(한도는 두고 안내만)
+    kodit_drop = _ht_sales_drop(inp)
+    if kodit_drop is not None and kodit_drop <= -40:
+        block("kodit")
     # 대출 후에도 기관 부채비율 기준을 넘지 않는 금액까지만 (대출금만큼 부채 증가, 자본은 그대로)
     #   최대 = 자본 × 기준비율 − 현재 부채
     capped = False
@@ -1677,6 +1693,8 @@ def _ht_estimate_limit_core(inp, today=None):
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if jd_recent:
         base["jaedan_recent"] = jd_recent           # 12(서울) 또는 6 — 화면 안내용
+    if kodit_drop is not None and kodit_drop <= -25:
+        base["kodit_sales"] = "blocked" if kodit_drop <= -40 else "risk"     # 화면 안내용 (기준 숫자는 표시하지 않음)
     if ar == "has": return {**base, "status": "blocked", "low": 0, "high": 0, "text": "국세 체납이 있어 현재는 신청이 어렵습니다. 체납을 해소한 뒤 진행하세요."}
     if ctx["risky_loans"] >= 3:
         for o in orgs: o["status"] = "blocked"; o["low"] = 0; o["high"] = 0
