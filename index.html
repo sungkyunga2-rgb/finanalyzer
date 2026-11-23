@@ -5376,14 +5376,14 @@ function htJjPriOpen() {
     p.items.map(x => `<div class="rt-row"><span class="rt-mark ${x.s}">${mark[x.s] || ""}</span><div><b>${escapeHtml(x.t)}</b><small>${escapeHtml(x.d || "")}</small></div></div>`).join("");
   document.getElementById("rt-modal").classList.remove("hidden");
 }
-// 보증드림 — 지역 재단의 현재 신청 가능한 보증상품 (Pro)
+// 지역 신용보증재단의 현재 신청 가능한 보증상품 (Pro, 출처: 보증드림 보증상품소개 — 화면에는 재단 이름으로만 표시)
 let htBj = null;
 function htBjOpen() {
   const b = htBj;
   if (!b) return;
-  document.querySelector("#rt-modal .modal-title").textContent = "보증드림 현재 보증상품";
+  document.querySelector("#rt-modal .modal-title").textContent = `${b.org} 현재 보증상품`;
   document.getElementById("rt-modal-body").innerHTML =
-    `<div class="rt-closed"><b>${escapeHtml(b.org)}</b> · ${b.items.length}개<br><span style="color:var(--text3);font-size:12px;">보증드림 '보증상품소개' 기준 (${escapeHtml(b.at)} 확인). 상품별 세부 요건은 재단 상담으로 확인해 주세요.</span></div>` +
+    `<div class="rt-closed"><b>${escapeHtml(b.org)}</b> · ${b.items.length}개<br><span style="color:var(--text3);font-size:12px;">${escapeHtml(b.at)} 기준 신청 가능한 상품이에요. 상품별 세부 요건은 재단 상담으로 확인해 주세요.</span></div>` +
     b.items.map(x => `<div class="rt-row"><span class="rt-mark ok">✓</span><div style="flex:1;min-width:0;"><b>${escapeHtml(x.name)}</b><small>${x.limit ? "지원한도 " + htKwon(x.limit) + " · " : ""}${escapeHtml(x.tags || "")}${x.period ? " · " + escapeHtml(x.period.replace("~", " ~ ")) : ""}</small></div></div>`).join("");
   document.getElementById("rt-modal").classList.remove("hidden");
 }
@@ -5770,7 +5770,7 @@ function htLimitCard(L) {
     <div style="margin-top:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 기관</div>
       <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
-        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}${o.status === "ok" && htOrgFunds(o) ? `<span style="display:block;font-size:11.5px;font-weight:500;color:#6b7a8d;margin-top:2px;white-space:pre-line;line-height:1.5;">${escapeHtml(htOrgFunds(o))}</span>` : ""}${o.status === "ok" && o.priority ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htJjPriOpen()">정책우선도 ${o.priority.count}/${o.priority.total} ›</button>` : ""}${o.bojeung ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htBjOpen()">보증드림 현재 상품 ${o.bojeung.items.length}개 ›</button>` : ""}</span>
+        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}${o.status === "ok" && htOrgFunds(o) ? `<span style="display:block;font-size:11.5px;font-weight:500;color:#6b7a8d;margin-top:2px;white-space:pre-line;line-height:1.5;">${escapeHtml(htOrgFunds(o))}</span>` : ""}${o.status === "ok" && o.priority ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htJjPriOpen()">정책우선도 ${o.priority.count}/${o.priority.total} ›</button>` : ""}${o.bojeung ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htBjOpen()">현재 보증상품 ${o.bojeung.items.length}개 ›</button>` : ""}</span>
         <span style="font-weight:600;color:${o.status === "ok" ? "#185FA5" : "#9b9a95"};white-space:nowrap;">${htOrgAmt(o, true)}</span></div>`).join("")}</div>
       ${htBasicNote(L)}
     </div>
@@ -5898,7 +5898,7 @@ function htReportBody(r, input) {
   }
   if (L.available && (L.orgs || []).length) {
     limHTML += `<table class="fin-table"><thead><tr><th>신청 가능 기관</th><th style="text-align:right;">예상 금액</th></tr></thead><tbody>${L.orgs.map(g =>
-      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;white-space:pre-line;">${e(htOrgFunds(g))}</div>` : ""}${g.bojeung ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">보증드림 현재 상품(${e(g.bojeung.at)}): ${e(g.bojeung.items.slice(0, 6).map(x => x.name + (x.limit ? " " + htKwon(x.limit) : "")).join(", "))}${g.bojeung.items.length > 6 ? ` 외 ${g.bojeung.items.length - 6}개` : ""}</div>` : ""}${g.status === "ok" && g.priority ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">정책우선도 해당 ${g.priority.count}/${g.priority.total}: ${e(g.priority.items.filter(x => x.s === "ok").map(x => x.t).join(", "))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
+      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;white-space:pre-line;">${e(htOrgFunds(g))}</div>` : ""}${g.bojeung ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">현재 보증상품(${e(g.bojeung.at)} 기준): ${e(g.bojeung.items.slice(0, 6).map(x => x.name + (x.limit ? " " + htKwon(x.limit) : "")).join(", "))}${g.bojeung.items.length > 6 ? ` 외 ${g.bojeung.items.length - 6}개` : ""}</div>` : ""}${g.status === "ok" && g.priority ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">정책우선도 해당 ${g.priority.count}/${g.priority.total}: ${e(g.priority.items.filter(x => x.s === "ok").map(x => x.t).join(", "))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
     limHTML += htBasicNote(L, true);
   }
   if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;
