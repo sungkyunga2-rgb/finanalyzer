@@ -863,6 +863,109 @@
           }
         }
       }
+    },
+    {
+      "name": "중진공 — 기대출 있고 매출 유지면 추가 불가",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "제조업",
+        "item": "금속가공",
+        "location": "경기",
+        "founded": "2019-03",
+        "employees": 12,
+        "emp_avg": 12,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [
+          {
+            "org": "중소벤처기업진흥공단",
+            "date": "2024.05",
+            "amount": 200000000,
+            "kind": "business"
+          }
+        ],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 1500000000
+          },
+          {
+            "year": 2025,
+            "vat": 1600000000
+          }
+        ]
+      },
+      "expect": {
+        "top": {
+          "jungjin_used": true
+        },
+        "orgs": {
+          "jungjin": {
+            "status": "blocked"
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 기대출 있어도 매출 10% 이상 감소면 긴급경영안정자금",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "제조업",
+        "item": "금속가공",
+        "location": "경기",
+        "founded": "2019-03",
+        "employees": 12,
+        "emp_avg": 12,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [
+          {
+            "org": "중소벤처기업진흥공단",
+            "date": "2024.05",
+            "amount": 200000000,
+            "kind": "business"
+          }
+        ],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 1600000000
+          },
+          {
+            "year": 2025,
+            "vat": 1300000000
+          }
+        ]
+      },
+      "expect": {
+        "top": {
+          "jungjin_used": null
+        },
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "funds_contains": "긴급경영안정자금"
+          }
+        }
+      }
     }
   ],
   "closure": [

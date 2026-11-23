@@ -1067,6 +1067,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #  · 수출업체는 소진공·중진공·기보·신보 모두 가능 (신보 제한업종은 제외)
 #  · 신보 제한업종 제외 / 유의업종 70% / 재단 우선취급업종이면 신보 제외(매출 5억 이상이면 가능)
 #  · 이미 대출이 있는 기관은 조건과 관계없이 남은 한도를 보여준다
+#    (중진공은 예외: 첫 이용 가점이 커서 사실상 한 번 — 기대출이 있으면 일시적 경영애로(매출 10%↓)일 때만, 긴급경영안정자금으로)
 #  · 부채비율(부채총계÷자본총계) 제한 — 창업년월이 있을 때만 업력 예외를 따지고, 없으면 업력 예외 없이 계산
 #    - 소진공: 업력 7년 이상이면 부채비율 700% 초과 또는 총차입금(기대출) > 매출 → 신청 불가
 #    - 중진공: 업력 7년 이상이면 업종별 제한부채비율(2026 융자계획 별표5) 초과 → 신청 불가
@@ -1616,6 +1617,7 @@ def _ht_estimate_limit_core(inp, today=None):
         if key in ("kodit", "kibo"): lo = min(lo, R["fundMax"]); hi = min(hi, R["fundMax"])
         if key == "jungjin":                  # 중진공 운전자금 연 5억 (수출기업 10억) — 2026 융자계획
             jm = R["jungjinExportMax"] if (exporter or emp_up10) else R["jungjinMax"]
+            if used["jungjin"] > 0: jm = R["jungjinExportMax"]      # 긴급경영안정(일시적경영애로) 10억
             if jj_youth_only: jm = R["jungjinYouthFocusMax"] if jj_focus else R["jungjinYouthMax"]   # 청년전용창업자금만 해당 → 기업당 1억 (제조·중점지원분야 2억)
             lo = min(lo, jm); hi = min(hi, jm)
         if big_enough and key in ("jungjin", "kodit", "kibo"): lo = max(lo, R["fundMinAmount"]); hi = max(hi, R["fundMinAmount"])
@@ -1747,14 +1749,26 @@ def _ht_estimate_limit_core(inp, today=None):
     _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u)
     if sj0 and sj0.get("funds"):              # 요건에 맞는 소진공 자금 이름 (Pro에서만 보여줌)
         sj0["funds"] = list(dict.fromkeys(sj0["funds"]))
+    # 중진공은 첫 이용 기업 가점이 커서 사실상 한 번 — 이미 중진공 자금이 있으면 일시적 경영애로(매출 10% 이상 감소)일 때만 추가
+    jj_ytd = inp.get("ytd") or {}
+    jj_ym, jj_ysales = _ht_num(jj_ytd.get("month")), _ht_num(jj_ytd.get("sales"))
+    jj_ytd_annual = jj_ysales / jj_ym * 12 if (jj_ym and 1 <= jj_ym <= 12 and jj_ysales is not None) else None
+    jj_drop10 = (len(jj_ys) >= 2 and jj_ys[-1] <= jj_ys[-2] * 0.9) or (bool(jj_ys) and jj_ytd_annual is not None and jj_ytd_annual <= jj_ys[-1] * 0.9)
+    jj_again = None
+    if used["jungjin"] > 0:
+        jj_again = "hard" if jj_drop10 else "used"
+        if not jj_drop10:
+            block("jungjin")
     jj = next((o for o in orgs if o["key"] == "jungjin" and o["status"] == "ok"), None)
     if jj:                                    # 요건에 맞는 중진공 자금 이름 (Pro에서만 보여줌)
-        jj["funds"] = _ht_jungjin_funds(inp, bam, jj_youth, jj_youth_only, exporter, jj_ys)
+        jj["funds"] = ["긴급경영안정자금(일시적경영애로)"] if jj_again == "hard" else _ht_jungjin_funds(inp, bam, jj_youth, jj_youth_only, exporter, jj_ys)
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
     if jd_recent:
         base["jaedan_recent"] = jd_recent           # 12(서울) 또는 6 — 화면 안내용
-    if jj and jj_low and not jj_youth_only:
+    if jj_again == "used":
+        base["jungjin_used"] = True                 # 화면 안내용 — 중진공 추가 지원 어려움
+    if jj and jj_low and not jj_youth_only and not jj_again:
         base["jungjin_sales"] = "low"               # 화면 안내용 — 중진공 주요 지원 규모보다 매출이 작음 (기준 숫자는 표시하지 않음)
     if kodit_drop is not None and kodit_drop <= -25:
         base["kodit_sales"] = "blocked" if kodit_drop <= -40 else "risk"     # 화면 안내용 (기준 숫자는 표시하지 않음)
