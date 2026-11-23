@@ -5675,7 +5675,7 @@ function htOrgAmt(o, maxWord) {
 }
 // Pro — 요건에 맞는 자금 이름
 function htOrgFunds(o) {
-  return o && o.funds && o.funds.length ? o.funds.join(" · ") : "";
+  return o && o.funds && o.funds.length ? [...new Set(o.funds)].join("\n") : "";   // 해당 유형·사유마다 한 줄
 }
 // Basic 안내 — 기관별 금액·자금은 상담으로
 function htBasicNote(L, printable) {
@@ -5758,7 +5758,7 @@ function htLimitCard(L) {
     <div style="margin-top:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 기관</div>
       <div style="display:flex;flex-direction:column;">${(L.orgs || []).map(o => `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;padding:7px 0;border-bottom:1px solid #f0efeb;">
-        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}${o.status === "ok" && htOrgFunds(o) ? `<span style="display:block;font-size:11.5px;font-weight:500;color:#6b7a8d;margin-top:2px;">${escapeHtml(htOrgFunds(o))}</span>` : ""}${o.status === "ok" && o.priority ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htJjPriOpen()">정책우선도 ${o.priority.count}/${o.priority.total} ›</button>` : ""}</span>
+        <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}${o.status === "ok" && htOrgFunds(o) ? `<span style="display:block;font-size:11.5px;font-weight:500;color:#6b7a8d;margin-top:2px;white-space:pre-line;line-height:1.5;">${escapeHtml(htOrgFunds(o))}</span>` : ""}${o.status === "ok" && o.priority ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htJjPriOpen()">정책우선도 ${o.priority.count}/${o.priority.total} ›</button>` : ""}</span>
         <span style="font-weight:600;color:${o.status === "ok" ? "#185FA5" : "#9b9a95"};white-space:nowrap;">${htOrgAmt(o, true)}</span></div>`).join("")}</div>
       ${htBasicNote(L)}
     </div>
@@ -5886,7 +5886,7 @@ function htReportBody(r, input) {
   }
   if (L.available && (L.orgs || []).length) {
     limHTML += `<table class="fin-table"><thead><tr><th>신청 가능 기관</th><th style="text-align:right;">예상 금액</th></tr></thead><tbody>${L.orgs.map(g =>
-      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">${e(htOrgFunds(g))}</div>` : ""}${g.status === "ok" && g.priority ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">정책우선도 해당 ${g.priority.count}/${g.priority.total}: ${e(g.priority.items.filter(x => x.s === "ok").map(x => x.t).join(", "))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
+      `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;white-space:pre-line;">${e(htOrgFunds(g))}</div>` : ""}${g.status === "ok" && g.priority ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">정책우선도 해당 ${g.priority.count}/${g.priority.total}: ${e(g.priority.items.filter(x => x.s === "ok").map(x => x.t).join(", "))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
     limHTML += htBasicNote(L, true);
   }
   if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;
@@ -6221,7 +6221,7 @@ function htResultCardHTML(r, input, full, opts) {
     let lim = "";
     if (L.available && L.status === "ok") {
       lim += `<div class="ht-rp-total">약 ${htKwon(L.low)} ~ ${htKwon(L.high)}</div>`;
-      lim += (L.orgs || []).map(g => `<div class="ht-rp-row"><span>${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<span style="display:block;font-size:11px;font-weight:500;color:#6b7a8d;">${e(htOrgFunds(g))}</span>` : ""}</span><b>${htOrgAmt(g)}</b></div>`).join("");
+      lim += (L.orgs || []).map(g => `<div class="ht-rp-row"><span>${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<span style="display:block;font-size:11px;font-weight:500;color:#6b7a8d;white-space:pre-line;">${e(htOrgFunds(g))}</span>` : ""}</span><b>${htOrgAmt(g)}</b></div>`).join("");
       lim += htBasicNote(L, !!opts.sample);
     } else lim += `${L.status === "blocked" || L.status === "low" ? `<div class="ht-rp-total" style="color:${L.status === "blocked" ? "#A32D2D" : "#B8860B"};font-size:18px;">${L.status === "blocked" ? "현재 신청 어려움" : "추가 한도 여력 부족"}</div>` : ""}<div class="srp-opinion-item">${e(L.text || "")}</div>`;
     if (!opts.sample) { window.__htLastInput = input; lim += htWatchHtml(input); }

@@ -1198,7 +1198,7 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
         rt["restart"] = False                 # 재창업: 신청 사업자 외 다른 사업자 보유 시 지원 제외
     E, Lb = ctx.get("equity"), ctx.get("liabilities")
 
-    def make(key, name, cap, fund=None):
+    def make(key, name, cap, fund=None, extra=()):
         o = mk("sojin", name, per["low"], per["high"])
         hi, lo = o["high"], o["low"]
         if mature and E is not None and Lb is not None and E > 0:          # 대출 후 부채비율 700% 상한 (업력 7년 이상)
@@ -1209,7 +1209,8 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
         lo = min(max(lo, R["minAmount"]), hi)
         if lo == hi and hi >= 200000000: lo = hi - 100000000
         fund = fund or (name.split("(", 1)[1].rstrip(") ") if "(" in name else name)
-        sj.setdefault("funds", []).append(fund)               # 요건에 맞는 자금 (Pro 화면용)
+        sj.setdefault("funds", []).extend([fund, *extra])     # 요건에 맞는 자금 (Pro 화면용) — 해당하는 유형·사유마다 따로
+
         if sj["status"] != "ok" or hi > sj["high"]:          # 같은 소진공 자금으로 묶어서 — 더 크면 소진공 줄을 그 금액으로
             sj.update(low=lo, high=hi, status="ok")
 
@@ -1217,31 +1218,39 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
     base_sales = last if last is not None else sales
     if base_sales is not None and base_sales < 104000000 and young and drop:
         make("sojin_hard", "소상공인시장진흥공단 (일시적경영애로자금)", 70000000)
-    # 재도전특별자금: 희망형(재기사업화) 1억 / 도약형(재창업 2~7년 + 성장 + 소진공 성실상환) 2억 / 일반형 7천만
-    cap = 0
-    if rt.get("revival"):
-        cap = max(cap, 100000000)
+    # 재도전특별자금: 희망형(재기사업화) 1억 / 도약형(재창업 2~7년 + 성장 + 소진공 성실상환) 2억 / 일반형 7천만 — 해당하는 유형·사유를 모두 표시
+    retry = []                                            # (한도, 이름)
     if rt.get("restart") and (bam is None or 24 <= bam < 84) and (grow or emp >= 2 or (_ht_num(inp.get("emp_increase")) or 0) > 0) and used.get("sojin", 0) > 0:
-        cap = max(cap, 200000000)
-    if (rt.get("restart") and young) or rt.get("edu") or rt.get("debt"):
-        cap = max(cap, 70000000)
-    if cap:
-        make("sojin_retry", "소상공인시장진흥공단 (재도전특별자금)", cap)
+        retry.append((200000000, "재도전특별자금(도약형-재창업)"))
+    if rt.get("revival"):
+        retry.append((100000000, "재도전특별자금(희망형-재기사업화)"))
+    if rt.get("restart") and young:
+        retry.append((70000000, "재도전특별자금(일반형-재창업)"))
+    if rt.get("edu"):
+        retry.append((70000000, "재도전특별자금(일반형-희망리턴 재창업교육)"))
+    if rt.get("debt"):
+        retry.append((70000000, "재도전특별자금(일반형-채무조정 성실상환)"))
+    if retry:
+        make("sojin_retry", "소상공인시장진흥공단 (재도전특별자금)", max(c for c, _ in retry), retry[0][1], [n for _, n in retry[1:]])
     # 혁신성장촉진자금(운전): 일반형 1억 — 스마트기술·사회연대경제(협동조합·사회적기업)·백년소상공인·신사업창업사관학교
     #                       혁신형 2억 — 수출·2년 연속 매출 10%↑(첫해 5천만 이상)·스마트공장·강한소상공인/로컬크리에이터·소진공 직접대출 성실상환·졸업후보기업
     ys3 = [_ht_num(y["vat"]) for y in ys[-3:]]
     grow2 = len(ys3) == 3 and ys3[0] >= 50000000 and ys3[1] >= ys3[0] * 1.1 and ys3[2] >= ys3[1] * 1.1
     tags = f"{_ht_s(inp.get('company_name'))} {_ht_s(inp.get('certs'))} {_ht_s(inp.get('innov_note'))}"
     exporter = (_ht_num(inp.get("export_amount")) or 0) > 0 or bool(_ht_s(inp.get("export")).strip())
-    innov_cap = 0
     grad = _ht_semas_grad(inp, ys, sales)
-    if exporter or grow2 or used.get("sojin", 0) > 0 or grad or _re.search(r"스마트공장|강한\s*소상공인|로컬\s*크리에이터", tags):
-        innov_cap = 200000000
-    elif inp.get("smart_tech") or _re.search(r"협동조합|사회적\s*(예비)?\s*기업|마을기업|자활기업|백년(가게|소공인|소상공인)|창업사관학교", tags):
-        innov_cap = 100000000
-    if innov_cap:
-        make("sojin_innov", "소상공인시장진흥공단 (혁신성장촉진자금)", innov_cap,
-             f"혁신성장촉진자금({'혁신형' + (' · 졸업후보기업' if grad else '') if innov_cap >= 200000000 else '일반형'})")
+    innov = []                                            # 해당하는 유형·사유마다 따로 (혁신형 먼저)
+    for ok, why in ((exporter, "수출"), (grow2, "2년 연속 매출 성장"), (used.get("sojin", 0) > 0, "소진공 성실상환"), (grad, "졸업후보기업"),
+                    (_re.search(r"스마트\s*공장", tags), "스마트공장"), (_re.search(r"강한\s*소상공인", tags), "강한소상공인"),
+                    (_re.search(r"로컬\s*크리에이터", tags), "로컬크리에이터")):
+        if ok:
+            innov.append((200000000, f"혁신성장촉진자금(혁신형-{why})"))
+    for ok, why in ((inp.get("smart_tech"), "스마트기술"), (_re.search(r"협동조합|사회적\s*(예비)?\s*기업|마을기업|자활기업", tags), "사회연대경제"),
+                    (_re.search(r"백년(가게|소공인|소상공인)", tags), "백년소상공인"), (_re.search(r"창업사관학교", tags), "신사업창업사관학교")):
+        if ok:
+            innov.append((100000000, f"혁신성장촉진자금(일반형-{why})"))
+    if innov:
+        make("sojin_innov", "소상공인시장진흥공단 (혁신성장촉진자금)", max(c for c, _ in innov), innov[0][1], [n for _, n in innov[1:]])
 
 
 def _ht_sales_drop(inp):
@@ -1473,26 +1482,27 @@ def _ht_jungjin_priority(inp, ind_text, used_jj, ys):
 def _ht_jungjin_funds(inp, bam, youth_startup, youth_only, exporter, ys, export_only=False):
     """중진공 자금 — 2026 정책자금 융자계획 지원대상 기준"""
     if youth_only:
-        return ["청년전용창업자금"]
+        return ["청년전용창업자금(제조·중점지원분야)"]
     R = HT_LIMIT_RULE
     if export_only:                           # 소상공인 — 신시장진출지원자금(수출)만 (+ 해당하면 청년전용)
         ex = _ht_num(inp.get("export_amount")) or 0
-        return (["청년전용창업자금"] if youth_startup else []) + ["수출기업 글로벌화자금" if ex >= R["exportUsd10k"] else "내수기업 수출기업화자금"]
+        return (["청년전용창업자금(제조·중점지원분야)"] if youth_startup else []) + ["수출기업 글로벌화자금" if ex >= R["exportUsd10k"] else "내수기업 수출기업화자금"]
     f = []
     if youth_startup:
-        f.append("청년전용창업자금")
+        focus = "제조" in _ht_ind_text(inp) or bool(_JJ_FOCUS.search(_ht_ind_text(inp)))
+        f.append("청년전용창업자금(제조·중점지원분야)" if focus else "청년전용창업자금(일반)")
     rt = inp.get("retry") or {}
     if rt.get("restart") and not (inp.get("restart_review") or {}).get("other_biz") and (bam is None or bam < 84):
         f.append("재창업자금")
     if bam is not None and bam < 84:
-        f.append("창업기반지원자금")
+        f.append("창업기반지원자금(일반)")
     else:
         f.append("혁신성장지원자금")
     if exporter:
         ex = _ht_num(inp.get("export_amount")) or 0
         f.append("수출기업 글로벌화자금" if ex >= R["exportUsd10k"] else "내수기업 수출기업화자금")
     if len(ys) >= 2 and ys[-2] > 0 and ys[-1] <= ys[-2] * 0.9:
-        f.append("긴급경영안정자금(일시적경영애로)")
+        f.append("긴급경영안정자금(일시적경영애로-매출 감소)")
     return f
 
 
@@ -1833,7 +1843,7 @@ def _ht_estimate_limit_core(inp, today=None):
             block("jungjin")
     jj = next((o for o in orgs if o["key"] == "jungjin" and o["status"] == "ok"), None)
     if jj:                                    # 요건에 맞는 중진공 자금 이름 (Pro에서만 보여줌)
-        jj["funds"] = ["긴급경영안정자금(일시적경영애로)"] if jj_again == "hard" else _ht_jungjin_funds(inp, bam, jj_youth, jj_youth_only, exporter, jj_ys, jj_export_only)
+        jj["funds"] = ["긴급경영안정자금(일시적경영애로-매출 감소)"] if jj_again == "hard" else _ht_jungjin_funds(inp, bam, jj_youth, jj_youth_only, exporter, jj_ys, jj_export_only)
         jj["priority"] = _ht_jungjin_priority(inp, ind_text, used["jungjin"], jj_ys)     # 정책우선도 지표 (Pro)
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}

@@ -1215,6 +1215,92 @@
           }
         }
       }
+    },
+    {
+      "name": "소진공 — 수출 + 스마트기술이면 혁신형·일반형 둘 다 표시",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2021-03",
+        "employees": 3,
+        "emp_avg": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "smart_tech": true,
+        "export_amount": 30000000,
+        "years": [
+          {
+            "year": 2024,
+            "vat": 300000000
+          },
+          {
+            "year": 2025,
+            "vat": 320000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "sojin": {
+            "funds_contains": "혁신성장촉진자금(일반형-스마트기술)"
+          }
+        }
+      }
+    },
+    {
+      "name": "소진공 — 수출 + 스마트기술 (혁신형-수출도 표시)",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2021-03",
+        "employees": 3,
+        "emp_avg": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "smart_tech": true,
+        "export_amount": 30000000,
+        "years": [
+          {
+            "year": 2024,
+            "vat": 300000000
+          },
+          {
+            "year": 2025,
+            "vat": 320000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "sojin": {
+            "funds_contains": "혁신성장촉진자금(혁신형-수출)"
+          }
+        }
+      }
     }
   ],
   "closure": [
