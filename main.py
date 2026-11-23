@@ -3772,6 +3772,82 @@ def _parse_financial(data):
     return out
 
 
+# ══════════════════════════════════════════════════════════════
+# 보증드림(지역신용보증재단 통합플랫폼) — 지역별 현재 신청 가능한 보증상품 (로그인 없이 공개된 '보증상품소개')
+#  재단 선택: GET /web/inc/change_cfgcd.do?cgfcd=코드 (세션에 저장) → GET 보증상품 목록 → ul.goodsList 파싱
+#  서울·경기신보는 보증드림이 아닌 자체 사이트라 없음. 지역별로 3시간 캐시
+# ══════════════════════════════════════════════════════════════
+BOJEUNG_BASE = "https://untact.koreg.or.kr"
+BOJEUNG_CODES = {"강원": ("KWS", "강원신용보증재단"), "경남": ("GNS", "경남신용보증재단"), "경북": ("WUF", "경북신용보증재단"),
+                 "광주": ("TTU", "광주신용보증재단"), "대구": ("TTG", "대구신용보증재단"), "대전": ("TTV", "대전신용보증재단"),
+                 "부산": ("BSS", "부산신용보증재단"), "세종": ("SJS", "세종신용보증재단"), "울산": ("USS", "울산신용보증재단"),
+                 "인천": ("TTT", "인천신용보증재단"), "전남": ("WUG", "전남신용보증재단"), "전북": ("JBS", "전북신용보증재단"),
+                 "제주": ("JCG", "제주신용보증재단"), "충남": ("CNS", "충남신용보증재단"), "충북": ("CBS", "충북신용보증재단")}
+_bojeung_cache = {}        # 코드 -> (시각, [상품])
+
+
+def _bojeung_parse(html):
+    """보증상품소개 목록 HTML → [{id, name, period, tags, limit}]"""
+    import html as _h
+    clean = lambda v: _re.sub(r"\s+", " ", _h.unescape(_re.sub(r"<[^>]+>", " ", v or ""))).strip()
+    out = []
+    for blk in html.split('class="goodsList"')[1:]:
+        blk = blk.split("</ul>", 1)[0]
+        gid = _re.search(r'id="grt_goods_no"\s+value="([^"]*)"', blk)
+        f = {clean(k): clean(v) for k, v in _re.findall(r"<li[^>]*>\s*<span>(.*?)</span>(.*?)</li>", blk, _re.S)}
+        name = f.get("상품명")
+        if not name:
+            continue
+        lim = _re.sub(r"\D", "", f.get("지원한도", ""))
+        out.append({"id": gid.group(1) if gid else "", "name": name, "period": f.get("시행기간", ""), "tags": f.get("상품특성", ""),
+                    "limit": int(lim) if lim else None})
+    return out
+
+
+def _bojeung_products(sido):
+    """지역(시·도) → (재단 이름, [상품], 조회 시각) 또는 None. 실패해도 분석은 계속"""
+    hit = BOJEUNG_CODES.get(_ht_s(sido)[:2])
+    if not hit:
+        return None
+    code, org = hit
+    now = _time.time()
+    c = _bojeung_cache.get(code)
+    if c and now - c[0] < 3 * 3600:
+        return org, c[1], c[0]
+    try:
+        with httpx.Client(timeout=8, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (FinAnalyzer)"}) as cl:
+            cl.get(f"{BOJEUNG_BASE}/web/inc/change_cfgcd.do", params={"cgfcd": code})
+            r = cl.get(f"{BOJEUNG_BASE}/web/lay1/program/S1T5C6/grtApp/selectGrtGoodsList.do")
+        items = _bojeung_parse(r.text) if r.status_code == 200 else []
+        if items and all(i["id"].startswith(code) or not i["id"] for i in items):
+            _bojeung_cache[code] = (now, items)
+            return org, items, now
+        print(f"[bojeung] {code} 목록 확인 실패 ({r.status_code}, {len(items)}개)")
+    except Exception as e:
+        print(f"[bojeung] {code} 조회 오류: {e!r}")
+    return (org, c[1], c[0]) if c else None
+
+
+def _bojeung_for(inp, today=None):
+    """업체에 맞는 현재 보증상품 — 기간 지난 상품 제외, 법인은 '법인가능' 상품만"""
+    got = _bojeung_products(inp.get("location"))
+    if not got:
+        return None
+    org, items, ts = got
+    today = today or (datetime.utcnow() + timedelta(hours=9)).date()
+    corp = inp.get("biz_type") == "corp"
+    res = []
+    for i in items:
+        end = _re.search(r"~\s*(\d{4})-(\d{2})-(\d{2})", i["period"])
+        if end and datetime(int(end[1]), int(end[2]), int(end[3])).date() < today:
+            continue
+        if corp and "법인가능" not in i["tags"]:
+            continue
+        res.append({k: i[k] for k in ("name", "limit", "tags", "period")})
+    res.sort(key=lambda x: -(x["limit"] or 0))
+    return {"org": org, "items": res, "at": (datetime.utcfromtimestamp(ts) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
+
+
 class HometaxLimitBody(BaseModel):
     input: dict
     consume: bool = False     # True = 새 분석(이용 횟수 기록), False = 분석이력 다시 보기
@@ -3796,6 +3872,15 @@ def hometax_limit(body: HometaxLimitBody, user: models.User = Depends(get_curren
         print(f"[hometax_limit] 계산 오류: {e}")
         L = {"available": False, "status": "none", "low": 0, "high": 0, "orgs": [], "text": "예상 한도를 계산하지 못했습니다. 입력값을 확인해 주세요."}
     ok_orgs = sum(1 for o in (L.get("orgs") or []) if o.get("status") == "ok")
+    if full and tier == "pro":                # 보증드림 현재 보증상품 (Pro) — 재단 줄에 붙임
+        jd = next((o for o in (L.get("orgs") or []) if o.get("key") == "jaedan"), None)
+        if jd:
+            try:
+                bj = _bojeung_for(body.input or {})
+                if bj and bj["items"]:
+                    jd["bojeung"] = bj
+            except Exception as e:
+                print(f"[bojeung] 오류: {e!r}")
     if full and tier == "basic":
         L = _ht_mask_basic(L)
     return {"full": full, "limit": L if full else None, "ok_orgs": ok_orgs, "tier": tier,
