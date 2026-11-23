@@ -1772,6 +1772,7 @@ CODEF_HOMETAX_PRODUCTS = {
     "disability": "/v1/kr/public/mw/certificate/disability",                     # 정부24 장애인 증명서 — 대표자 장애인 여부(해당/비해당)만 사용        # 부가가치세 면세사업자 수입금액증명 — 회원(0/5), 08~22시, 면세사업자만 발급
     "tax_payment": "/v1/kr/public/nt/proof-issue/tax-cert-all",                    # 납세증명서
     "financial": "/v1/kr/public/nt/proof-issue/standard-financial-statements",     # 재무제표(표준재무제표증명) — 08:00~22:00
+    "closure": "/v1/kr/public/nt/certificate/business-discontinuance",            # 폐업사실증명 — 대표자의 예전 폐업 사업장(있을 때만 발급) → 재창업 여부
     "employees": "/v1/kr/public/cw/kcomwel-employment/detail",                     # 근로복지공단 근로자고용정보현황 → 직원 수 (기관이 달라 간편인증 승인 1번 더)
 }
 CW_LEVELS = {"1", "3", "4", "5", "6", "7", "8", "10"}       # 근로복지공단이 지원하는 간편인증 수단
@@ -2145,6 +2146,24 @@ def _pair_biz(types_raw, items_raw):
     return types[0], items[0], ", ".join(types[1:]), ", ".join(items[1:])
 
 
+def _closure_restart(data, founded="", cur_biz=""):
+    """폐업사실증명 → 재창업이면 True. 지금 사업자가 아닌 다른 사업장을 현재 사업 개업 이전(같은 달 포함)에 폐업했으면 재창업.
+    발급 안 됨(폐업 이력 없음)·판단 불가면 None — 체크박스를 건드리지 않는다."""
+    rows = data if isinstance(data, list) else [data] if isinstance(data, dict) else []
+    cur = _re2.sub(r"\D", "", cur_biz or "")
+    start = _re2.sub(r"\D", "", founded or "")[:6]
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        closed = _re2.sub(r"\D", "", r.get("resClosingDate") or "")[:6]
+        biz = _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "")
+        if len(closed) < 6 or (cur and biz == cur):
+            continue
+        if len(start) < 6 or closed <= start:
+            return True
+    return None
+
+
 def _parse_registration(data, want_biz=""):
     """사업자등록 증명 → 원클릭 입력값"""
     rows = data if isinstance(data, list) else [data]
@@ -2410,6 +2429,9 @@ def _hometax_calls(params, now, telecom=""):
                                       usePurposes="99", submitTargets="99", originDataYN="0")))
     calls.append(("tax_payment", dict(base, phoneNo=phone, isIdentityViewYN="0", isAddrViewYn="0", proofType="B0007",
                                       submitTargets="99", applicationType="01", originDataYN="0")))
+    clo = {k: v for k, v in base.items() if k != "identity"}      # 사업자번호 없이 → 대표자의 폐업 사업장 전체
+    calls.append(("closure", dict(clo, phoneNo=phone, usePurposes="99", submitTargets="99", isIdentityViewYn="0",
+                                  applicationType="01", originDataYN="0", originDataYN1="0")))
     if 8 <= now.hour < 22:                    # 재무제표는 08~22시만. 법인/개인을 아직 모르니 둘 다 요청
         years = [y - 1, y - 2, y - 3] + ([y - 4] if now.month < 6 else [])   # 최근 3년 매출 (상반기엔 작년 신고 전일 수 있어 한 해 더)
         fin = dict(base, loginPhoneNo=phone, isIdentityViewYN="0", usePurposes="99", submitTargets="99", originDataYN="0")
@@ -2507,6 +2529,9 @@ def _ht_assemble(st, now, final):
     if dis is not None:
         fill["rep_disabled"] = dis
         got.append("장애인기업 여부")
+    if any(_safe(_closure_restart, d, fill.get("founded", ""), fill.get("business_number", "")) for d in ok("closure")):
+        fill["retry"] = {"restart": True}
+        got.append("재창업 여부")
     return {"fill": fill, "got": got, "failed": failed}
 
 
@@ -3170,6 +3195,16 @@ async def _hometax_collect(params, reg_data, progress=None):
         got.append("납세증명서")
     else:
         failed.append("납세증명서")
+
+    # ②-2 폐업사실증명 — 예전에 폐업한 사업장이 있으면 재창업 (없으면 발급이 안 되는 게 정상이라 실패로 안내하지 않음)
+    try:
+        cres = await _codef_post(CODEF_HOMETAX_PRODUCTS["closure"], dict(base, **ph("phoneNo"), usePurposes="99", submitTargets="99",
+                                                                          isIdentityViewYn="0", applicationType="01", originDataYN="0", originDataYN1="0"))
+        if _codef_code(cres) == "CF-00000" and _safe(_closure_restart, cres.get("data"), fill.get("founded", ""), fill.get("business_number", "")):
+            fill["retry"] = {"restart": True}
+            got.append("재창업 여부")
+    except Exception as e:
+        print(f"[CODEF] closure 호출 오류: {e}")
 
     # ③ 재무제표 — 마지막 신고분 (법인: 사업연도 종료연월 / 개인: 과세연도)
     fin = None

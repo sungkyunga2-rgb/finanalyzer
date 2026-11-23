@@ -509,5 +509,60 @@
         }
       }
     }
+  ],
+  "closure": [
+    {
+      "name": "예전 사업장 폐업 후 새로 개업 → 재창업",
+      "data": {
+        "resCompanyIdentityNo": "111-11-11111",
+        "resClosingDate": "20220315"
+      },
+      "founded": "2023-05",
+      "biz": "222-22-22222",
+      "expect": true
+    },
+    {
+      "name": "다건 응답 중 한 곳이 개업 이전 폐업",
+      "data": [
+        {
+          "resCompanyIdentityNo": "333-33-33333",
+          "resClosingDate": "20240901"
+        },
+        {
+          "resCompanyIdentityNo": "111-11-11111",
+          "resClosingDate": "20190110"
+        }
+      ],
+      "founded": "2021-03",
+      "biz": "222-22-22222",
+      "expect": true
+    },
+    {
+      "name": "개업 뒤에 다른 사업장 폐업(동시 운영) → 재창업 아님",
+      "data": {
+        "resCompanyIdentityNo": "111-11-11111",
+        "resClosingDate": "20240630"
+      },
+      "founded": "2021-03",
+      "biz": "222-22-22222",
+      "expect": null
+    },
+    {
+      "name": "폐업일 비어 있음 → 판단 안 함",
+      "data": {
+        "resCompanyIdentityNo": "111-11-11111",
+        "resClosingDate": ""
+      },
+      "founded": "2021-03",
+      "biz": "222-22-22222",
+      "expect": null
+    },
+    {
+      "name": "발급 결과 없음",
+      "data": null,
+      "founded": "2021-03",
+      "biz": "222-22-22222",
+      "expect": null
+    }
   ]
 }

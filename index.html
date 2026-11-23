@@ -5244,6 +5244,7 @@ function htAuthApply(res) {
   if (typeof f.emp_increase === "number") inc.emp_increase = f.emp_increase;
   if (typeof f.emp_avg === "number") inc.emp_avg = f.emp_avg;
   if (typeof f.rep_disabled === "boolean") inc.rep_disabled = f.rep_disabled;
+  if (f.retry && f.retry.restart === true) inc.restart = true;      // 폐업사실증명 — 예전 사업장 폐업 후 다시 창업
   if ((f.employees === undefined || f.employees === null) && f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
   htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
@@ -5315,6 +5316,7 @@ function htOverwriteForm(inc) {
   if (typeof inc.emp_increase === "number") cur.emp_increase = inc.emp_increase;
   if (typeof inc.emp_avg === "number") cur.emp_avg = inc.emp_avg;
   if (typeof inc.rep_disabled === "boolean") { cur.rep = cur.rep || {}; cur.rep.disabled = inc.rep_disabled; }
+  if (inc.restart === true) { cur.retry = cur.retry || {}; cur.retry.restart = true; }
   if (inc.arrears && inc.arrears.status) cur.arrears = Object.assign({}, cur.arrears, inc.arrears);
   if (inc.loans && inc.loans.length) { cur.loans = inc.loans; cur.loans_none = false; }
   if (inc.fin) cur.fin = Object.assign({}, cur.fin || {}, Object.fromEntries(Object.entries(inc.fin).filter(([, v]) => v !== null && v !== undefined)));

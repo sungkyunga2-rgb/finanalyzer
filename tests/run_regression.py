@@ -60,6 +60,10 @@ for c in cases["limit"]:
             else:
                 check(f"{name} · {key} {f}", o.get(f) == v, f"기대 {v}, 결과 {o.get(f)}")
 
+for c in cases.get("closure", []):
+    r = main._closure_restart(c["data"], c["founded"], c["biz"])
+    check("재창업: " + c["name"], r == c["expect"], f"기대 {c['expect']}, 결과 {r}")
+
 print()
 print(f"실패 {len(fails)}건" if fails else "모두 통과")
 sys.exit(1 if fails else 0)
