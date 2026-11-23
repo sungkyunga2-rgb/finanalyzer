@@ -2649,6 +2649,15 @@ _ht_live = {}     # job_id -> {"user_id", "leads": [...], "pending": n, "res": {
 HT_DOC_LABEL = {"registration": "사업자등록증명", "vat": "부가세과세표준증명", "tax_payment": "납세증명서", "financial": "재무제표", "employees": "직원 수(고용보험)"}
 
 
+def _biz_is_corp(biz):
+    """사업자등록번호 가운데 두 자리(구분코드)로 법인/개인 — 81·84·85·86·87·88 영리·외국법인, 82 비영리법인 → True /
+    01~80·89·90~99 개인 → False / 번호를 모르면 None (승인 전에 요청을 모두 보내야 해서 사업자등록증명을 기다릴 수 없음)"""
+    d = _re2.sub(r"\D", "", biz or "")
+    if len(d) != 10:
+        return None
+    return int(d[3:5]) in (81, 82, 84, 85, 86, 87, 88)
+
+
 def _hometax_calls(params, now, telecom=""):
     """간편인증 세션 하나로 보낼 서류 요청 목록 [(key, body)]"""
     base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id", "telecom", "identity") if params.get(k)}
@@ -2674,9 +2683,12 @@ def _hometax_calls(params, now, telecom=""):
         fin = dict(base, loginPhoneNo=phone, isIdentityViewYN="0", usePurposes="99", submitTargets="99", originDataYN="0")
         if params.get("_want_biz"):
             fin["identity"] = params["_want_biz"]
+        corp = _biz_is_corp(params.get("_want_biz"))       # 사업자번호를 알면 법인/개인에 맞는 형식만 (CODEF 호출 3~4회 절약)
         for yy in years:
-            calls.append(("financial", dict(fin, startDate=f"{yy}12")))                    # 법인: 사업연도 종료연월
-            calls.append(("financial", dict(fin, startDate=str(yy), proofType="40")))      # 개인: 과세연도
+            if corp is not False:
+                calls.append(("financial", dict(fin, startDate=f"{yy}12")))                    # 법인: 사업연도 종료연월
+            if corp is not True:
+                calls.append(("financial", dict(fin, startDate=str(yy), proofType="40")))      # 개인: 과세연도
     return calls
 
 
