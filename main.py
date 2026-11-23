@@ -1470,11 +1470,14 @@ def _ht_jungjin_priority(inp, ind_text, used_jj, ys):
     return {"count": sum(1 for x in items if x["s"] == "ok"), "total": len(items), "items": items}
 
 
-def _ht_jungjin_funds(inp, bam, youth_startup, youth_only, exporter, ys):
+def _ht_jungjin_funds(inp, bam, youth_startup, youth_only, exporter, ys, export_only=False):
     """중진공 자금 — 2026 정책자금 융자계획 지원대상 기준"""
     if youth_only:
         return ["청년전용창업자금"]
     R = HT_LIMIT_RULE
+    if export_only:                           # 소상공인 — 신시장진출지원자금(수출)만 (+ 해당하면 청년전용)
+        ex = _ht_num(inp.get("export_amount")) or 0
+        return (["청년전용창업자금"] if youth_startup else []) + ["수출기업 글로벌화자금" if ex >= R["exportUsd10k"] else "내수기업 수출기업화자금"]
     f = []
     if youth_startup:
         f.append("청년전용창업자금")
@@ -1694,8 +1697,10 @@ def _ht_estimate_limit_core(inp, today=None):
     kodit_ok = (not ind["restricted"]) and (exporter or (big_enough and ((not ind["priority"]) or sales >= R["koditPriorityException"])))
     kibo_ok = exporter or (big_enough and ind["kibo"])
     if small or exporter: orgs.append(mk("sojin", "소상공인시장진흥공단", per["low"], per["high"]))
-    # 중진공 — 중소기업(소상공인 아님)은 매출 기준 없음 / 소상공인은 최근 매출 5억 이상 (평균 10억 미만이면 가능성 낮음)
-    #          청년전용창업자금(대표 만 39세 이하 + 업력 3년 미만)은 매출 기준 없음
+    # 중진공 — 공고 융자제한 ⑨: 소상공인은 융자 제외. 예외: 제조업·혁신성장/초격차/신산업 분야 소상공인, 사회적경제기업 소상공인
+    #          (+ 실무: 예외 소상공인도 최근 매출 5억 이상, 평균 10억 미만이면 가능성 낮음 안내)
+    #          신시장진출지원자금(수출)은 전체 소상공인 가능 / 중점지원분야 소상공인은 청년전용창업자금 가능
+    #          중소기업(소상공인 아님)은 매출 기준 없음
     jj_ys = [v for v in (_ht_num(y.get("vat")) for y in sorted([y for y in (inp.get("years") or []) if isinstance(y, dict) and _ht_num(y.get("year"))],
                                                                   key=lambda y: _ht_num(y.get("year")))) if v is not None and v > 0][-3:]
     jj_avg = sum(jj_ys) / len(jj_ys) if jj_ys else sales
@@ -1703,7 +1708,10 @@ def _ht_estimate_limit_core(inp, today=None):
     #                  유통·서비스업은 고용보험 가입자(대표 제외) 5인 이상. 기업당 1억 이내
     jj_focus = "제조" in ind_text or bool(_JJ_FOCUS.search(ind_text))
     jj_youth = youth and bam is not None and bam < 36 and ((not small) or jj_focus)
-    jj_sales_ok = (not small) or sales >= R["jungjinMinSales"]
+    jj_social = bool(_re.search(r"사회적기업|협동조합|마을기업|자활기업|소셜벤처", f"{_ht_s(inp.get('company_name'))} {_ht_s(inp.get('certs'))}"))
+    jj_small_exc = jj_focus or jj_social                  # 소상공인 융자제한 예외 업종
+    jj_sales_ok = (not small) or (jj_small_exc and sales >= R["jungjinMinSales"])
+    jj_export_only = small and exporter and not jj_sales_ok   # 소상공인은 수출 자금(신시장진출지원)만
     jj_low = small and jj_sales_ok and jj_avg < R["jungjinAvgSales"] and not exporter and used["jungjin"] <= 0
     jj_youth_only = not (jj_sales_ok or exporter or used["jungjin"] > 0) and jj_youth
     # 별표3 용도별 대출한도 우대(운전 10억): 고용 10인↑(emp_up10) · 여성기업 · 장애인기업 · 매출 증가(직전 30억↑ + 최근 3년 연평균 20%↑)
@@ -1825,7 +1833,7 @@ def _ht_estimate_limit_core(inp, today=None):
             block("jungjin")
     jj = next((o for o in orgs if o["key"] == "jungjin" and o["status"] == "ok"), None)
     if jj:                                    # 요건에 맞는 중진공 자금 이름 (Pro에서만 보여줌)
-        jj["funds"] = ["긴급경영안정자금(일시적경영애로)"] if jj_again == "hard" else _ht_jungjin_funds(inp, bam, jj_youth, jj_youth_only, exporter, jj_ys)
+        jj["funds"] = ["긴급경영안정자금(일시적경영애로)"] if jj_again == "hard" else _ht_jungjin_funds(inp, bam, jj_youth, jj_youth_only, exporter, jj_ys, jj_export_only)
         jj["priority"] = _ht_jungjin_priority(inp, ind_text, used["jungjin"], jj_ys)     # 정책우선도 지표 (Pro)
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}

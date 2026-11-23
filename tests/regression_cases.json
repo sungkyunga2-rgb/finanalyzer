@@ -241,7 +241,7 @@
   ],
   "limit": [
     {
-      "name": "2026-11 카페 사례 — 올바른 값으로 소진공 졸업후보(혁신형)",
+      "name": "2026-11 카페 사례 — 올바른 값으로 소진공 졸업후보(혁신형) · 소상공인 음식점은 중진공 제외(공고 ⑨)",
       "input": {
         "biz_type": "personal",
         "industry": "음식점업",
@@ -307,9 +307,7 @@
             "funds_contains": "졸업후보기업"
           },
           "jungjin": {
-            "status": "ok",
-            "low": 170000000,
-            "high": 220000000
+            "status": null
           },
           "jaedan": {
             "status": "blocked"
@@ -629,12 +627,12 @@
       }
     },
     {
-      "name": "중진공 — 소상공인 최근 7억·평균 10억 미만 → 가능하지만 가능성 낮음 표시",
+      "name": "중진공 — 제조 소상공인 최근 7억·평균 10억 미만 → 가능하지만 가능성 낮음 표시",
       "today": "2026-11-23",
       "input": {
         "biz_type": "personal",
-        "industry": "음식점업",
-        "item": "한식",
+        "industry": "제조업",
+        "item": "금속가공",
         "location": "경기",
         "founded": "2020-03",
         "employees": 3,
@@ -672,12 +670,12 @@
       }
     },
     {
-      "name": "중진공 — 소상공인 평균 10억 이상이면 가능성 낮음 표시 없음",
+      "name": "중진공 — 제조 소상공인 평균 10억 이상이면 가능성 낮음 표시 없음",
       "today": "2026-11-23",
       "input": {
         "biz_type": "personal",
-        "industry": "음식점업",
-        "item": "한식",
+        "industry": "제조업",
+        "item": "금속가공",
         "location": "경기",
         "founded": "2020-03",
         "employees": 3,
@@ -1130,6 +1128,90 @@
         "orgs": {
           "jungjin": {
             "status": "ok"
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 소상공인 음식점 매출 8억이어도 제외(공고 ⑨)",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2020-03",
+        "employees": 4,
+        "emp_avg": 4,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2024,
+            "vat": 800000000
+          },
+          {
+            "year": 2025,
+            "vat": 800000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": null
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 소상공인 수출업체는 수출 자금만",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "도소매업",
+        "item": "화장품",
+        "location": "경기",
+        "founded": "2020-03",
+        "employees": 3,
+        "emp_avg": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 45
+        },
+        "loans": [],
+        "export_amount": 50000000,
+        "years": [
+          {
+            "year": 2024,
+            "vat": 400000000
+          },
+          {
+            "year": 2025,
+            "vat": 400000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "funds_contains": "내수기업 수출기업화자금"
           }
         }
       }
