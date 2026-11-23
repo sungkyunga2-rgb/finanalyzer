@@ -592,12 +592,12 @@
       }
     },
     {
-      "name": "중진공 — 청년(만 30세)·업력 3년 미만이면 매출 1억이어도 청년전용창업자금",
+      "name": "중진공 — 청년(만 30세)·업력 3년 미만·제조업이면 매출 1억이어도 청년전용창업자금 (1억 이내)",
       "today": "2026-11-23",
       "input": {
         "biz_type": "personal",
-        "industry": "음식점업",
-        "item": "한식",
+        "industry": "제조업",
+        "item": "화장품 제조",
         "location": "경기",
         "founded": "2025-01",
         "employees": 3,
@@ -710,6 +710,117 @@
         "orgs": {
           "jungjin": {
             "status": "ok"
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 청년전용창업자금도 소상공인 음식점(직원 3명)은 제외",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2025-01",
+        "employees": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 30
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2025,
+            "vat": 100000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": null
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 청년 음식점이라도 직원 5명이면 청년전용창업자금",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2025-01",
+        "employees": 5,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 30
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2025,
+            "vat": 100000000
+          }
+        ],
+        "emp_avg": 5
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "funds_contains": "청년전용창업자금"
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 청년전용창업자금만 해당하면 1억 이내",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "제조업",
+        "item": "화장품 제조",
+        "location": "경기",
+        "founded": "2025-01",
+        "employees": 3,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 30
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2025,
+            "vat": 450000000
+          }
+        ]
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "high": 100000000
           }
         }
       }

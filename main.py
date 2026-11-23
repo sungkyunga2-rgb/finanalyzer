@@ -1102,7 +1102,8 @@ HT_LIMIT_RULE = {
     "totalMax": 1000000000,
     "jungjinMax": 500000000, "jungjinExportMax": 1000000000,
     "jungjinMinSales": 500000000, "jungjinAvgSales": 1000000000,   # 중진공(소상공인): 최근 매출 5억 미만 불가, 최근 3년 평균 10억 미만은 가능성 낮음
-    "exportUsd10k": 140000000,                                      # 수출실적 10만불 ≈ 1.4억 원 (수출기업화 / 글로벌화 구분)
+    "exportUsd10k": 140000000,
+    "jungjinYouthMax": 100000000,                                   # 중진공 청년전용창업자금 기업당 1억                                      # 수출실적 10만불 ≈ 1.4억 원 (수출기업화 / 글로벌화 구분)
     "collateralRate": 0.30, "collateralRateEmp": 0.25,      # 장기차입금(담보로 봄)은 30%만 차감 (최근 1년 고용 유지·증가면 25%)
 }
 
@@ -1613,6 +1614,7 @@ def _ht_estimate_limit_core(inp, today=None):
         if key in ("kodit", "kibo"): lo = min(lo, R["fundMax"]); hi = min(hi, R["fundMax"])
         if key == "jungjin":                  # 중진공 운전자금 연 5억 (수출기업 10억) — 2026 융자계획
             jm = R["jungjinExportMax"] if (exporter or emp_up10) else R["jungjinMax"]
+            if jj_youth_only: jm = R["jungjinYouthMax"]          # 청년전용창업자금만 해당 → 기업당 1억
             lo = min(lo, jm); hi = min(hi, jm)
         if big_enough and key in ("jungjin", "kodit", "kibo"): lo = max(lo, R["fundMinAmount"]); hi = max(hi, R["fundMinAmount"])
         ded = used["miso"] if key == "miso" else (sum(v for kk, v in used.items() if kk != "miso") + other)   # 다른 기관 정책자금도 모든 기관 한도에서 차감
@@ -1636,7 +1638,10 @@ def _ht_estimate_limit_core(inp, today=None):
     jj_ys = [v for v in (_ht_num(y.get("vat")) for y in sorted([y for y in (inp.get("years") or []) if isinstance(y, dict) and _ht_num(y.get("year"))],
                                                                   key=lambda y: _ht_num(y.get("year")))) if v is not None and v > 0][-3:]
     jj_avg = sum(jj_ys) / len(jj_ys) if jj_ys else sales
-    jj_youth = youth and bam is not None and bam < 36
+    # 청년전용창업자금: 대표 만 39세 이하 + 업력 3년 미만 + 중소기업(소상공인 제외) — 제조업·중점지원분야는 인원 무관,
+    #                  유통·서비스업은 고용보험 가입자(대표 제외) 5인 이상. 기업당 1억 이내
+    jj_focus = "제조" in ind_text or bool(ind["kibo"])
+    jj_youth = youth and bam is not None and bam < 36 and ((not small) or jj_focus)
     jj_sales_ok = (not small) or sales >= R["jungjinMinSales"]
     jj_low = small and jj_sales_ok and jj_avg < R["jungjinAvgSales"] and not exporter and used["jungjin"] <= 0
     jj_youth_only = not (jj_sales_ok or exporter or used["jungjin"] > 0) and jj_youth
