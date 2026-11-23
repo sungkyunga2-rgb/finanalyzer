@@ -3711,7 +3711,7 @@ function calcStability(fin, corp) {
   const ice = (interest !== null && interest > 0 && op !== null) ? op / interest : null;
 
   const drClass = capitalEroded ? "danger" : (dr === null ? "warn" : dr > 400 ? "danger" : dr > 200 ? "warn" : "safe");
-  const iceClass = noInt ? "safe" : (ice === null ? "warn" : ice < 1 ? "danger" : ice < 2 ? "warn" : "safe");
+  const iceClass = noInt ? "safe" : (ice === null ? "info" : ice < 1 ? "danger" : ice < 2 ? "warn" : "safe");    // 이자비용을 모르면 '주의'가 아니라 미입력
 
   let erosionStatus, erosionClass;
   if (capitalEroded) { erosionStatus = "완전자본잠식"; erosionClass = "danger"; }
@@ -5789,7 +5789,7 @@ function htReportBody(r, input) {
     let cards = "";
     if (f) {
       cards += card("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass, "자본 대비 부채 규모");
-      cards += card("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : "N/A"), f.iceClass, "영업이익으로 이자를 감당하는 정도");
+      cards += card("💰 이자보상배수", f.noInt ? "이자비용 없음" : (f.ice !== null ? f.ice.toFixed(2) + "배" : null), f.iceClass, f.ice === null && !f.noInt ? "이자비용 미입력" : "영업이익으로 이자를 감당하는 정도");
       cards += card("🏢 자본잠식", e(f.erosionStatus), f.erosionClass, f.erosionClass === "safe" ? "자본 건전" : "자본 확충 필요");
       const gl = f.pct >= 60 ? "safe" : f.pct >= 40 ? "warn" : "danger";
       cards += card("🏆 사업 안정성 종합점수", `${f.total}<span style="font-size:13px;">/${f.max}</span>`, gl, e(f.grade));

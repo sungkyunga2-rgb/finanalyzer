@@ -869,6 +869,7 @@ async def _analyze_financial(body, user, db, consume: bool):
 - Ⅰ.매출액 → revenue
 - Ⅴ.영업손익(Ⅲ-Ⅳ) → operating_income
 - 영업외비용 항목 중 "1.이자비용" → interest_expense (연간 금액 그대로. "영업외비용" 총액이 아니라 그 하위의 "이자비용" 세부 항목만 가져올 것)
+  ※ 손익계산서를 읽었는데 "이자비용" 항목이 아예 없거나 그 금액 칸이 비어 있으면 interest_expense는 0입니다(이자비용 없음). 손익계산서 자체가 없을 때만 null.
 - Ⅷ.당기순손익(Ⅴ+Ⅵ-Ⅶ) 또는 문서 맨 마지막 최종 순이익 항목 → net_income ※ 영업외수익(Ⅵ) 등 중간 항목과 절대 혼동하지 말 것. 반드시 "당기순손익/당기순이익"이라는 이름이 붙은 최종 항목만 사용
 
 ⚠️ 절대 혼동하면 안 되는 항목들 (실제로 자주 발생하는 오류):
@@ -3490,6 +3491,8 @@ def _parse_financial(data):
                 break
     if "assets" not in out and "liabilities" not in out:
         return None
+    if "interest_expense" not in out and ("operating_income" in out or "net_income" in out) and row.get("resIncomeStatement"):
+        out["interest_expense"] = 0          # 손익계산서에 이자비용 항목이 없으면 이자비용 없음
     yr = str(row.get("resAttrYear") or row.get("commEndDate") or "")[:4]
     if yr.isdigit():
         out["_year"] = int(yr)
