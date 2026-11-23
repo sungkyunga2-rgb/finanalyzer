@@ -1054,7 +1054,9 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 #  · 기대출(어느 기관 정책자금이든, 기관을 모르는 대출이든)은 미소금융을 뺀 모든 기관 한도에서 차감
 #  · 소상공인이 아니면(상시근로자 5인 이상, 제조·건설·운수·광업 10인 이상) 소진공 제외
 #  · 업력 1년 미만 + (제조 · 콘텐츠 제작 · 특허) → 매출이 없어도 기보 5천만 ~ 1억
-#  · 중진공 최대 5억(운전자금 연 5억, 수출기업·최근 1년 10명 이상 고용 증가 10억) / 신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
+#  · 중진공 운전자금 연간 한도(2026 융자계획): 창업기반지원·혁신성장지원·재창업 5억 / 내수기업수출기업화·수출기업글로벌화 10억 /
+#    청년전용창업자금 기업당 1억(제조·중점지원분야 2억) / 긴급경영안정(일시적경영애로) 10억(사유 확인 필요 → 한도 상향에는 안 씀) /
+#    별표3 용도별 우대(최근 1년 10명 이상 고용 증가로 봄) 10억 / 신보·기보 최대 10억 / 소진공·재단 최대 2억 (2억 이상이 한 금액이면 1억 ~ 2억 범위)
 #  · 1천만 원 미만은 한도 없음 (미소금융만 500만 원)
 #  · 총 예상한도 = 기준 매출 × 25% ~ 30%(청년 50%) × 신용 조정 − 기대출 합계 (최대 10억)
 #  · 소진공 신용취약소상공인자금: 소상공인 + 업력 3개월 이상 + 개인신용평점 839 이하 → 최대 3천만 원 (소진공 줄을 이 금액으로)
@@ -1103,7 +1105,7 @@ HT_LIMIT_RULE = {
     "jungjinMax": 500000000, "jungjinExportMax": 1000000000,
     "jungjinMinSales": 500000000, "jungjinAvgSales": 1000000000,   # 중진공(소상공인): 최근 매출 5억 미만 불가, 최근 3년 평균 10억 미만은 가능성 낮음
     "exportUsd10k": 140000000,
-    "jungjinYouthMax": 100000000,                                   # 중진공 청년전용창업자금 기업당 1억                                      # 수출실적 10만불 ≈ 1.4억 원 (수출기업화 / 글로벌화 구분)
+    "jungjinYouthMax": 100000000, "jungjinYouthFocusMax": 200000000,   # 중진공 청년전용창업자금 기업당 1억 (제조업·중점지원분야 2억)                                      # 수출실적 10만불 ≈ 1.4억 원 (수출기업화 / 글로벌화 구분)
     "collateralRate": 0.30, "collateralRateEmp": 0.25,      # 장기차입금(담보로 봄)은 30%만 차감 (최근 1년 고용 유지·증가면 25%)
 }
 
@@ -1614,7 +1616,7 @@ def _ht_estimate_limit_core(inp, today=None):
         if key in ("kodit", "kibo"): lo = min(lo, R["fundMax"]); hi = min(hi, R["fundMax"])
         if key == "jungjin":                  # 중진공 운전자금 연 5억 (수출기업 10억) — 2026 융자계획
             jm = R["jungjinExportMax"] if (exporter or emp_up10) else R["jungjinMax"]
-            if jj_youth_only: jm = R["jungjinYouthMax"]          # 청년전용창업자금만 해당 → 기업당 1억
+            if jj_youth_only: jm = R["jungjinYouthFocusMax"] if jj_focus else R["jungjinYouthMax"]   # 청년전용창업자금만 해당 → 기업당 1억 (제조·중점지원분야 2억)
             lo = min(lo, jm); hi = min(hi, jm)
         if big_enough and key in ("jungjin", "kodit", "kibo"): lo = max(lo, R["fundMinAmount"]); hi = max(hi, R["fundMinAmount"])
         ded = used["miso"] if key == "miso" else (sum(v for kk, v in used.items() if kk != "miso") + other)   # 다른 기관 정책자금도 모든 기관 한도에서 차감

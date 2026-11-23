@@ -789,7 +789,7 @@
       }
     },
     {
-      "name": "중진공 — 청년전용창업자금만 해당하면 1억 이내",
+      "name": "중진공 — 청년·제조업·소상공인(매출 4.5억) → 청년전용창업자금만, 매출 기준 한도",
       "today": "2026-11-23",
       "input": {
         "biz_type": "personal",
@@ -820,7 +820,46 @@
         "orgs": {
           "jungjin": {
             "status": "ok",
-            "high": 100000000
+            "high": 140000000
+          }
+        }
+      }
+    },
+    {
+      "name": "중진공 — 청년·서비스업 직원 5명(중소기업) → 창업기반지원 한도(청년전용 1억에 묶이지 않음)",
+      "today": "2026-11-23",
+      "input": {
+        "biz_type": "personal",
+        "industry": "음식점업",
+        "item": "한식",
+        "location": "경기",
+        "founded": "2025-01",
+        "employees": 5,
+        "credit": {
+          "kcb": 900,
+          "nice": 900
+        },
+        "arrears": {
+          "status": "none"
+        },
+        "rep": {
+          "age": 30
+        },
+        "loans": [],
+        "years": [
+          {
+            "year": 2025,
+            "vat": 450000000
+          }
+        ],
+        "emp_avg": 5
+      },
+      "expect": {
+        "orgs": {
+          "jungjin": {
+            "status": "ok",
+            "high": 140000000,
+            "funds_contains": "창업기반지원자금"
           }
         }
       }
