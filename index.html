@@ -5711,7 +5711,8 @@ function htReportBody(r, input) {
   const LC = { safe: "#0F6E56", info: "#185FA5", warn: "#B8860B", danger: "#A32D2D" };
   const LB = { safe: "#E1F5EE", info: "#EBF2FA", warn: "#FEF6D8", danger: "#FCEBEB" };
   let n = 0;
-  const sh = (t) => `<div class="sh"><div class="sh-num">${++n}</div><div class="sh-title">${t}</div><div class="sh-line"></div></div>`;
+  // 섹션마다 <!--SEC--> 표시를 남겨 두고 마지막에 묶어서, 인쇄할 때 한 섹션이 페이지 중간에서 잘리지 않게 한다
+  const sh = (t, newPage) => `<!--SEC${newPage ? ":BRK" : ""}--><div class="sh"><div class="sh-num">${++n}</div><div class="sh-title">${t}</div><div class="sh-line"></div></div>`;
   const pf = r.profile || {}, c = r.credit || {}, rp = input.rep || {}, ar = input.arrears || {};
   const labMap = { lab: "기업부설연구소", dept: "연구개발전담부서" };
   const facMap = { own: "자가", rent: "임차" };
@@ -5948,7 +5949,7 @@ function htReportBody(r, input) {
     const taPct = Math.max(Math.round((A || 0) / barMax * 100), 4), tlPct = Math.max(Math.round((Lb || 0) / barMax * 100), 4);
     const icePct = F.noInt ? 100 : F.ice !== null ? Math.min(Math.round(F.ice / 5 * 100), 100) : 0;
     const box = "background:#fff;border:1px solid #e5e4e0;border-radius:10px;padding:12px;";
-    html += `<div style="page-break-before:always;break-before:always;">` + sh("재무안정성 (Financial Stability)") + `
+    html += sh("재무안정성 (Financial Stability)", true) + `
       <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:14px;margin-bottom:10px;">
         <div style="${box}">
           <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:10px;">자산 · 부채 구성</div>
@@ -5982,9 +5983,14 @@ function htReportBody(r, input) {
         <tr><td style="font-weight:700;color:#0F6E56;">양호</td><td class="cat">이자비용 부담 능력이 양호하고, 차입상환에 필요한 기간이 적절한 수준입니다.</td></tr>
         <tr><td style="font-weight:700;color:#B8860B;">보통</td><td class="cat">이자비용 부담 능력이 크지 않으며, 차입상환에 상당한 기간이 걸릴 수 있습니다.</td></tr>
         <tr><td style="font-weight:700;color:#A32D2D;">열위</td><td class="cat">이자비용 부담 능력이 부족하며, 차입상환에 장기간이 걸릴 것으로 예상됩니다.</td></tr>
-      </tbody></table></div>`;
+      </tbody></table>`;
   }
 
+  const parts = html.split(/<!--SEC(:BRK)?-->/);
+  // split은 캡처 그룹도 돌려주므로 [앞부분, 표시, 내용, 표시, 내용...]
+  let out = parts[0];
+  for (let k = 1; k < parts.length; k += 2) out += `<div class="rsec${parts[k] ? " rsec-brk" : ""}">${parts[k + 1] || ""}</div>`;
+  html = out;
   return html;
 }
 
@@ -7240,6 +7246,10 @@ function downloadResult() {
 
   /* 재무수치 테이블 */
   .fin-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+  .rsec { break-inside:avoid; page-break-inside:avoid; }
+  .rsec-brk { break-before:page; page-break-before:always; }
+  .rsec .sh { break-after:avoid; page-break-after:avoid; }
+  .fin-table tr, .kpi-card, .cl-item { break-inside:avoid; page-break-inside:avoid; }
   .fin-table tr { page-break-inside:avoid; break-inside:avoid; }
   .fin-table thead { display:table-header-group; }
   .fin-table th { background:#f0f4f8; color:#0d3b7c; font-size:10px; font-weight:700; padding:7px 11px; text-align:left; }
