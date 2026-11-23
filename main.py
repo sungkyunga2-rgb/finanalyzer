@@ -124,6 +124,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],     # 인콜일지 등 파일 다운로드 이름
 )
 
 PORTONE_SECRET_KEY = os.getenv("PORTONE_SECRET_KEY", "")   # 포트원 콘솔 > API 키
@@ -6767,3 +6768,242 @@ def push_alert_delete(alert_id: int, user: models.User = Depends(get_current_use
 def admin_alerts_run(force: bool = False, _: bool = Depends(check_admin), db: Session = Depends(get_db)):
     """외부 크론에서 하루 1회 호출 (한국 시간 9~20시 사이 권장)"""
     return run_fund_alerts(db, force=force)
+
+
+# ══════════════════════════════════════════════════════════════
+# 원클릭 분석 → 인콜일지(.docx) 저장 — Pro 전용
+#  · 양식: templates/incall_template.docx (회사 인콜일지 빈 양식). 표 모양은 그대로 두고 빈칸만 채운다
+#  · 한도는 서버에서 다시 계산 (화면 값을 믿지 않음). 종합평가 주의 항목은 화면에서 받은 문장을 그대로 넣음
+# ══════════════════════════════════════════════════════════════
+INCALL_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "incall_template.docx")
+
+
+def _kwon(v):
+    """금액 → '18억 9,048만원' (1만원 미만은 버림)"""
+    v = _ht_num(v)
+    if v is None:
+        return ""
+    neg, v = v < 0, abs(int(round(v)))
+    eok, man = v // 100000000, (v % 100000000) // 10000
+    s = (f"{eok}억" if eok else "") + (f" {man:,}만" if man else "") + "원" if (eok or man) else f"{v:,}원"
+    return ("-" if neg else "") + s.strip()
+
+
+def _incall_cells(row):
+    """표 한 줄의 셀 — 가로로 합쳐진 셀은 한 번만"""
+    out, prev = [], None
+    for c in row.cells:
+        if c._tc is prev:
+            continue
+        prev = c._tc
+        out.append(c)
+    return out
+
+
+def _incall_set(cell, text, append=False, size_from=None):
+    """셀에 글 쓰기 — 첫 문단 글꼴은 살리고, 줄바꿈은 같은 문단 안에서"""
+    from docx.shared import Pt
+    text = "" if text is None else str(text)
+    if not text and not append:
+        return
+    p = cell.paragraphs[0]
+    for extra in cell.paragraphs[1:]:
+        if not append:
+            extra._element.getparent().remove(extra._element)
+    if append:
+        base = p.runs[-1] if p.runs else None
+        run = p.add_run(" " + text if p.text and not p.text.endswith(" ") else text)
+    else:
+        for r in p.runs[1:]:
+            r._element.getparent().remove(r._element)
+        run = p.runs[0] if p.runs else p.add_run()
+        run.text = ""
+        base = None
+    lines = text.split("\n") if not append else [run.text]
+    if not append:
+        run.text = lines[0]
+        for ln in lines[1:]:
+            run.add_break()
+            run.add_text(ln)
+    src = base or (size_from.paragraphs[0].runs[0] if size_from is not None and size_from.paragraphs and size_from.paragraphs[0].runs else None)
+    if src is not None and src.font.size:
+        run.font.size = src.font.size
+    elif not run.font.size:
+        run.font.size = Pt(9)
+    run.font.bold = False
+
+
+def _incall_fill(inp: dict, L: dict, notes: list, today) -> bytes:
+    import io, docx
+    d = docx.Document(INCALL_TEMPLATE)
+    # 인콜일자
+    for p in d.paragraphs:
+        if p.text.startswith("인콜일자"):
+            for r in p.runs[1:]:
+                r._element.getparent().remove(r._element)
+            p.runs[0].text = f"인콜일자({today.year}\t년\t{today.month}월\t{today.day}일)"
+            break
+    t0, t = d.tables[0], d.tables[1]
+    c0 = _incall_cells(t0.rows[0])
+    if len(c0) >= 3:
+        _incall_set(c0[2], _ht_s(inp.get("company_name")).strip(), size_from=c0[0])
+
+    rows = [_incall_cells(r) for r in t.rows]
+    label = lambda c: c.text.replace("\n", "").replace(" ", "")
+
+    def put(ri, ci, text, left=False):
+        if ri < len(rows) and ci < len(rows[ri]):
+            _incall_set(rows[ri][ci], text, size_from=rows[ri][0])
+            if left and text:
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+                rows[ri][ci].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+    def add(ri, ci, text):
+        if text not in (None, "") and ri < len(rows) and ci < len(rows[ri]):
+            _incall_set(rows[ri][ci], text, append=True)
+
+    rep = inp.get("rep") or {}
+    cr = inp.get("credit") or {}
+    fin = inp.get("fin") or {}
+    # 업태 / 업종
+    pairs = [f"{_ht_s(inp.get(a)).strip()} / {_ht_s(inp.get(b)).strip()}".strip(" /") for a, b in (("industry", "item"), ("industry2", "item2"))]
+    put(0, 1, "\n".join(x for x in pairs if x))
+    loc = _ht_s(inp.get("location")).strip()
+    put(2, 1, loc)
+    fm = _re.match(r"^(\d{4})-(\d{1,2})", _ht_s(inp.get("founded")))
+    if fm:
+        put(3, 1, f"{fm.group(1)}년 {int(fm.group(2))}월")
+    # 매출 — 양식의 연도 칸(2023~2026)에 맞춰서
+    years = {int(_ht_num(y.get("year"))): _ht_num(y.get("vat")) for y in (inp.get("years") or []) if isinstance(y, dict) and _ht_num(y.get("year")) and _ht_num(y.get("vat")) is not None}
+    ytd = inp.get("ytd") or {}
+    for ri in range(0, 4):
+        if len(rows[ri]) < 6:
+            continue
+        lab = rows[ri][4].text
+        ym = _re.search(r"(20\d{2})년", lab)
+        if not ym:
+            continue
+        yr = int(ym.group(1))
+        if _ht_num(ytd.get("year")) == yr and _ht_num(ytd.get("sales")) is not None:
+            m = int(_ht_num(ytd.get("month")) or 0)
+            for p in rows[ri][4].paragraphs:                      # "현재 (  )월 까지" → "현재 ( 6 )월 까지"
+                for r in p.runs:
+                    if "(" in r.text and ")" in r.text and "월" in p.text:
+                        r.text = _re.sub(r"\(\s*\)", f"( {m} )", r.text)
+                if _re.search(r"\(\s*\)\s*월", p.text) and m:
+                    full = _re.sub(r"\(\s*\)", f"( {m} )", p.text)
+                    for r in p.runs[1:]:
+                        r._element.getparent().remove(r._element)
+                    if p.runs:
+                        p.runs[0].text = full
+            put(ri, 5, _kwon(ytd.get("sales")))
+        elif yr in years:
+            put(ri, 5, _kwon(years[yr]))
+    # 신용점수
+    if _ht_num(cr.get("kcb")) is not None: add(4, 1, str(int(_ht_num(cr["kcb"]))))
+    if _ht_num(cr.get("nice")) is not None: add(4, 2, str(int(_ht_num(cr["nice"]))))
+    if _ht_num(cr.get("co_kcb")) is not None: add(5, 1, str(int(_ht_num(cr["co_kcb"]))))
+    if _ht_num(cr.get("co_nice")) is not None: add(5, 2, str(int(_ht_num(cr["co_nice"]))))
+    rec = cr.get("recovery") or {}
+    if isinstance(rec, dict) and (rec.get("type") or rec.get("faithful")):
+        put(4, 4, " · ".join(x for x in (_ht_s(rec.get("type")), _ht_s(rec.get("faithful"))) if x))
+    # 국세체납
+    ar = inp.get("arrears") or {}
+    st = ar.get("status")
+    arr = "없음" if st == "none" else ("있음" + (f" {_kwon(ar.get('amount'))}" if _ht_num(ar.get("amount")) else "") + (f" ({_ht_s(ar.get('note'))})" if ar.get("note") else "")) if st == "has" else ""
+    other = _ht_s(ar.get("other")).strip()
+    put(8, 2, " / ".join(x for x in (f"국세 체납 {arr}" if arr else "", other) if x))
+    # 기대출
+    kind = {"personal": "개인", "business": "사업자"}
+    ls = []
+    for l in (inp.get("loans") or []):
+        if not isinstance(l, dict) or not (l.get("org") or _ht_num(l.get("amount"))):
+            continue
+        ls.append(" ".join(x for x in (_ht_s(l.get("org")).strip(), _ht_s(l.get("date")).strip(), _kwon(l.get("amount")), f"({kind[l['kind']]})" if l.get("kind") in kind else "") if x))
+    put(9, 1, "\n".join(ls) if ls else ("없음" if inp.get("loans_none") else ""), left=True)
+    # 대표자
+    age = _ht_num(rep.get("age"))
+    if age is not None:
+        put(11, 2, f"만 {int(age)}세 ({today.year - int(age) - 1}~{today.year - int(age)}년생)")
+    put(12, 2, _ht_s(rep.get("assets_note")).strip())
+    mar = " · ".join(x for x in (_ht_s(rep.get("marital")).strip(), "여성대표" if rep.get("woman") else "") if x)
+    put(13, 2, mar)
+    if _ht_num(rep.get("career")) is not None:
+        put(14, 2, f"{_ht_num(rep.get('career')):g}년")
+    # 부채비율 · 이자보상배수
+    a, li = _ht_num(fin.get("assets")), _ht_num(fin.get("liabilities"))
+    if a is not None and li is not None and a > 0:
+        put(11, 4, "자본잠식" if a - li <= 0 else f"{li / (a - li) * 100:.1f}%")
+    op, ie = _ht_num(fin.get("operating_income")), _ht_num(fin.get("interest_expense"))
+    if op is not None and ie is not None:
+        put(13, 4, "이자비용 없음" if ie == 0 else f"{op / ie:.1f}배")
+    # 직원 · 공제 · 인증 · 수출 · 공장
+    emp = _ht_num(inp.get("employees"))
+    if emp is not None:
+        avg = _ht_num(inp.get("emp_avg"))
+        put(15, 1, f"{int(emp)}명" + (f" (상시근로자 월평균 {avg:g}명)" if avg is not None else ""))
+    if _ht_num(inp.get("hire_plan")) is not None:
+        put(15, 3, f"{int(_ht_num(inp.get('hire_plan')))}명")
+    put(16, 1, _ht_s(inp.get("naeil")).strip())
+    put(16, 3, _ht_s(inp.get("umbrella")).strip())
+    certs = _ht_s(inp.get("certs")).strip()
+    put(17, 1, certs)
+    put(17, 3, {"lab": "기업부설연구소", "dept": "연구개발전담부서", "none": "없음"}.get(_ht_s(inp.get("lab")), ""))
+    ex = _ht_num(inp.get("export_amount"))
+    put(18, 1, f"있음 ({_kwon(ex)})" if ex else _ht_s(inp.get("export")).strip())
+    put(18, 3, {"own": "자가", "rent": "임차", "none": "없음"}.get(_ht_s(inp.get("factory")), _ht_s(inp.get("factory"))))
+    # ※ 추가사항 — 원클릭 분석 요약
+    lines = [f"[피나 원클릭 분석 · {today.year}.{today.month:02d}.{today.day:02d}]"]
+    if isinstance(L, dict):
+        if L.get("available") and L.get("status") == "ok":
+            lo, hi = L.get("low") or 0, L.get("high") or 0
+            lines.append("총 예상 한도: " + (_kwon(hi) if lo == hi else f"{_kwon(lo)} ~ {_kwon(hi)}"))
+        elif L.get("status") == "blocked":
+            lines.append("총 예상 한도: 현재 신청 어려움")
+        for o in (L.get("orgs") or []):
+            if o.get("status") == "ok":
+                amt = _kwon(o["high"]) if o.get("low") == o.get("high") else f"{_kwon(o.get('low'))} ~ {_kwon(o.get('high'))}"
+                fund = f" · {', '.join(o['funds'])}" if o.get("funds") else ""
+                lines.append(f"- {o.get('name')}: {amt}{fund}")
+            else:
+                lines.append(f"- {o.get('name')}: {'신청 불가' if o.get('status') == 'blocked' else '추가 한도 없음'}")
+    ns = [str(n).strip() for n in (notes or []) if str(n).strip()][:12]
+    if ns:
+        lines.append("")
+        lines.append("확인 필요 항목")
+        lines += [f"- {n}" for n in ns]
+    if len(rows) > 20:
+        put(20, 0, "\n".join(lines), left=True)
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+class IncallExportBody(BaseModel):
+    input: dict
+    notes: list = []
+
+
+@app.post("/export/incall")
+def export_incall(body: IncallExportBody, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """원클릭 분석 내용으로 인콜일지(.docx) 만들기 — Pro 전용. 파일은 저장하지 않고 바로 돌려준다"""
+    from fastapi.responses import Response
+    from urllib.parse import quote
+    if user_plan_tier(db, user) != "pro":
+        raise HTTPException(status_code=403, detail="인콜일지 저장은 Pro 요금제에서 이용할 수 있어요.")
+    inp = body.input or {}
+    try:
+        L = _ht_clean(ht_estimate_limit(dict(inp)))
+    except Exception as e:
+        print(f"[export_incall] 한도 계산 오류: {e!r}")
+        L = {}
+    today = (datetime.utcnow() + timedelta(hours=9)).date()
+    try:
+        data = _incall_fill(inp, L, body.notes, today)
+    except Exception as e:
+        print(f"[export_incall] 작성 오류: {e!r}")
+        raise HTTPException(status_code=500, detail="인콜일지를 만들지 못했어요. 잠시 후 다시 시도해 주세요.")
+    name = _re.sub(r'[\\/:*?"<>|\s]+', "", _ht_s(inp.get("company_name"))) or "업체"
+    fn = f"인콜일지_{name}_{today.strftime('%Y%m%d')}.docx"
+    return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fn)}", "Access-Control-Expose-Headers": "Content-Disposition"})

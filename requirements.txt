@@ -7,3 +7,4 @@ python-multipart==0.0.26
 psycopg2-binary==2.9.10
 cryptography==44.0.0
 pywebpush==2.0.3
+python-docx==1.1.2
