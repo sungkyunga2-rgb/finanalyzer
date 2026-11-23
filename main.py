@@ -3710,7 +3710,7 @@ async def _gemini_json(image_parts, prompt, max_tokens=3000):
     import json, re
     models_ = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.7-flash"]
     last_err = None
-    async with httpx.AsyncClient(timeout=90) as client:
+    async with httpx.AsyncClient(timeout=120) as client:
         for model in models_:
             for attempt in range(2):
                 try:
@@ -3718,7 +3718,8 @@ async def _gemini_json(image_parts, prompt, max_tokens=3000):
                         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}",
                         headers={"Content-Type": "application/json"},
                         json={"contents": [{"parts": [*image_parts, {"text": prompt}]}],
-                              "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens}})
+                              "generationConfig": dict({"temperature": 0, "maxOutputTokens": max_tokens},
+                                                       **({"thinkingConfig": {"thinkingBudget": 0}} if model.startswith("gemini-2.5") else {}))})
                     if resp.status_code in (503, 429):
                         last_err = resp.text
                         print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
@@ -3730,7 +3731,10 @@ async def _gemini_json(image_parts, prompt, max_tokens=3000):
                         last_err = resp.text
                         print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
                         break
-                    txt = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    cand = (resp.json().get("candidates") or [{}])[0]
+                    txt = "".join(p.get("text", "") for p in ((cand.get("content") or {}).get("parts") or []))
+                    if not txt:
+                        raise ValueError(f"빈 응답 (finishReason={cand.get('finishReason')})")
                     txt = re.sub(r"```json|```", "", txt).strip()
                     a, b = txt.find("{"), txt.rfind("}")
                     if a == -1 or b == -1:
@@ -4128,6 +4132,31 @@ def _income_doc_post(data):
     return data
 
 
+def _income_doc_merge(docs):
+    """파일별 AI 결과 → 하나로. 사업자등록증의 개업일·주소·업종을 먼저, 매출 기간은 모두 모음"""
+    if len(docs) == 1:
+        return docs[0]
+    reg = lambda d: "사업자등록증" in str(d.get("doc_type") or "") and "증명원" not in str(d.get("doc_type") or "")
+    docs = sorted(docs, key=lambda d: 0 if reg(d) else 1)
+    out = {}
+    for d in docs:
+        for k, v in d.items():
+            if k in ("periods", "doc_type", "comment", "revenue"):
+                continue
+            if out.get(k) in (None, "", "null") and v not in (None, "", "null"):
+                out[k] = v
+    seen, periods = set(), []
+    for d in docs:
+        for p in d.get("periods") or []:
+            if isinstance(p, dict) and (p.get("start"), p.get("end")) not in seen:
+                seen.add((p.get("start"), p.get("end")))
+                periods.append(p)
+    out["periods"] = periods or None
+    out["revenue"] = next((d.get("revenue") for d in docs if not reg(d) and d.get("revenue")), None)
+    out["doc_type"] = ", ".join(dict.fromkeys(str(d.get("doc_type")) for d in docs if d.get("doc_type")))
+    return out
+
+
 @app.post("/extract/income-doc")
 async def extract_income_doc(
     body: IncomeDocExtractRequest,
@@ -4188,56 +4217,19 @@ async def extract_income_doc(
 아래 JSON 형식으로만 응답하세요. 문서에서 찾을 수 없는 항목은 null:
 {"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "면세사업자수입금액증명" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"periods":[{"start":"YYYY-MM","end":"YYYY-MM","amount":숫자}] 또는 null,"income_amount":숫자또는null,"open_date":문자열또는null,"rep_birth":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
 
-    GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.7-flash"]
+    # 파일마다 따로 읽고 합친다 — 여러 서류를 한 번에 보내면 응답이 길어져 잘리거나 시간 초과로 실패하기 쉬움
+    sem = asyncio.Semaphore(2)                  # 무료 사용량(분당 요청 수) 고려해 2개씩
 
-    async def call_gemini(client: httpx.AsyncClient):
-        import asyncio
-        last_err = None
-        for model in GEMINI_MODELS:
-            for attempt in range(2):
-                try:
-                    resp = await client.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}",
-                        headers={"Content-Type": "application/json"},
-                        json={
-                            "contents": [{"parts": [*image_parts, {"text": prompt}]}],
-                            "generationConfig": {"temperature": 0, "maxOutputTokens": 2000}
-                        }
-                    )
-                    if resp.status_code in (503, 429):
-                        last_err = resp.text
-                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
-                        if attempt == 0:
-                            await asyncio.sleep(0.8)
-                            continue
-                        break
-                    if resp.status_code != 200:
-                        last_err = resp.text
-                        print(f"[gemini] {model} {resp.status_code}: {resp.text[:300]}")
-                        break
-                    try:
-                        candidate_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-                        candidate_clean = re.sub(r"```json|```", "", candidate_text).strip()
-                        start = candidate_clean.find("{")
-                        end = candidate_clean.rfind("}")
-                        if start == -1 or end == -1:
-                            raise ValueError("JSON 객체를 찾을 수 없음")
-                        return json.loads(candidate_clean[start:end + 1]), None
-                    except Exception as parse_err:
-                        last_err = f"JSON 파싱 실패: {parse_err}"
-                        break
-                except Exception as e:
-                    last_err = str(e)
-                    break
-        return None, last_err
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        data, last_error = await call_gemini(client)
-
-    if data is None:
+    async def one(part):
+        async with sem:
+            return await _gemini_json([part], prompt, max_tokens=4000)
+    outs = await asyncio.gather(*[one(p) for p in image_parts])
+    oks = [d for d, e in outs if isinstance(d, dict)]
+    if not oks:
+        last_error = next((e for d, e in outs if e), "")
         print(f"[gemini] 실패: {str(last_error)[:300]}")
         raise HTTPException(status_code=500, detail=_gemini_fail(last_error))
-
+    data = _income_doc_merge(oks)
     data = _income_doc_post(data)
     return {"data": data}
 
