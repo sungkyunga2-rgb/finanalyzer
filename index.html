@@ -4765,6 +4765,16 @@ function htNpkiSupported() {
   const mac = /Mac/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "");
   return typeof window.showDirectoryPicker === "function" && !isMobileDevice() && !mac;   // Mac 크롬은 인증서 폴더(Library)를 막아 둠
 }
+// 인증서 목록이 안 나오는 이유 (파일 선택 화면 위에 안내)
+function htNpkiWhyNot() {
+  if (isMobileDevice()) return "";
+  const ua = navigator.userAgent || "";
+  const mac = /Mac/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "");
+  if (mac) return "Mac은 보안 정책상 브라우저가 인증서 폴더를 읽을 수 없어 <b>인증서 목록</b> 대신 파일을 직접 선택해야 해요.";
+  if (window.top !== window.self) return "다른 화면 안에 열린 상태라 인증서 목록을 쓸 수 없어요. <b>피나 사이트를 새 창(크롬·엣지)에서 직접 열면</b> 인증서 목록이 나와요.";
+  const name = /Firefox\//.test(ua) ? "파이어폭스" : (/Safari\//.test(ua) && !/Chrome\//.test(ua)) ? "사파리" : /SamsungBrowser/.test(ua) ? "삼성 인터넷" : /KAKAOTALK|NAVER\(inapp|Instagram|FBAV|Line\//.test(ua) ? "앱 안 브라우저" : "지금 쓰는 브라우저";
+  return `${name}는 인증서 목록 기능을 지원하지 않아요. <b>PC 크롬 또는 엣지</b>로 열면 인증서 폴더를 한 번 연결해 목록에서 고를 수 있어요.`;
+}
 function htIdb(mode, fn) {
   return new Promise((ok, no) => {
     let req;
@@ -4798,7 +4808,14 @@ async function htNpkiCopyPath() {
 }
 async function htNpkiInit() {   // 공동인증서 탭 열 때
   const box = document.getElementById("htNpkiBox"), fileBox = document.getElementById("htCertFileBox");
-  if (!htNpkiSupported()) { box.style.display = "none"; fileBox.style.display = ""; return; }
+  const why = document.getElementById("htNpkiWhy");
+  if (!htNpkiSupported()) {
+    box.style.display = "none"; fileBox.style.display = "";
+    const r = htNpkiWhyNot();
+    if (why) { why.innerHTML = r; why.style.display = r ? "" : "none"; }
+    return;
+  }
+  if (why) why.style.display = "none";
   box.style.display = ""; fileBox.style.display = "none";
   document.getElementById("htCertKeep").checked = false;   // PC는 폴더에서 바로 읽으니 따로 보관할 필요 없음
   if (htNpki.certs.length) return htNpkiRender();
@@ -8968,6 +8985,7 @@ window.addEventListener("DOMContentLoaded", () => {
             <button type="button" class="ht-npki-other" onclick="htNpkiShowFiles()">파일로 직접 선택하기</button>
           </div>
           <div id="htCertFileBox">
+          <div id="htNpkiWhy" style="display:none;background:#FFF8E6;border:1px solid #F2D58A;border-radius:8px;padding:9px 11px;font-size:12px;color:#6b5a1e;line-height:1.55;margin-bottom:10px;"></div>
           <div class="ht-auth-label">인증서 파일</div>
           <label class="ht-cert-drop" id="htCertDrop">
             <input type="file" id="htCertFiles" multiple accept=".der,.key,.pfx,.p12" onchange="htCertPick(this.files)" />
