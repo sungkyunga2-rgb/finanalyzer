@@ -1301,6 +1301,39 @@
           }
         }
       }
+    },
+    {
+      "name": "소진공 직접대출 자금 요건 없음(대리대출만 해당) → 소진공 신청 기관에서 제외, 재단·신보 중 큰 곳만 총 한도",
+      "input": {
+        "biz_type": "personal",
+        "location": "서울",
+        "industry": "도소매",
+        "founded": "2022-03",
+        "years": [
+          {
+            "year": 2024,
+            "vat": 900000000
+          },
+          {
+            "year": 2025,
+            "vat": 650000000
+          }
+        ],
+        "employees": 2,
+        "rep": {
+          "age": 45
+        },
+        "nice": 900
+      },
+      "today": "2026-11-24",
+      "expect": {
+        "status": "ok",
+        "orgs": {
+          "sojin": {
+            "status": null
+          }
+        }
+      }
     }
   ],
   "closure": [

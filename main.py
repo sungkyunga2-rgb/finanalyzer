@@ -1197,6 +1197,8 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
     if rt.get("restart") and (inp.get("restart_review") or {}).get("other_biz"):
         rt["restart"] = False                 # 재창업: 신청 사업자 외 다른 사업자 보유 시 지원 제외
     E, Lb = ctx.get("equity"), ctx.get("liabilities")
+    # 소진공 금액은 요건에 맞는 직접대출 자금 중 가장 큰 한도 (기본 매출 산식 금액은 자금이 아님)
+    best = [sj["low"], sj["high"]] if (sj.get("weak") and sj["status"] == "ok") else None
 
     def make(key, name, cap, fund=None, extra=()):
         o = mk("sojin", name, per["low"], per["high"])
@@ -1204,15 +1206,16 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
         if mature and E is not None and Lb is not None and E > 0:          # 대출 후 부채비율 700% 상한 (업력 7년 이상)
             hi = min(hi, floor_u(max(0, E * 7 - Lb)))
         hi = min(hi, cap)
+        fund = fund or (name.split("(", 1)[1].rstrip(") ") if "(" in name else name)
+        sj.setdefault("funds", []).extend([fund, *extra])     # 요건에 맞는 자금 (Pro 화면용) — 해당하는 유형·사유마다 따로 (한도가 바닥나도 요건은 맞음)
         if hi < R["minAmount"]:
             return
         lo = min(max(lo, R["minAmount"]), hi)
         if lo == hi and hi >= 200000000: lo = hi - 100000000
-        fund = fund or (name.split("(", 1)[1].rstrip(") ") if "(" in name else name)
-        sj.setdefault("funds", []).extend([fund, *extra])     # 요건에 맞는 자금 (Pro 화면용) — 해당하는 유형·사유마다 따로
 
-        if sj["status"] != "ok" or hi > sj["high"]:          # 같은 소진공 자금으로 묶어서 — 더 크면 소진공 줄을 그 금액으로
-            sj.update(low=lo, high=hi, status="ok")
+        nonlocal best
+        if best is None or hi > best[1]:                     # 같은 소진공 줄로 묶어서 — 가장 큰 자금 금액으로
+            best = [lo, hi]
 
     # 일시적경영애로자금: 연매출 1억 4백만원 미만 + 업력 7년 미만 + 매출 15% 이상 감소
     base_sales = last if last is not None else sales
@@ -1251,6 +1254,8 @@ def _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, 
             innov.append((100000000, f"혁신성장촉진자금(일반형-{why})"))
     if innov:
         make("sojin_innov", "소상공인시장진흥공단 (혁신성장촉진자금)", max(c for c, _ in innov), innov[0][1], [n for _, n in innov[1:]])
+    if best:
+        sj.update(low=best[0], high=best[1], status="ok")
 
 
 def _ht_sales_drop(inp):
@@ -1826,10 +1831,9 @@ def _ht_estimate_limit_core(inp, today=None):
     sj0 = next((o for o in orgs if o["key"] == "sojin"), None)
     # 소진공 특별자금 — 요건에 맞으면 줄 추가 (금액은 같은 산식, 자금별 최대 한도로만 상한)
     _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u)
-    if sj0 and sj0["status"] == "ok":         # 기본 자금 — 업력 무관 일반경영안정자금, 만 39세 이하 대표는 청년고용연계자금
-        sj0.setdefault("funds", []).append("일반경영안정자금")
-        if youth:
-            sj0["funds"].append("청년고용연계자금(청년 대표)")
+    if sj0 and sj0["status"] != "blocked" and not sj0.get("funds"):
+        orgs.remove(sj0)                      # 소진공은 직접대출 자금(요건 있음)만 취급 — 대리대출(일반경영안정 등)은 제외, 해당 자금 없으면 신청 기관에서 뺌
+        sj0 = None
     if sj0 and sj0.get("funds"):              # 요건에 맞는 소진공 자금 이름 (Pro에서만 보여줌)
         sj0["funds"] = list(dict.fromkeys(sj0["funds"]))
     # 중진공은 첫 이용 기업 가점이 커서 사실상 한 번 — 이미 중진공 자금이 있으면 일시적 경영애로(매출 10% 이상 감소)일 때만 추가
