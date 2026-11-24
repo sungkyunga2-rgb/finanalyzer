@@ -5302,6 +5302,15 @@ function htAuthApply(res) {
   if ((f.employees === undefined || f.employees === null) && f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
   htFillForm(htOverwriteForm(inc));     // 인증으로 받은 값은 이미 입력한 칸도 덮어씀
+  // 대표자 나이 — 인증한 사람이 대표자 본인이면 인증할 때 넣은 생년월일로 (주민번호는 쓰지 않음)
+  const aName = (document.getElementById("htAuthName") || {}).value || "";
+  const aBirth = ((document.getElementById("htAuthBirth") || {}).value || "").replace(/\D/g, "");
+  const repNm = String(f.rep_name || (document.getElementById("ht-rep") || {}).value || "").replace(/\s/g, "");
+  const ageBirth = document.getElementById("ht-age-birth");
+  if (ageBirth && aBirth.length === 8 && aName.replace(/\s/g, "") && repNm && repNm === aName.replace(/\s/g, "")) {
+    ageBirth.value = aBirth;
+    if (typeof htAgeCalc === "function") htAgeCalc(ageBirth);
+  }
   htAuthState.pending = null;
   htAuthClose();
   htToggleFin(true);     // 서류를 가져왔으면 재무 칸은 펼쳐서 보여줌
