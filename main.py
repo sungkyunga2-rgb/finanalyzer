@@ -1918,6 +1918,7 @@ CODEF_HOMETAX_PRODUCTS = {
     "tax_payment": "/v1/kr/public/nt/proof-issue/tax-cert-all",                    # 납세증명서
     "financial": "/v1/kr/public/nt/proof-issue/standard-financial-statements",     # 재무제표(표준재무제표증명) — 08:00~22:00
     "closure": "/v1/kr/public/nt/certificate/business-discontinuance",            # 폐업사실증명 — 대표자의 예전 폐업 사업장(있을 때만 발급) → 재창업 여부
+    "localtax": "/v1/kr/public/mw/localtax-payment-certificate/inquiry",           # 정부24 지방세 납세증명 — 발급되면 지방세 체납 없음 (공동인증서만, 간편인증은 승인 1번 더라 보류)
     "employees": "/v1/kr/public/cw/kcomwel-employment/detail",                     # 근로복지공단 근로자고용정보현황 → 직원 수 (기관이 달라 간편인증 승인 1번 더)
 }
 CW_LEVELS = {"1", "3", "4", "5", "6", "7", "8", "10"}       # 근로복지공단이 지원하는 간편인증 수단
@@ -2554,6 +2555,7 @@ async def codef_hometax_cert(body: CodefCertBody, user: models.User = Depends(ge
     if not _codef_ready():
         raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
     params = _hometax_cert_params(body, user.id)
+    params["_phone"] = _re2.sub(r"\D", "", user.phone or "")       # 지방세 납세증명 신청인 연락처 ('_' 값은 CODEF로 그대로 보내지 않음)
     res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], dict(params, isIdentityViewYN="1"))   # 대표자 주민번호 공개 → 직원 수 조회에만 사용
     code = _codef_code(res)
     if code == "CF-00000":
@@ -3554,6 +3556,17 @@ async def _hometax_collect(params, reg_data, progress=None):
             if dis is not None:
                 fill["rep_disabled"] = dis
                 got.append("장애인기업 여부")
+    # ⑥ 지방세 체납 — 정부24 지방세 납세증명 (개인사업자, 대표 주민번호가 있을 때). 발급되면 체납 없음
+    if params.get("loginType") == "0" and not corp:
+        rrn_l = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
+        if rrn_l and fill.get("rep_name"):
+            step("지방세 납세증명(정부24)")
+            lt = await _check_localtax(params, fill["rep_name"], rrn_l, _safe(_reg_addr, reg_data, params.get("_want_biz", ""), default="") or "")
+            if lt:
+                fill["arrears_local"] = lt
+                got.append("지방세 체납 여부")
+            else:
+                failed.append("지방세 납세증명")
     return {"status": "done", "fill": fill, "got": got, "pending": failed, "reason": "" if got else (errs[0] if errs else "")}
 
 
@@ -3607,6 +3620,35 @@ async def _check_disability(params, name, rrn, addr):
     r = _dis_result(res)
     if r is None:
         print(f"[CODEF] disability 실패 {_codef_code(res)}: {_codef_msg(res)}")
+    return r
+
+
+def _localtax_result(res):
+    """정부24 지방세 납세증명 → {"status": "none"(발급됨=체납 없음) | "has"(체납으로 발급 불가)} / None(확인 못 함)"""
+    code, msg = _codef_code(res), _codef_msg(res) or ""
+    if code == "CF-00000":
+        return {"status": "none"}
+    if "체납" in msg:
+        return {"status": "has"}
+    return None
+
+
+async def _check_localtax(params, name, rrn, addr):
+    """정부24 지방세 납세증명(비회원 인증서 로그인). 주민번호는 요청에만 쓰고 저장·로그하지 않음"""
+    body = {"organization": "0001", "loginType": "3", "certType": params.get("certType", "1"), "certFile": params.get("certFile", ""),
+            "certPassword": params.get("certPassword", ""), "userName": name, "identity": rrn, "address": addr or "서울특별시",
+            "phoneNo1": params.get("_phone", ""), "proofType": "99", "isIdentityViewYn": "0", "originDataYN": "0", "originDataYN1": "0",
+            "timeout": "120", "id": f"{params.get('id', 'fina')}-ltx"}
+    if params.get("keyFile"):
+        body["keyFile"] = params["keyFile"]
+    try:
+        res = await _codef_post(CODEF_HOMETAX_PRODUCTS["localtax"], body)
+    except Exception as e:
+        print(f"[CODEF] localtax 호출 오류: {type(e).__name__}")
+        return None
+    r = _localtax_result(res)
+    if r is None:
+        print(f"[CODEF] localtax 실패 {_codef_code(res)}: {_codef_msg(res)}")
     return r
 
 

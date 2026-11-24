@@ -3828,10 +3828,12 @@ function analyzeHometax(input, opts) {
   let arrears;
   if (ar.status === "has") {
     arrears = { level: "danger", label: "체납 있음", amount: arAmount, note: ar.note || "", items: arItems, periods: ar.periods || {},
-      text: `국세 체납${arAmount ? " " + Math.round(arAmount).toLocaleString("ko-KR") + "원" : ""}이 확인됩니다. 체납이 있으면 납세증명서 발급이 되지 않아 대부분의 정책자금 신청이 어렵습니다. 완납 또는 분납 승인 후 진행해야 합니다.` };
+      text: `${ar.local === "has" && !arAmount && !Object.keys(arItems).length ? "지방세" : "국세"} 체납${arAmount ? " " + Math.round(arAmount).toLocaleString("ko-KR") + "원" : ""}이 확인됩니다. 체납이 있으면 납세증명서 발급이 되지 않아 대부분의 정책자금 신청이 어렵습니다. 완납 또는 분납 승인 후 진행해야 합니다.` };
     flags.push({ level: "danger", title: "국세 체납", text: arrears.text });
   } else if (ar.status === "none") {
-    arrears = { level: "safe", label: "체납 없음", amount: null, note: "", text: "국세 체납이 없는 것으로 확인됩니다. 정책자금 신청 시 납세증명서 발급에 문제가 없습니다." };
+    arrears = { level: "safe", label: "체납 없음", amount: null, note: "", text: ar.local === "none"
+      ? "국세·지방세 체납이 없는 것으로 확인됩니다. 정책자금 신청 시 납세증명서 발급에 문제가 없습니다."
+      : "국세 체납이 없는 것으로 확인됩니다. 정책자금 신청 시 납세증명서 발급에 문제가 없습니다." };
   } else {
     arrears = { level: "warn", label: "미확인", amount: null, note: "", text: "체납 여부를 아직 확인하지 않았습니다. 납세증명서 발급 가능 여부를 먼저 확인해 주세요." };
     flags.push({ level: "warn", title: "체납 여부 미확인", text: arrears.text });
@@ -4321,6 +4323,7 @@ function htReadForm() {
   HT_FIELDS.forEach(([path, id, type]) => htSet(input, path, htReadField(id, type)));
   input.biz_type = (document.querySelector('input[name="ht-biztype"]:checked') || {}).value || "personal";
   input.arrears.status = (document.querySelector('input[name="ht-arrears"]:checked') || {}).value || "unknown";
+  if (htArrearsLocal) input.arrears.local = htArrearsLocal;       // 지방세 납세증명 결과 (화면 칸 없음)
   input.years = [];
   for (let i = 0; document.getElementById(`ht-y${i}-year`); i++) {
     input.years.push({
@@ -4355,6 +4358,7 @@ function htResetForm() {
 function htFillForm(input) {
   if (!input) return;
   htRestartReview = input.restart_review || null;
+  htArrearsLocal = (input.arrears || {}).local || null;
   HT_FIELDS.forEach(([path, id, type]) => htWriteField(id, type, htGet(input, path)));
   const bt = document.querySelector(`input[name="ht-biztype"][value="${input.biz_type === "corp" ? "corp" : "personal"}"]`);
   if (bt) bt.checked = true;
@@ -5290,7 +5294,8 @@ function htAuthApply(res) {
   if (typeof f.emp_increase === "number") inc.emp_increase = f.emp_increase;
   if (typeof f.emp_avg === "number") inc.emp_avg = f.emp_avg;
   if (typeof f.rep_disabled === "boolean") inc.rep_disabled = f.rep_disabled;
-  if (f.retry && f.retry.restart === true) inc.restart = true;      // 폐업사실증명 — 예전 사업장 폐업 후 다시 창업
+  if (f.retry && f.retry.restart === true) inc.restart = true;
+  if (f.arrears_local && ["has", "none"].includes(f.arrears_local.status)) inc.arrears_local = f.arrears_local.status;   // 지방세 납세증명(정부24)      // 폐업사실증명 — 예전 사업장 폐업 후 다시 창업
   inc.restart_review = f.restart_review || null;                    // 재창업 요건 검토 (새로 인증하면 새 결과로)
   if ((f.employees === undefined || f.employees === null) && f.employees_default === 0 && htEmpty(htReadForm().employees)) inc.employees = 0;   // 조회 못 했고 칸이 비어 있으면 0명
   if (f.fin) inc.fin = f.fin;
@@ -5318,6 +5323,7 @@ function htAuthApply(res) {
 
 // 재창업 요건 검토 — 폐업사실증명으로 확인한 결과. Basic은 결과만, Pro는 눌러서 검토 내역
 let htRestartReview = null;
+let htArrearsLocal = null;     // 지방세 체납 ("has"/"none") — 공동인증서 조회 결과
 const HT_RT_LABEL = { ok: "요건 충족", check: "확인 필요", no: "요건 미충족" };
 function htRtRender() {
   const el = document.getElementById("ht-rt-review");
@@ -5436,6 +5442,14 @@ function htOverwriteForm(inc) {
   if (typeof inc.emp_increase === "number") cur.emp_increase = inc.emp_increase;
   if (typeof inc.emp_avg === "number") cur.emp_avg = inc.emp_avg;
   if (typeof inc.rep_disabled === "boolean") { cur.rep = cur.rep || {}; cur.rep.disabled = inc.rep_disabled; }
+  if (inc.arrears_local) {                      // 지방세 체납 — 있으면 체납 있음으로, 없으면 표시용으로만
+    cur.arrears = cur.arrears || {};
+    cur.arrears.local = inc.arrears_local;
+    if (inc.arrears_local === "has") {
+      cur.arrears.status = "has";
+      if (!/지방세/.test(cur.arrears.note || "")) cur.arrears.note = [cur.arrears.note, "지방세 체납"].filter(Boolean).join(", ");
+    }
+  }
   if (inc.restart === true) { cur.retry = cur.retry || {}; cur.retry.restart = true; }
   if ("restart_review" in inc) cur.restart_review = inc.restart_review;
   if (inc.arrears && inc.arrears.status) cur.arrears = Object.assign({}, cur.arrears, inc.arrears);
