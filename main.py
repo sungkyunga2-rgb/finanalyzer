@@ -2809,7 +2809,27 @@ async def _hy_collect_run(job_id, st, cookie, fill):
             st["empl_cnt"] = ec
     # ⑤ 대표자 주민번호가 있으면(요청에만 쓰고 저장·로그 안 함): 휴폐업 조회(264, 같은 세션) → 응답 구조 로그 / 국민연금 인원(463, 승인 1번 더)
     rrn = _re2.sub(r"\D", "", str(st.pop("_rrn", "") or ""))
-    if len(rrn) == 13:
+    closed245 = st.pop("_closed245", None) or []
+    if closed245:
+        # ⑤-1 재창업: 사업자등록사항(245)에 나온 폐업 사업장 → 사업자상태조회(263, 사업자번호)로 폐업일 → 재창업 요건 검토
+        prog("폐업 사업장 확인")
+        rows = []
+        for r in closed245:
+            bn = _re2.sub(r"\D", "", str(r.get("txprDscmNoEncCntn") or r.get("txprDscmNo") or ""))
+            if len(bn) != 10 or bn == biz:
+                continue
+            j = await _hyphen_post("/in0076000263", {"bizNo": bn})
+            dd = _hy_data(j) if not _hy_err(j)[0] else {}
+            cd = _re2.sub(r"\D", "", str(dd.get("closeDt") or ""))
+            if len(cd) != 8:
+                print(f"[hyphen] 263 폐업일 못 받음: {_hy_err(j)[1] or _hy_shape(dd)}")
+                continue
+            rows.append({"resCompanyNm": str(r.get("txprNm") or "").strip(), "resCompanyIdentityNo": bn,
+                         "resOpenDate": _re2.sub(r"\D", "", str(r.get("txprDscmDt") or "")), "resClosingDate": cd,
+                         "resBusinessTypes": str(r.get("bcNm") or "").strip(), "resBusinessItems": str(r.get("itmNm") or "").strip()})
+        if rows:
+            _safe(_closure_apply, fill, [rows], got)
+    if len(rrn) == 13 and not closed245:
         prog("휴·폐업 조회")
         j = await call("/in0076000264", {"bizNo": rrn})
         if not _hy_err(j)[0]:
@@ -2818,13 +2838,10 @@ async def _hy_collect_run(job_id, st, cookie, fill):
                 _safe(_closure_apply, fill, [rows], got)          # 예전 사업장 폐업 이력 → 재창업 요건 검토
             elif rows is None:
                 print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
-        if HY_NPS:                       # 국민연금 462·463 모두 하이픈에서 '사이트 개편으로 지원 종료'(LOGIN-000) → 대체 상품 확인 전까지 호출 안 함
-            await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
-        elif fill.get("employees") is None and st.get("empl_cnt") is None:
-            failed.append("직원 수(국민연금 조회 일시 중단 — 4대보험 가입자 명부 등 서류로 채워 주세요)")
-    elif fill.get("employees") is None and st.get("empl_cnt") is None:
-        print(f"[hyphen] 국민연금 건너뜀: 대표자 주민번호 없음 (사업자 구분 {fill.get('biz_type') or '-'})")
-        failed.append("직원 수(대표자 주민번호를 못 받아 국민연금 조회 못 함)" if fill.get("biz_type") != "corp" else "직원 수(법인은 국민연금 간편조회 안 됨)")
+    if len(rrn) == 13 and HY_NPS:        # 국민연금 462·463 모두 하이픈에서 '사이트 개편으로 지원 종료'(LOGIN-000) → 대체 상품 확인 전까지 호출 안 함
+        await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
+    if fill.get("employees") is None and st.get("empl_cnt") is None:
+        failed.append("직원 수(간편인증으로는 조회 안 됨 — 4대보험 가입자 명부·원천징수이행상황신고서를 올려 주세요)")
     if fill.get("employees") is None and st.get("empl_cnt") is not None:
         fill["employees"] = st["empl_cnt"]                     # 사업자등록 때 신고한 종업원수 — 오래됐을 수 있음
         got.append("직원 수(사업자 신고)")
@@ -3016,6 +3033,7 @@ async def _hy_complete(body, user):
     fill = _safe(_hy_parse_245, d, st["biz"], default={}) or {}
     if st.get("pre_location") and not fill.get("location"):
         fill["location"] = st["pre_location"]
+    st["_closed245"] = [r for r in (d.get("bmanBscInfrInqrDVOList") or []) if isinstance(r, dict) and "폐업" in str(r.get("txprStatNm") or "")][:5]
     st["_rrn"] = str(d.get("rprsResno") or "")           # 대표자 주민번호 — 국민연금·휴폐업 요청에만 (저장·응답·로그 안 함)
     _job_save(body.job, result={"got": ["사업자등록사항"] if fill else [], "failed": [], "doing": "부가세과세표준증명", "fill": fill})
     _spawn(_hy_collect(body.job, st, d.get("cookie") or "", fill))
