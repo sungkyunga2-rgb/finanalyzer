@@ -2435,6 +2435,265 @@ def _parse_registration(data, want_biz=""):
     return {k: v for k, v in out.items() if v not in ("", None)}
 
 
+# ══════════════════════════════════════════════════════════════
+# 하이픈(HYPHEN) 홈택스 연동 — Render 환경변수 HOMETAX_PROVIDER=hyphen 일 때 간편인증을 하이픈으로
+#  · HYPHEN_USER_ID / HYPHEN_HKEY (헤더 user-id / Hkey), HYPHEN_TEST=Y 면 테스트베드(hyphen-gustation: Y)
+#  · 간편인증 2단계: MY 홈택스 사업자등록사항(/in0076000245) step=init → 휴대폰 승인 → step=sign + stepData (showCookie=Y)
+#  · 받은 cookie(cookieData)로 같은 세션에서 부가세과세표준증명(332)·납세증명(330)·표준재무제표증명(328) 이어서 조회
+#  · 부가세·재무제표는 응답 구조 문서가 부정확해 PDF(pdfYn=Y → pdfHex)를 받아 업로드와 같은 AI 인식으로 읽음
+# ══════════════════════════════════════════════════════════════
+HYPHEN_BASE = "https://api.hyphen.im"
+HY_ORG = {"1": "kakao", "3": "kica", "4": "kb", "5": "pass", "6": "naver", "7": "shinhan", "8": "toss", "9": "banksalad", "10": "nh", "11": "woori"}
+HY_TEL = {"0": "S", "1": "K", "2": "L"}
+_hy_live = {}       # job -> {user_id, login, biz, phone, step_data, t, tries}
+
+
+def _hometax_provider():
+    p = (os.getenv("HOMETAX_PROVIDER") or "codef").strip().lower()
+    return "hyphen" if p == "hyphen" and os.getenv("HYPHEN_USER_ID") and os.getenv("HYPHEN_HKEY") else "codef"
+
+
+async def _hyphen_post(path, body, timeout=120):
+    """하이픈 API 호출 → 응답 JSON (실패해도 같은 모양 {common:{errYn,errMsg}})"""
+    headers = {"Content-Type": "application/json", "user-id": os.getenv("HYPHEN_USER_ID", ""), "Hkey": os.getenv("HYPHEN_HKEY", "")}
+    if (os.getenv("HYPHEN_TEST") or "").strip().upper() == "Y":
+        headers["hyphen-gustation"] = "Y"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            r = await c.post(HYPHEN_BASE + path, json=body, headers=headers)
+        j = r.json()
+        if not isinstance(j, dict):
+            raise ValueError("응답 형식")
+    except Exception as e:
+        print(f"[hyphen] {path} 호출 오류: {e!r}")
+        return {"common": {"errYn": "Y", "errCd": "NETWORK", "errMsg": "연결 오류"}, "data": None}
+    c = j.get("common") or {}
+    if c.get("errYn") == "Y":
+        print(f"[hyphen] {path} 실패 {c.get('errCd')}: {str(c.get('errMsg'))[:200]}")
+    return j
+
+
+def _hy_err(j):
+    c = (j or {}).get("common") or {}
+    return c.get("errYn") == "Y", str(c.get("errMsg") or c.get("errCd") or "")
+
+
+def _hy_data(j):
+    d = (j or {}).get("data")
+    return d if isinstance(d, dict) else {}
+
+
+def _hy_parse_245(d, want_biz=""):
+    """MY 홈택스 사업자등록사항 → 피나 입력값 (사업장 여러 곳이면 목록 + 고른 사업장)"""
+    rows = [r for r in (d.get("bmanBscInfrInqrDVOList") or []) if isinstance(r, dict)]
+    dig = lambda v: _re2.sub(r"\D", "", str(v or ""))
+    fmt = lambda v: (lambda x: f"{x[:3]}-{x[3:5]}-{x[5:]}" if len(x) == 10 else str(v or ""))(dig(v))
+    biz_of = lambda r: dig(r.get("txprDscmNoEncCntn") or r.get("txprDscmNo") or "")
+    want = dig(want_biz)
+    live = [r for r in rows if "폐업" not in str(r.get("txprStatNm") or "")]
+    row = next((r for r in rows if want and biz_of(r) == want), None) or (live[0] if live else (rows[0] if rows else {}))
+    out = {}
+    bn = biz_of(row) or dig(d.get("txprDscmNo")) or want
+    if len(bn) == 10:
+        out["business_number"] = fmt(bn)
+    if row.get("txprNm"):
+        out["company_name"] = str(row["txprNm"]).strip()
+    rep = d.get("rprsFnm") or d.get("userNm") or ""
+    if rep:
+        out["rep_name"] = str(rep).strip()
+    od = dig(row.get("txprDscmDt") or d.get("bmanOfbDt"))
+    if len(od) >= 6:
+        out["founded"] = f"{od[:4]}-{od[4:6]}"
+    if row.get("bcNm"):
+        out["industry"] = str(row["bcNm"]).strip()
+    if row.get("itmNm"):
+        out["item"] = str(row["itmNm"]).strip()
+    subs = [x for x in (row.get("subTfbList") or []) if isinstance(x, dict) and (x.get("subBcNm") or x.get("subItmNm"))]
+    if subs:
+        out["industry2"], out["item2"] = str(subs[0].get("subBcNm") or "").strip(), str(subs[0].get("subItmNm") or "").strip()
+    kind = f"{row.get('bmanClNm') or ''} {d.get('txprClsfCd') or ''}"
+    corp = _biz_is_corp(bn) if len(bn) == 10 else None
+    out["biz_type"] = "corp" if (corp or "법인" in kind) else "personal"
+    if "폐업" in str(row.get("txprStatNm") or "") or "휴업" in str(row.get("txprStatNm") or ""):
+        out["_status"] = str(row.get("txprStatNm")).strip()
+    if len(live) > 1:                         # 운영 중인 사업장이 여러 곳이면 고르기 목록 (폐업한 곳은 제외)
+        out["_business_list"] = [{"business_number": fmt(biz_of(r)), "company_name": str(r.get("txprNm") or "").strip(),
+                                  "industry": " / ".join(t for t in (r.get("bcNm"), r.get("itmNm")) if t)[:60]} for r in live]
+    return {k: v for k, v in out.items() if v not in ("", None)}
+
+
+def _hy_pdf_part(j):
+    """응답의 PDF(hex) → Gemini 입력 조각"""
+    import base64 as _b64
+    h = str(_hy_data(j).get("pdfHex") or "").strip()
+    if not h:
+        return None
+    try:
+        raw = bytes.fromhex(h[2:] if h.lower().startswith("0x") else h)
+    except ValueError:
+        return None
+    return {"inline_data": {"mime_type": "application/pdf", "data": _b64.b64encode(raw).decode()}} if raw[:4] == b"%PDF" else None
+
+
+async def _hy_collect(job_id, st, cookie, fill):
+    """승인된 세션(cookie)으로 매출·체납·재무제표를 이어서 받고 정리"""
+    got = ["사업자등록사항"] if fill else []
+    failed = []
+    now = datetime.utcnow() + timedelta(hours=9)
+    biz = _re2.sub(r"\D", "", fill.get("business_number") or st["biz"])
+    phone = st["phone"]
+    state = {"cookie": cookie}
+    prog = lambda doing: _job_save(job_id, result={"got": list(got), "failed": list(failed), "doing": doing, "fill": fill})
+
+    async def call(path, extra):
+        body = dict(st["login"], cookieData=state["cookie"], showCookie="Y", bizNo=biz, telNo=phone, hpNo=phone,
+                    resnoOpYn="N", cvaDcumUseUsgCd="99", cvaDcumGranMthdCd="10", **extra)
+        j = await _hyphen_post(path, body)
+        ck = _hy_data(j).get("cookie")
+        if ck:
+            state["cookie"] = ck
+        return j
+
+    # ① 부가가치세과세표준증명 (최근 3년 + 올해) → PDF → AI 인식
+    prog("부가세과세표준증명")
+    j = await call("/in0076000332", {"txnrmStrtYm": f"{now.year - 3}01", "txnrmEndYm": now.strftime("%Y%m"), "pdfYn": "Y"})
+    bad, msg = _hy_err(j)
+    part = None if bad else _hy_pdf_part(j)
+    if part:
+        try:
+            d = await _extract_income_parts([part])
+            if d.get("years"):
+                fill["years"] = d["years"]
+            if d.get("ytd"):
+                fill["ytd"] = d["ytd"]
+            if d.get("location") and not fill.get("location"):
+                fill["location"] = d["location"]
+            if d.get("years") or d.get("ytd"):
+                got.append("부가세과세표준증명")
+            else:
+                failed.append("부가세과세표준증명")
+        except Exception as e:
+            print(f"[hyphen] 부가세 PDF 인식 오류: {e!r}")
+            failed.append("부가세과세표준증명")
+    else:
+        failed.append("부가세과세표준증명")
+    # ② 납세증명 — 발급되면 국세 체납 없음, 체납이면 발급 불가
+    prog("납세증명")
+    j = await call("/in0076000330", {"cerpUsePupClCd": "B0007", "adrOpYn": "N", "amtOpYn": "Y"})
+    bad, msg = _hy_err(j)
+    if not bad:
+        fill["arrears"] = {"status": "none"}
+        got.append("납세증명서")
+    elif "체납" in msg:
+        fill["arrears"] = {"status": "has"}
+        got.append("납세증명서")
+    else:
+        failed.append("납세증명서")
+    # ③ 표준재무제표증명 (08~22시) — 최근 연도, 없으면 그 전 해 → PDF → AI 인식
+    if 8 <= now.hour < 22:
+        prog("재무제표")
+        fin_ok = False
+        for yy in (now.year - 1, now.year - 2):
+            extra = {"txnrmStrtYm": f"{yy}01", "txnrmEndYm": f"{yy}12", "pdfYn": "Y"}
+            if fill.get("biz_type") != "corp":
+                extra["incClCd"] = "40"
+            j = await call("/in0076000328", extra)
+            part = None if _hy_err(j)[0] else _hy_pdf_part(j)
+            if not part:
+                continue
+            db = SessionLocal()
+            try:
+                user = db.query(models.User).filter(models.User.id == st["user_id"]).first()
+                r = await _analyze_financial(AnalysisRequest(images=[ImageItem(data=part["inline_data"]["data"], mime="application/pdf")]), user, db, consume=False)
+            except Exception as e:
+                print(f"[hyphen] 재무제표 PDF 인식 오류: {e!r}")
+                r = None
+            finally:
+                db.close()
+            fd = (r or {}).get("data") or {}
+            num = lambda v: _doc_num(v)
+            add = lambda a, b: None if num(a) is None and num(b) is None else (num(a) or 0) + (num(b) or 0)
+            fin = {"assets": add(fd.get("current_assets"), fd.get("noncurrent_assets")), "liabilities": add(fd.get("current_liabilities"), fd.get("noncurrent_liabilities")),
+                   "capital_stock": num(fd.get("capital_stock")), "operating_income": num(fd.get("operating_income")),
+                   "interest_expense": num(fd.get("interest_expense")), "net_income": num(fd.get("net_income")),
+                   "short_borrowings": num(fd.get("short_borrowings")), "long_borrowings": num(fd.get("long_borrowings"))}
+            fin = {k: v for k, v in fin.items() if v is not None}
+            if fin:
+                fill["fin"] = fin
+                got.append("재무제표")
+                fin_ok = True
+                break
+        if not fin_ok and fill.get("biz_type") == "corp":
+            failed.append("재무제표")
+    elif fill.get("biz_type") == "corp":
+        failed.append("재무제표(08~22시에만 조회 가능)")
+    fill["employees_default"] = 0
+    _hy_live.pop(job_id, None)
+    _job_save(job_id, "done", {"got": got, "failed": failed, "pending": failed, "doing": "", "fill": fill})
+
+
+async def _hy_start(body, user):
+    """하이픈 간편인증 1단계 — 휴대폰으로 인증 요청"""
+    _hometax_login_params(body, user.id)            # 입력값 검사 (이름·생년월일·휴대폰·통신사)
+    biz = _re2.sub(r"\D", "", body.business_number or "")
+    if len(biz) != 10:
+        raise HTTPException(status_code=400, detail="사업자번호를 먼저 입력한 뒤 인증해 주세요.")
+    org = HY_ORG.get(body.provider)
+    if not org:
+        raise HTTPException(status_code=400, detail="이 인증 수단은 지원하지 않아요. 다른 앱을 골라 주세요.")
+    login = {"loginMethod": "EASY", "loginOrgCd": org, "resNm": body.user_name.strip(),
+             "resNo": _re2.sub(r"\D", "", body.birth), "mobileNo": _re2.sub(r"\D", "", body.phone)}
+    if org == "pass":
+        login["mobileCo"] = HY_TEL.get(body.telecom, "S")
+    j = await _hyphen_post("/in0076000245", dict(login, stepMode="step", step="init", bizNo=biz))
+    bad, msg = _hy_err(j)
+    step_data = _hy_data(j).get("stepData")
+    if bad or not step_data:
+        raise HTTPException(status_code=400, detail=f"본인 인증 요청에 실패했습니다: {msg or '인증 요청 정보를 받지 못했어요.'}")
+    for k in [k for k, v in _hy_live.items() if _time.time() - v["t"] > 900]:
+        _hy_live.pop(k, None)
+    job_id = uuid.uuid4().hex
+    _hy_live[job_id] = {"user_id": user.id, "login": login, "biz": biz, "phone": login["mobileNo"], "step_data": step_data, "t": _time.time(), "tries": 0}
+    db = SessionLocal()
+    try:
+        db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
+        db.add(models.CodefJob(id=job_id, user_id=user.id, status="running", result=_json.dumps({"got": [], "doing": "본인 인증", "fill": {}})))
+        db.commit()
+    finally:
+        db.close()
+    return {"status": "need_approval", "job": job_id, "provider": "hyphen"}
+
+
+async def _hy_complete(body, user):
+    """하이픈 간편인증 2단계 — 승인 뒤 로그인(sign) → 사업자 정보 → 나머지 서류는 이어서"""
+    st = _hy_live.get(body.job)
+    if not st or st["user_id"] != user.id:
+        raise HTTPException(status_code=400, detail="인증 시간이 지났거나 서버가 다시 시작됐어요. 처음부터 다시 시도해 주세요.")
+    if body.auto:
+        return {"status": "waiting", "job": body.job}     # 승인 전에 로그인을 시도하면 인증 정보가 소모될 수 있어 직접 누를 때만
+    if st.get("signing"):
+        return {"status": "collecting", "job": body.job}
+    st["tries"] += 1
+    st["signing"] = True
+    try:
+        j = await _hyphen_post("/in0076000245", dict(st["login"], stepMode="step", step="sign", stepData=st["step_data"], showCookie="Y", bizNo=st["biz"]))
+    finally:
+        st["signing"] = False
+    bad, msg = _hy_err(j)
+    d = _hy_data(j)
+    if bad:
+        if st["tries"] >= 3:
+            _hy_live.pop(body.job, None)
+            _job_save(body.job, "error", {"detail": msg})
+            raise HTTPException(status_code=400, detail=f"휴대폰 인증이 확인되지 않아 종료됐어요. 처음부터 다시 인증을 요청해 주세요. ({msg})")
+        raise HTTPException(status_code=409, detail=f"아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요. ({msg})")
+    fill = _safe(_hy_parse_245, d, st["biz"], default={}) or {}
+    _job_save(body.job, result={"got": ["사업자등록사항"] if fill else [], "failed": [], "doing": "부가세과세표준증명", "fill": fill})
+    _spawn(_hy_collect(body.job, st, d.get("cookie") or "", fill))
+    return {"status": "collecting", "job": body.job}
+
+
+
 class CodefStartBody(BaseModel):
     user_name: str
     birth: str                    # YYYYMMDD
@@ -2638,7 +2897,8 @@ def cert_relay_take(body: CertRelayBody, user: models.User = Depends(get_current
 
 @app.get("/codef/status")
 def codef_status():
-    return {"ready": _codef_ready(), "products": [k for k, v in CODEF_HOMETAX_PRODUCTS.items() if v]}
+    prov = _hometax_provider()
+    return {"ready": _codef_ready() or prov == "hyphen", "provider": prov, "products": [k for k, v in CODEF_HOMETAX_PRODUCTS.items() if v]}
 
 
 # ── 간편인증: 서류 요청을 같은 id로 0.3초 간격으로 한꺼번에 보낸다 ──
@@ -2920,6 +3180,8 @@ HT_AUTO_MAX = 2               # 자동 확인은 2번까지 — 마지막 1번�
 @app.post("/codef/hometax/start")
 async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(get_current_user)):
     """서류 요청을 한꺼번에 보내고, 휴대폰 승인 요청이 뜨면 바로 알려준다"""
+    if _hometax_provider() == "hyphen":
+        return await _hy_start(body, user)
     if not _codef_ready():
         raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
     params = _hometax_login_params(body, user.id)
@@ -2996,6 +3258,8 @@ async def codef_hometax_skip_employees(body: CodefCompleteBody, user: models.Use
 @app.post("/codef/hometax/complete")
 async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = Depends(get_current_user)):
     """사용자가 휴대폰에서 승인한 뒤 — 첫 요청에 2차 요청을 보내면 잡혀 있던 나머지 서류도 이어서 도착"""
+    if body.job in _hy_live:
+        return await _hy_complete(body, user)
     st = _ht_live.get(body.job)
     if not st or st["user_id"] != user.id:
         raise HTTPException(status_code=400, detail="인증 시간이 지났거나 서버가 다시 시작됐어요. 처음부터 다시 시도해 주세요.")
@@ -4445,24 +4709,7 @@ def _income_doc_merge(docs):
     return out
 
 
-@app.post("/extract/income-doc")
-async def extract_income_doc(
-    body: IncomeDocExtractRequest,
-    user: models.User = Depends(get_current_user),
-):
-    import json, re
-
-    if not body.images:
-        raise HTTPException(status_code=400, detail="분석할 서류 이미지가 없습니다.")
-    if len(body.images) > 5:
-        raise HTTPException(status_code=400, detail="서류는 최대 5장까지 첨부할 수 있습니다.")
-
-    image_parts = [
-        {"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}}
-        for img in body.images
-    ]
-
-    prompt = """이 문서는 한국 국세청에서 발급한 "사업자등록증", "부가가치세과세표준증명원", "부가가치세 면세사업자 수입금액증명", "소득금액증명원" 중 하나입니다 (여러 장이 첨부된 경우 같은 서류의 여러 페이지이거나, 여러 서류가 함께 첨부되었을 수 있습니다). 첨부된 모든 이미지를 함께 확인해 아래 항목을 추출하세요.
+INCOME_DOC_PROMPT = """이 문서는 한국 국세청에서 발급한 "사업자등록증", "부가가치세과세표준증명원", "부가가치세 면세사업자 수입금액증명", "소득금액증명원" 중 하나입니다 (여러 장이 첨부된 경우 같은 서류의 여러 페이지이거나, 여러 서류가 함께 첨부되었을 수 있습니다). 첨부된 모든 이미지를 함께 확인해 아래 항목을 추출하세요.
 
 ━━━ 1단계: 상호 / 대표자명 / 사업자등록번호 (반드시 먼저, 빠뜨리지 말 것) ━━━
 두 서류 모두 문서 상단(제목 바로 아래)에 납세자·사업자 정보가 표 또는 항목 형태로 반드시 인쇄되어 있습니다. 금액을 읽기 전에 이 부분을 먼저 정확히 읽으세요.
@@ -4505,6 +4752,12 @@ async def extract_income_doc(
 아래 JSON 형식으로만 응답하세요. 문서에서 찾을 수 없는 항목은 null:
 {"doc_type":"사업자등록증" 또는 "부가세과세표준증명원" 또는 "면세사업자수입금액증명" 또는 "소득금액증명원" 또는 "불명"(여러 서류면 쉼표로),"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"revenue":숫자또는null,"periods":[{"start":"YYYY-MM","end":"YYYY-MM","amount":숫자}] 또는 null,"income_amount":숫자또는null,"open_date":문자열또는null,"rep_birth":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"biz_kind":"법인"또는"개인"또는null,"comment":"인식 관련 메모 1문장"}"""
 
+
+async def _extract_income_parts(image_parts):
+    """사업자·매출 서류(이미지/PDF) → 입력값. 파일마다 따로 읽고 합친다 (업로드 / 하이픈 PDF 공용)"""
+    prompt = INCOME_DOC_PROMPT
+
+
     # 파일마다 따로 읽고 합친다 — 여러 서류를 한 번에 보내면 응답이 길어져 잘리거나 시간 초과로 실패하기 쉬움
     sem = asyncio.Semaphore(2)                  # 무료 사용량(분당 요청 수) 고려해 2개씩
 
@@ -4518,8 +4771,26 @@ async def extract_income_doc(
         print(f"[gemini] 실패: {str(last_error)[:300]}")
         raise HTTPException(status_code=500, detail=_gemini_fail(last_error))
     data = _income_doc_merge(oks)
-    data = _income_doc_post(data)
-    return {"data": data}
+    return _income_doc_post(data)
+
+
+@app.post("/extract/income-doc")
+async def extract_income_doc(
+    body: IncomeDocExtractRequest,
+    user: models.User = Depends(get_current_user),
+):
+    import json, re
+
+    if not body.images:
+        raise HTTPException(status_code=400, detail="분석할 서류 이미지가 없습니다.")
+    if len(body.images) > 5:
+        raise HTTPException(status_code=400, detail="서류는 최대 5장까지 첨부할 수 있습니다.")
+
+    image_parts = [
+        {"inline_data": {"mime_type": img.mime or "image/jpeg", "data": img.data}}
+        for img in body.images
+    ]
+    return {"data": await _extract_income_parts(image_parts)}
 
 
 # ══════════════════════════════════════════════════════════════
