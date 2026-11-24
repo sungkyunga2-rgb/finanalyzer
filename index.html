@@ -4812,6 +4812,13 @@ async function htNpkiCopyPath() {
 async function htNpkiInit() {   // 공동인증서 탭 열 때
   const box = document.getElementById("htNpkiBox"), fileBox = document.getElementById("htCertFileBox");
   const why = document.getElementById("htNpkiWhy");
+  if (!htNpkiSupported() && htNpkiDirInputOk()) {   // 폴더 기억 기능이 없는 브라우저(엣지 일부·파이어폭스 등) → 폴더 선택으로 목록 (매번 선택)
+    if (why) why.style.display = "none";
+    box.style.display = ""; fileBox.style.display = "none";
+    document.getElementById("htCertKeep").checked = false;
+    if (htNpki.certs.length) return htNpkiRender();
+    return htNpkiRenderMsg(`<button type="button" class="ht-npki-btn" onclick="htNpkiConnect()">📂 인증서 폴더 선택</button><div style="font-size:11.5px;color:#6b7a8d;margin-top:8px;line-height:1.5;">NPKI 폴더를 고르면 인증서 목록이 나와요. 브라우저가 '파일 업로드' 확인을 물으면 <b>업로드</b>를 눌러 주세요 — 파일은 이 화면에서만 읽고 서버로 보내지 않아요.</div>`, true);
+  }
   if (!htNpkiSupported()) {
     box.style.display = "none"; fileBox.style.display = "";
     const r = htNpkiWhyNot();
@@ -4845,9 +4852,36 @@ async function htNpkiReopen() {
   alertError("인증서 폴더를 열 수 없어요. 폴더를 다시 연결해 주세요.");
   htNpkiRenderMsg(`<button type="button" class="ht-npki-btn" onclick="htNpkiConnect()">📂 인증서 폴더 연결</button>`, true);
 }
+// 폴더 선택(input webkitdirectory) — 고른 파일 목록을 폴더 핸들처럼 감싸서 같은 방식으로 읽음
+function htNpkiDirInputOk() {
+  if (isMobileDevice()) return false;
+  const i = document.createElement("input");
+  return "webkitdirectory" in i;
+}
+function htNpkiFromFiles(files) {
+  const mkDir = name => ({ kind: "directory", name, _f: {}, _d: {},
+    async *entries() { for (const k in this._f) yield [k, this._f[k]]; for (const k in this._d) yield [k, this._d[k]]; } });
+  const root = mkDir("NPKI");
+  for (const f of files) {
+    const parts = (f.webkitRelativePath || f.name).split("/");
+    let d = root;
+    for (const p of parts.slice(1, -1)) d = d._d[p] || (d._d[p] = mkDir(p));
+    const nm = parts[parts.length - 1];
+    if (/^signcert\.der$|^signpri\.key$|\.(pfx|p12)$/i.test(nm)) d._f[nm] = { kind: "file", name: nm, getFile: async () => f };
+  }
+  return root;
+}
+function htNpkiPickByInput() {
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.webkitdirectory = true; inp.multiple = true; inp.style.display = "none";
+  inp.onchange = () => { const fs = Array.from(inp.files || []); inp.remove(); if (fs.length) htNpkiScan(htNpkiFromFiles(fs), false); };
+  document.body.appendChild(inp);
+  inp.click();
+}
 async function htNpkiConnect() {
   let dir;
-  try { navigator.clipboard.writeText(document.getElementById("htNpkiPath").textContent); } catch (e) {}   // 경로 자동 복사 → 주소창에 붙여넣기만
+  try { navigator.clipboard.writeText(document.getElementById("htNpkiPath").textContent).catch(() => {}); } catch (e) {}   // 경로 자동 복사 → 주소창에 붙여넣기만
+  if (typeof window.showDirectoryPicker !== "function") return htNpkiPickByInput();
   try { dir = await window.showDirectoryPicker({ id: "fina-npki", mode: "read" }); }
   catch (e) { if (e && e.name !== "AbortError") alertError("이 폴더는 열 수 없어요. 안내된 경로의 NPKI 폴더를 선택해 주세요."); return; }
   await htNpkiScan(dir, true);
