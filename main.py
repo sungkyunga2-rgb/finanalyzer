@@ -1826,6 +1826,10 @@ def _ht_estimate_limit_core(inp, today=None):
     sj0 = next((o for o in orgs if o["key"] == "sojin"), None)
     # 소진공 특별자금 — 요건에 맞으면 줄 추가 (금액은 같은 산식, 자금별 최대 한도로만 상한)
     _ht_semas_special(inp, ctx, orgs, mk, per, sales, small, bam, used, mature, floor_u)
+    if sj0 and sj0["status"] == "ok":         # 기본 자금 — 업력 무관 일반경영안정자금, 만 39세 이하 대표는 청년고용연계자금
+        sj0.setdefault("funds", []).append("일반경영안정자금")
+        if youth:
+            sj0["funds"].append("청년고용연계자금(청년 대표)")
     if sj0 and sj0.get("funds"):              # 요건에 맞는 소진공 자금 이름 (Pro에서만 보여줌)
         sj0["funds"] = list(dict.fromkeys(sj0["funds"]))
     # 중진공은 첫 이용 기업 가점이 커서 사실상 한 번 — 이미 중진공 자금이 있으면 일시적 경영애로(매출 10% 이상 감소)일 때만 추가
@@ -1865,14 +1869,16 @@ def _ht_estimate_limit_core(inp, today=None):
     # 총 예상한도 최대 10억 (기대출은 이 안에서 차감)
     t_per = per if any(o["status"] == "ok" and o["key"] in ("sojin", "jaedan", "kodit") for o in orgs) else per_std
     t_low = max(0, min(floor_u(t_per["low"] * tf), R["totalMax"]) - loan_sum); t_high = max(0, min(floor_u(t_per["high"] * tf), R["totalMax"]) - loan_sum)
+    okd = {o["key"]: o for o in orgs if o["status"] == "ok"}
     if capped or any(o["status"] in ("blocked", "exhausted") for o in orgs):
-        okd = {o["key"]: o for o in orgs if o["status"] == "ok"}
         if not okd and not any(o["status"] == "blocked" for o in orgs):
             return {**base, "status": "low", "low": 0, "high": 0, "text": "부채 규모가 커 추가 한도 여력이 부족합니다." if capped else "기대출이 많아 추가 한도 여력이 부족합니다."}
         if not okd:
             return {**base, "status": "blocked", "low": 0, "high": 0, "text": "완전자본잠식 상태라 현재는 신청이 어렵습니다." if ctx["eroded"] else "현재 재무 상태로는 신청 가능한 기관이 없습니다."}
+    if okd:
+        # 재단·신보·기보는 보증 중복 접수가 안 됨 → 셋 중 가장 큰 곳 하나만 총 한도에 더함
         grp = [okd[k] for k in ("jaedan", "kodit", "kibo") if k in okd]
-        pick = [okd[k] for k in ("sojin", "jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: o["high"])] if grp else [])
+        pick = [okd[k] for k in ("sojin", "jungjin", "miso") if k in okd] + ([max(grp, key=lambda o: (o["high"], o["low"]))] if grp else [])
         t_low = min(t_low, sum(o["low"] for o in pick)); t_high = min(t_high, sum(o["high"] for o in pick))
     t_low, t_high = floor_u(t_low), floor_u(t_high)
     if t_high < R["minAmount"]: return {**base, "status": "low", "low": 0, "high": 0, "text": "부채 규모가 커 추가 한도 여력이 부족합니다." if capped else "기대출이 많아 추가 한도 여력이 부족합니다."}
