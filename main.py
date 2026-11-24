@@ -2572,7 +2572,17 @@ def _hy_pdf_part(j):
 
 
 async def _hy_collect(job_id, st, cookie, fill):
-    """승인된 세션(cookie)으로 매출·체납·재무제표를 이어서 받고 정리"""
+    """승인된 세션(cookie)으로 매출·체납·재무제표를 이어서 받고 정리 (중간에 오류가 나도 받은 것까지는 돌려줌)"""
+    try:
+        await _hy_collect_run(job_id, st, cookie, fill)
+    except Exception as e:
+        print(f"[hyphen] 조회 중 오류: {e!r}")
+        st.pop("_rrn", None)
+        _hy_live.pop(job_id, None)
+        _job_save(job_id, "done", {"got": ["사업자등록사항"] if fill else [], "failed": ["일부 서류"], "pending": ["일부 서류"], "doing": "", "fill": fill})
+
+
+async def _hy_collect_run(job_id, st, cookie, fill):
     got = ["사업자등록사항"] if fill else []
     failed = []
     now = datetime.utcnow() + timedelta(hours=9)
@@ -2583,7 +2593,8 @@ async def _hy_collect(job_id, st, cookie, fill):
 
     async def call(path, extra):
         body = dict(st["login"], cookieData=state["cookie"], showCookie="Y", bizNo=biz, telNo=phone, hpNo=phone,
-                    resnoOpYn="N", cvaDcumUseUsgCd="99", cvaDcumGranMthdCd="10", **extra)
+                    resnoOpYn="N", cvaDcumUseUsgCd="99", cvaDcumGranMthdCd="10")
+        body.update(extra)
         j = await _hyphen_post(path, body)
         ck = _hy_data(j).get("cookie")
         if ck:
@@ -2683,9 +2694,102 @@ async def _hy_collect(job_id, st, cookie, fill):
             failed.append("재무제표")
     elif fill.get("biz_type") == "corp":
         failed.append("재무제표(08~22시에만 조회 가능)")
-    fill["employees_default"] = 0
+    # ④ 사업자 정정신고 정보(246) — 같은 세션, 사업장 주소·신고 종업원수
+    prog("사업장 정보")
+    j = await call("/in0076000246", {})
+    d246 = {} if _hy_err(j)[0] else _hy_data(j)
+    if d246:
+        if not fill.get("location"):
+            loc = _sido(d246.get("roadAdr") or d246.get("ldAdr") or "")
+            if loc:
+                fill["location"] = loc
+        try:
+            ec = int(_re2.sub(r"\D", "", str(d246.get("emplCnt") or "")) or -1)
+        except ValueError:
+            ec = -1
+        if ec >= 0:
+            st["empl_cnt"] = ec
+    # ⑤ 대표자 주민번호가 있으면(요청에만 쓰고 저장·로그 안 함): 휴폐업 조회(264, 같은 세션) → 응답 구조 로그 / 국민연금 인원(463, 승인 1번 더)
+    rrn = _re2.sub(r"\D", "", str(st.pop("_rrn", "") or ""))
+    if len(rrn) == 13:
+        prog("휴·폐업 조회")
+        j = await call("/in0076000264", {"bizNo": rrn})
+        if not _hy_err(j)[0]:
+            print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
+        await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
+    if fill.get("employees") is None and st.get("empl_cnt") is not None:
+        fill["employees"] = st["empl_cnt"]                     # 사업자등록 때 신고한 종업원수 — 오래됐을 수 있음
+        got.append("직원 수(사업자 신고)")
+        fill["emp_note"] = "신고 종업원수"
+    if fill.get("employees") is None:
+        fill["employees_default"] = 0
+    rrn = ""
     _hy_live.pop(job_id, None)
     _job_save(job_id, "done", {"got": got, "failed": failed, "pending": failed, "doing": "", "fill": fill})
+
+
+async def _hy_pension(job_id, st, rrn, fill, got, failed, prog):
+    """국민연금 사업장보험료결정내역(463) — 간편인증 승인을 한 번 더 받아 최근 달 산출인원 = 직원 수 (대표자 제외 못 함: 가입자 명단 수)"""
+    now = datetime.utcnow() + timedelta(hours=9)
+    pm = (now.replace(day=1) - timedelta(days=1)).strftime("%Y%m")       # 지난달 (이번 달은 아직 결정 전일 수 있음)
+    login = dict(st["login"])
+    j = await _hyphen_post("/in0089000463", dict(login, bizNo=rrn, stepMode="step", step="init", syearMm=pm))
+    bad, msg = _hy_err(j)
+    sd = _hy_data(j).get("step_data") or _hy_data(j).get("stepData")
+    if bad or not sd:
+        failed.append("직원 수(국민연금)")
+        return
+    ev = asyncio.Event()
+    st["np"] = {"event": ev, "action": None, "res": None, "body": dict(login, bizNo=rrn, stepMode="step", step="sign", step_data=sd, syearMm=pm)}
+    _job_save(job_id, result={"got": list(got), "failed": list(failed), "doing": "직원 수(국민연금)", "fill": fill, "approve": "국민연금공단"})
+    try:
+        await asyncio.wait_for(ev.wait(), timeout=280)
+    except asyncio.TimeoutError:
+        pass
+    np = st.pop("np", None) or {}
+    j = np.get("res")
+    if not j:
+        failed.append("직원 수(국민연금)")
+        return
+    d = _hy_data(j)
+    rows = [r for r in (d.get("list1") or []) if isinstance(r, dict)]
+    try:
+        n = int(_re2.sub(r"\D", "", str(d.get("bizNum") or "")) or -1)
+    except ValueError:
+        n = -1
+    if n < 0 and rows:
+        n = len(rows)
+    if n >= 0:
+        fill["employees"] = n
+        got.append("직원 수(국민연금)")
+        fill["emp_note"] = "국민연금 가입 인원"
+    else:
+        print(f"[hyphen] 463 응답 구조: {_hy_shape(d)}")
+        failed.append("직원 수(국민연금)")
+
+
+async def _hy_np_confirm(body, st):
+    """국민연금 승인 확인 — 사용자가 '인증 완료'를 누르면 sign"""
+    np = st.get("np")
+    if body.auto:
+        return {"status": "waiting", "job": body.job}
+    if np.get("signing"):
+        return {"status": "collecting", "job": body.job}
+    np["signing"] = True
+    try:
+        j = await _hyphen_post("/in0089000463", np["body"])
+    finally:
+        np["signing"] = False
+    bad, msg = _hy_err(j)
+    if bad:
+        np["tries"] = np.get("tries", 0) + 1
+        if np["tries"] >= 3:
+            np["event"].set()
+            raise HTTPException(status_code=400, detail=f"국민연금 인증이 확인되지 않아 직원 수는 건너뛰었어요. ({msg})")
+        raise HTTPException(status_code=409, detail=f"아직 국민연금 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요. ({msg})")
+    np["res"] = j
+    np["event"].set()
+    return {"status": "collecting", "job": body.job}
 
 
 async def _hy_start(body, user):
@@ -2725,6 +2829,8 @@ async def _hy_complete(body, user):
     st = _hy_live.get(body.job)
     if not st or st["user_id"] != user.id:
         raise HTTPException(status_code=400, detail="인증 시간이 지났거나 서버가 다시 시작됐어요. 처음부터 다시 시도해 주세요.")
+    if st.get("np"):
+        return await _hy_np_confirm(body, st)
     if body.auto:
         return {"status": "waiting", "job": body.job}     # 승인 전에 로그인을 시도하면 인증 정보가 소모될 수 있어 직접 누를 때만
     if st.get("signing"):
@@ -2744,6 +2850,7 @@ async def _hy_complete(body, user):
             raise HTTPException(status_code=400, detail=f"휴대폰 인증이 확인되지 않아 종료됐어요. 처음부터 다시 인증을 요청해 주세요. ({msg})")
         raise HTTPException(status_code=409, detail=f"아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요. ({msg})")
     fill = _safe(_hy_parse_245, d, st["biz"], default={}) or {}
+    st["_rrn"] = str(d.get("rprsResno") or "")           # 대표자 주민번호 — 국민연금·휴폐업 요청에만 (저장·응답·로그 안 함)
     _job_save(body.job, result={"got": ["사업자등록사항"] if fill else [], "failed": [], "doing": "부가세과세표준증명", "fill": fill})
     _spawn(_hy_collect(body.job, st, d.get("cookie") or "", fill))
     return {"status": "collecting", "job": body.job}
@@ -3301,6 +3408,10 @@ def _ht_not_member(msg):
 @app.post("/codef/hometax/skip-employees")
 async def codef_hometax_skip_employees(body: CodefCompleteBody, user: models.User = Depends(get_current_user)):
     """근로복지공단 인증을 건너뛰고(직원 수 제외) 마무리"""
+    hy = _hy_live.get(body.job)
+    if hy and hy["user_id"] == user.id and hy.get("np"):
+        hy["np"]["event"].set()                      # 하이픈: 국민연금 승인 건너뛰기
+        return {"status": "collecting", "job": body.job}
     st = _ht_live.get(body.job)
     if not st or st["user_id"] != user.id:
         return {"status": "collecting", "job": body.job}
