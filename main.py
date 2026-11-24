@@ -2841,6 +2841,7 @@ async def _hy_pension(job_id, st, rrn, fill, got, failed, prog):
     bad, msg = _hy_err(j)
     sd = _hy_data(j).get("step_data") or _hy_data(j).get("stepData")
     if bad or not sd:
+        print(f"[hyphen] 462 국민연금 시작 실패: {msg or '-'} / 응답 구조: {_hy_shape(_hy_data(j))}")
         failed.append("직원 수(국민연금)")
         return
     ev = asyncio.Event()
@@ -2853,6 +2854,7 @@ async def _hy_pension(job_id, st, rrn, fill, got, failed, prog):
     np = st.pop("np", None) or {}
     j = np.get("res")
     if not j:
+        print("[hyphen] 462 국민연금 승인 안 됨(시간 초과 또는 3번 실패)")
         failed.append("직원 수(국민연금)")
         return
     d = _hy_data(j)
@@ -4771,7 +4773,7 @@ GENERAL_DOC_PROMPT = """위에 업체(사업자) 관련 서류가 첨부돼 있�
 - loans: 서류가 대출 내역일 때만 [{"org":"기관","date":"YYYY.MM","amount":금액,"kind":"personal"|"business"}], 아니면 null
 - members: 4대보험 사업장 가입자 명부·자격취득자 명부·고용보험 피보험자 명부처럼 사람별 취득일·상실일이 나오는 서류일 때만, 모든 파일의 모든 줄을 그대로 [{"birth":"YYMMDD"(생년월일 6자리, 확인용),"acq":"YYYY-MM-DD"(자격취득일),"loss":"YYYY-MM-DD" 또는 null(자격상실일, '--'·빈칸이면 null),"pay":월평균보수(원, 숫자),"rep":대표자·사업주 본인이면 true}] — 이름·주민번호 뒷자리는 옮기지 마세요. 중복 정리는 하지 말고 보이는 대로 모두. 그 외 서류는 null
 - member_periods: 명부마다 조회 기간 [{"from":"YYYY-MM-DD","to":"YYYY-MM-DD"}] — '검색기준 2025/01/01 ~ 2025/12/31' 같은 기간. 기간이 없으면 from은 null, to는 발급일
-- employees: members가 없고 서류에 상시근로자 수·가입자 수가 숫자로 나오면 그 수(대표자 제외)
+- employees: members가 없고 서류에 상시근로자 수·가입자 수가 숫자로 나오면 그 수(대표자 제외). 원천징수이행상황신고서면 가장 최근 귀속월의 '근로소득 간이세액(A01)' 인원, 국민연금 사업장 가입자 내역·납부확인서면 가입자(산출) 인원
 - export_amount: 수출 실적 금액
 - certs: 벤처·이노비즈·메인비즈·기업부설연구소·연구개발전담부서·ISO·HACCP·특허등록·특허출원·사회적기업·스마트공장 등 인증·확인·등록 사실을 쉼표로 (예: "벤처, 특허등록 2건")
 - smart_tech: 키오스크·테이블오더·서빙로봇 등 스마트기술 도입이 서류에 나오면 true
