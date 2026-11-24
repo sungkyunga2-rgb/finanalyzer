@@ -2797,7 +2797,7 @@ async def _hy_start(body, user):
     _hometax_login_params(body, user.id)            # 입력값 검사 (이름·생년월일·휴대폰·통신사)
     biz = _re2.sub(r"\D", "", body.business_number or "")
     if len(biz) != 10:
-        raise HTTPException(status_code=400, detail="사업자번호를 먼저 입력한 뒤 인증해 주세요.")
+        biz = ""          # 사업자번호 없이: 사업자번호가 필요 없는 정정신고 정보(246)로 로그인 → 로그인 정보의 사업장 목록에서 번호를 찾음
     org = HY_ORG.get(body.provider)
     if not org:
         raise HTTPException(status_code=400, detail="이 인증 수단은 지원하지 않아요. 다른 앱을 골라 주세요.")
@@ -2805,7 +2805,8 @@ async def _hy_start(body, user):
              "resNo": _re2.sub(r"\D", "", body.birth), "mobileNo": _re2.sub(r"\D", "", body.phone)}
     if org == "pass":
         login["mobileCo"] = HY_TEL.get(body.telecom, "S")
-    j = await _hyphen_post("/in0076000245", dict(login, stepMode="step", step="init", bizNo=biz))
+    lp = "/in0076000245" if biz else "/in0076000246"
+    j = await _hyphen_post(lp, dict(login, stepMode="step", step="init", **({"bizNo": biz} if biz else {})))
     bad, msg = _hy_err(j)
     step_data = _hy_data(j).get("stepData")
     if bad or not step_data:
@@ -2813,7 +2814,7 @@ async def _hy_start(body, user):
     for k in [k for k, v in _hy_live.items() if _time.time() - v["t"] > 900]:
         _hy_live.pop(k, None)
     job_id = uuid.uuid4().hex
-    _hy_live[job_id] = {"user_id": user.id, "login": login, "biz": biz, "phone": login["mobileNo"], "step_data": step_data, "t": _time.time(), "tries": 0}
+    _hy_live[job_id] = {"user_id": user.id, "login": login, "biz": biz, "login_path": lp, "phone": login["mobileNo"], "step_data": step_data, "t": _time.time(), "tries": 0}
     db = SessionLocal()
     try:
         db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
@@ -2837,12 +2838,35 @@ async def _hy_complete(body, user):
         return {"status": "collecting", "job": body.job}
     st["tries"] += 1
     st["signing"] = True
+    lp = st.get("login_path") or "/in0076000245"
     try:
-        j = await _hyphen_post("/in0076000245", dict(st["login"], stepMode="step", step="sign", stepData=st["step_data"], showCookie="Y", bizNo=st["biz"]))
+        j = await _hyphen_post(lp, dict(st["login"], stepMode="step", step="sign", stepData=st["step_data"], showCookie="Y", **({"bizNo": st["biz"]} if st["biz"] else {})))
     finally:
         st["signing"] = False
     bad, msg = _hy_err(j)
     d = _hy_data(j)
+    if not bad and not st["biz"]:
+        # 사업자번호 없이 로그인한 경우 — 로그인 정보(usrInfo)의 사업장 목록에서 운영 중인 사업자번호를 찾아 사업자등록사항(245)을 이어서 조회
+        ui = d.get("usrInfo") if isinstance(d.get("usrInfo"), dict) else d
+        rows = [r for r in (ui.get("bmanBscInfrInqrDVOList") or []) if isinstance(r, dict)]
+        nums = [_re2.sub(r"\D", "", str(r.get("txprDscmNoEncCntn") or r.get("txprDscmNo") or "")) for r in rows if "폐업" not in str(r.get("txprStatNm") or "")]
+        nums = [n for n in nums if len(n) == 10] or [n for n in [_re2.sub(r"\D", "", str(ui.get("txprDscmNo") or ""))] if len(n) == 10]
+        if not nums:
+            print(f"[hyphen] 사업자번호 없이 로그인 — 응답 구조: {_hy_shape(d)}")
+            _hy_live.pop(body.job, None)
+            _job_save(body.job, "error", {"detail": "사업자번호를 찾지 못했어요"})
+            raise HTTPException(status_code=400, detail="로그인은 됐지만 사업자번호를 찾지 못했어요. 사업자번호를 입력한 뒤 다시 인증해 주세요.")
+        st["biz"] = nums[0]
+        ck = d.get("cookie") or ""
+        j = await _hyphen_post("/in0076000245", dict(st["login"], cookieData=ck, showCookie="Y", bizNo=st["biz"]))
+        bad, msg = _hy_err(j)
+        d = _hy_data(j)
+        if bad:
+            _hy_live.pop(body.job, None)
+            _job_save(body.job, "error", {"detail": msg})
+            raise HTTPException(status_code=400, detail=f"사업자 정보를 불러오지 못했어요. 사업자번호를 입력한 뒤 다시 인증해 주세요. ({msg})")
+        if not d.get("cookie"):
+            d["cookie"] = ck
     if bad:
         if st["tries"] >= 3:
             _hy_live.pop(body.job, None)
