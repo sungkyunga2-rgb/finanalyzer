@@ -2558,6 +2558,29 @@ def _hy_shape(v, depth=0):
     return type(v).__name__
 
 
+def _hy_find_biz(v, depth=0):
+    """응답 어디에 있든 사업자번호(10자리) 찾기 — 폐업 상태 행은 뒤로"""
+    keys = ("txprDscmNo", "txprDscmNoEncCntn", "bsno", "bmanNo", "bizNo", "bsnoEncCntn")
+    live, closed = [], []
+    def walk(x, d):
+        if d > 6:
+            return
+        if isinstance(x, dict):
+            dead = "폐업" in str(x.get("txprStatNm") or x.get("statNm") or "")
+            for k in keys:
+                n = _re2.sub(r"\D", "", str(x.get(k) or ""))
+                if len(n) == 10:
+                    (closed if dead else live).append(n)
+            for y in x.values():
+                if isinstance(y, (dict, list)):
+                    walk(y, d + 1)
+        elif isinstance(x, list):
+            for y in x:
+                walk(y, d + 1)
+    walk(v, depth)
+    return list(dict.fromkeys(live + closed))
+
+
 def _hy_pdf_part(j):
     """응답의 PDF(hex) → Gemini 입력 조각"""
     import base64 as _b64
@@ -2797,7 +2820,7 @@ async def _hy_start(body, user):
     _hometax_login_params(body, user.id)            # 입력값 검사 (이름·생년월일·휴대폰·통신사)
     biz = _re2.sub(r"\D", "", body.business_number or "")
     if len(biz) != 10:
-        biz = ""          # 사업자번호 없이: 사업자번호가 필요 없는 정정신고 정보(246)로 로그인 → 로그인 정보의 사업장 목록에서 번호를 찾음
+        biz = ""          # 사업자번호 없이: 사업자번호가 선택값인 사업자등록증명(326)으로 로그인 → 증명서에서 번호를 찾음
     org = HY_ORG.get(body.provider)
     if not org:
         raise HTTPException(status_code=400, detail="이 인증 수단은 지원하지 않아요. 다른 앱을 골라 주세요.")
@@ -2805,8 +2828,9 @@ async def _hy_start(body, user):
              "resNo": _re2.sub(r"\D", "", body.birth), "mobileNo": _re2.sub(r"\D", "", body.phone)}
     if org == "pass":
         login["mobileCo"] = HY_TEL.get(body.telecom, "S")
-    lp = "/in0076000245" if biz else "/in0076000246"
-    j = await _hyphen_post(lp, dict(login, stepMode="step", step="init", **({"bizNo": biz} if biz else {})))
+    lp = "/in0076000245" if biz else "/in0076000326"
+    cert = {} if biz else {"telNo": login["mobileNo"], "hpNo": login["mobileNo"], "resnoOpYn": "N", "cvaDcumGranMthdCd": "10", "cvaDcumUseUsgCd": "99", "pdfYn": "Y"}
+    j = await _hyphen_post(lp, dict(login, stepMode="step", step="init", **({"bizNo": biz} if biz else cert)))
     bad, msg = _hy_err(j)
     step_data = _hy_data(j).get("stepData")
     if bad or not step_data:
@@ -2814,7 +2838,7 @@ async def _hy_start(body, user):
     for k in [k for k, v in _hy_live.items() if _time.time() - v["t"] > 900]:
         _hy_live.pop(k, None)
     job_id = uuid.uuid4().hex
-    _hy_live[job_id] = {"user_id": user.id, "login": login, "biz": biz, "login_path": lp, "phone": login["mobileNo"], "step_data": step_data, "t": _time.time(), "tries": 0}
+    _hy_live[job_id] = {"user_id": user.id, "login": login, "biz": biz, "login_path": lp, "login_extra": cert, "phone": login["mobileNo"], "step_data": step_data, "t": _time.time(), "tries": 0}
     db = SessionLocal()
     try:
         db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
@@ -2840,23 +2864,33 @@ async def _hy_complete(body, user):
     st["signing"] = True
     lp = st.get("login_path") or "/in0076000245"
     try:
-        j = await _hyphen_post(lp, dict(st["login"], stepMode="step", step="sign", stepData=st["step_data"], showCookie="Y", **({"bizNo": st["biz"]} if st["biz"] else {})))
+        j = await _hyphen_post(lp, dict(st["login"], stepMode="step", step="sign", stepData=st["step_data"], showCookie="Y", **({"bizNo": st["biz"]} if st["biz"] else st.get("login_extra") or {})))
     finally:
         st["signing"] = False
     bad, msg = _hy_err(j)
     d = _hy_data(j)
     if not bad and not st["biz"]:
-        # 사업자번호 없이 로그인한 경우 — 로그인 정보(usrInfo)의 사업장 목록에서 운영 중인 사업자번호를 찾아 사업자등록사항(245)을 이어서 조회
-        ui = d.get("usrInfo") if isinstance(d.get("usrInfo"), dict) else d
-        rows = [r for r in (ui.get("bmanBscInfrInqrDVOList") or []) if isinstance(r, dict)]
-        nums = [_re2.sub(r"\D", "", str(r.get("txprDscmNoEncCntn") or r.get("txprDscmNo") or "")) for r in rows if "폐업" not in str(r.get("txprStatNm") or "")]
-        nums = [n for n in nums if len(n) == 10] or [n for n in [_re2.sub(r"\D", "", str(ui.get("txprDscmNo") or ""))] if len(n) == 10]
+        # 사업자번호 없이 로그인한 경우 — 사업자등록증명 응답(또는 PDF)에서 사업자번호를 찾아 사업자등록사항(245)을 이어서 조회
+        nums = _hy_find_biz(d)
+        pre = {}
+        if not nums:
+            part = _hy_pdf_part(j)
+            if part:
+                try:
+                    pre = await _extract_income_parts([part])
+                except Exception as e:
+                    print(f"[hyphen] 사업자등록증명 PDF 인식 오류: {e!r}")
+                n = _re2.sub(r"\D", "", str((pre or {}).get("business_number") or ""))
+                if len(n) == 10:
+                    nums = [n]
         if not nums:
             print(f"[hyphen] 사업자번호 없이 로그인 — 응답 구조: {_hy_shape(d)}")
             _hy_live.pop(body.job, None)
             _job_save(body.job, "error", {"detail": "사업자번호를 찾지 못했어요"})
             raise HTTPException(status_code=400, detail="로그인은 됐지만 사업자번호를 찾지 못했어요. 사업자번호를 입력한 뒤 다시 인증해 주세요.")
         st["biz"] = nums[0]
+        if (pre or {}).get("location"):
+            st["pre_location"] = pre["location"]
         ck = d.get("cookie") or ""
         j = await _hyphen_post("/in0076000245", dict(st["login"], cookieData=ck, showCookie="Y", bizNo=st["biz"]))
         bad, msg = _hy_err(j)
@@ -2874,6 +2908,8 @@ async def _hy_complete(body, user):
             raise HTTPException(status_code=400, detail=f"휴대폰 인증이 확인되지 않아 종료됐어요. 처음부터 다시 인증을 요청해 주세요. ({msg})")
         raise HTTPException(status_code=409, detail=f"아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요. ({msg})")
     fill = _safe(_hy_parse_245, d, st["biz"], default={}) or {}
+    if st.get("pre_location") and not fill.get("location"):
+        fill["location"] = st["pre_location"]
     st["_rrn"] = str(d.get("rprsResno") or "")           # 대표자 주민번호 — 국민연금·휴폐업 요청에만 (저장·응답·로그 안 함)
     _job_save(body.job, result={"got": ["사업자등록사항"] if fill else [], "failed": [], "doing": "부가세과세표준증명", "fill": fill})
     _spawn(_hy_collect(body.job, st, d.get("cookie") or "", fill))
