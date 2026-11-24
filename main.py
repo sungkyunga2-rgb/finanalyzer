@@ -2818,7 +2818,10 @@ async def _hy_collect_run(job_id, st, cookie, fill):
                 _safe(_closure_apply, fill, [rows], got)          # 예전 사업장 폐업 이력 → 재창업 요건 검토
             elif rows is None:
                 print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
-        await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
+        if HY_NPS:                       # 국민연금 462·463 모두 하이픈에서 '사이트 개편으로 지원 종료'(LOGIN-000) → 대체 상품 확인 전까지 호출 안 함
+            await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
+        elif fill.get("employees") is None and st.get("empl_cnt") is None:
+            failed.append("직원 수(국민연금 조회 일시 중단 — 4대보험 가입자 명부 등 서류로 채워 주세요)")
     elif fill.get("employees") is None and st.get("empl_cnt") is None:
         print(f"[hyphen] 국민연금 건너뜀: 대표자 주민번호 없음 (사업자 구분 {fill.get('biz_type') or '-'})")
         failed.append("직원 수(대표자 주민번호를 못 받아 국민연금 조회 못 함)" if fill.get("biz_type") != "corp" else "직원 수(법인은 국민연금 간편조회 안 됨)")
@@ -2833,7 +2836,7 @@ async def _hy_collect_run(job_id, st, cookie, fill):
     _job_save(job_id, "done", {"got": got, "failed": failed, "pending": failed, "doing": "", "fill": fill})
 
 
-HY_NPS = "/in0089000462"      # 사업장 국민연금 월별 납부확인서 — bizNum=현재가입자수 (사업장보험료결정내역 463은 '사이트 개편으로 지원 종료')
+HY_NPS = ""      # 예전 "/in0089000462" — 사업장 국민연금 월별 납부확인서 — bizNum=현재가입자수 (사업장보험료결정내역 463은 '사이트 개편으로 지원 종료')
 
 
 async def _hy_pension(job_id, st, rrn, fill, got, failed, prog):
