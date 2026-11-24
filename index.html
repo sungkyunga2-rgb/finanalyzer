@@ -4523,7 +4523,7 @@ function htAuthClose() {
   htRelay.files = null;
   const pw = document.getElementById("htCertPw"); if (pw) pw.value = "";
   htCertFiles = { type: "", cert: "", key: "" };
-  const cm = document.getElementById("htCertMain"); if (cm) cm.innerHTML = "signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요";
+  const cm = document.getElementById("htCertMain"); if (cm) cm.innerHTML = "인증서 폴더(NPKI)를 끌어다 놓거나<br>signCert.der + signPri.key 두 파일 또는 .pfx 파일을 선택하세요";
   const cd = document.getElementById("htCertDrop"); if (cd) cd.classList.remove("ok");
   const cf = document.getElementById("htCertFiles"); if (cf) cf.value = "";
   document.getElementById("htAuthModal").style.display = "none";
@@ -5169,7 +5169,31 @@ function htCertDropInit() {
   d.__init = true;
   ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("drag"); }));
   ["dragleave", "drop"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove("drag"); }));
-  d.addEventListener("drop", e => htCertPick(e.dataTransfer.files));
+  d.addEventListener("drop", e => {
+    const items = Array.from((e.dataTransfer && e.dataTransfer.items) || []);
+    const ent = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (ent.some(x => x.isDirectory)) return htNpkiFromDrop(ent);      // 인증서 폴더(NPKI 등)를 끌어다 놓으면 안의 인증서를 찾아 목록으로
+    htCertPick(e.dataTransfer.files);
+  });
+}
+// 끌어다 놓은 폴더 → 폴더 핸들처럼 감싸서 인증서 목록으로
+function htNpkiEntry(en) {
+  if (en.isFile) return { kind: "file", name: en.name, getFile: () => new Promise((ok, no) => en.file(ok, no)) };
+  return { kind: "directory", name: en.name, async *entries() {
+    const rd = en.createReader();
+    while (true) {
+      const batch = await new Promise((ok, no) => rd.readEntries(ok, no));
+      if (!batch.length) break;
+      for (const c of batch) yield [c.name, htNpkiEntry(c)];
+    }
+  } };
+}
+function htNpkiFromDrop(ents) {
+  const root = { kind: "directory", name: "NPKI", async *entries() { for (const en of ents) yield [en.name, htNpkiEntry(en)]; } };
+  document.getElementById("htNpkiBox").style.display = "";
+  document.getElementById("htCertFileBox").style.display = "none";
+  const why = document.getElementById("htNpkiWhy"); if (why) why.style.display = "none";
+  htNpkiScan(root, false);
 }
 
 function htAuthShow(n) {
@@ -9027,7 +9051,7 @@ window.addEventListener("DOMContentLoaded", () => {
           <label class="ht-cert-drop" id="htCertDrop">
             <input type="file" id="htCertFiles" multiple accept=".der,.key,.pfx,.p12" onchange="htCertPick(this.files)" />
             <div class="ht-cert-ic">📁</div>
-            <div class="ht-cert-main" id="htCertMain">signCert.der + signPri.key 두 파일<br>또는 .pfx 파일을 선택하거나 끌어다 놓으세요</div>
+            <div class="ht-cert-main" id="htCertMain">인증서 폴더(NPKI)를 끌어다 놓거나<br>signCert.der + signPri.key 두 파일 또는 .pfx 파일을 선택하세요</div>
           </label>
           <div class="ht-cert-hint" style="margin-top:8px;">인증서 위치 — 복사해서 파일 선택 창 주소창에 붙여넣으세요 (Mac은 <b>⌘ Cmd + Shift + G</b> 후 붙여넣기) · 인증서 폴더 안의 두 파일을 함께 선택하세요.</div>
           <div class="ht-npki-path" style="margin-top:4px;"><span style="font-size:11px;color:var(--text3);width:56px;flex:none;">Windows</span><code>%USERPROFILE%\AppData\LocalLow\NPKI</code><button type="button" onclick="htCopyText('%USERPROFILE%\\AppData\\LocalLow\\NPKI')">경로 복사</button></div>
