@@ -2558,6 +2558,23 @@ def _hy_shape(v, depth=0):
     return type(v).__name__
 
 
+def _hy_closed_264(d):
+    """사업자상태조회(주민번호) {0:{regNo, result}} → 폐업한 사업장 [{resCompanyIdentityNo, resClosingDate}] (폐업 없으면 [], 형식 모르면 None)"""
+    vals = list(d.values()) if isinstance(d, dict) else (d if isinstance(d, list) else [])
+    vals = [v for v in vals if isinstance(v, dict) and ("result" in v or "regNo" in v)]
+    if not vals:
+        return None
+    out = []
+    for v in vals:
+        res = str(v.get("result") or "")
+        if "폐업" not in res:
+            continue
+        m = _re2.search(r"(\d{4})[-.년/ ]*(\d{1,2})[-.월/ ]*(\d{1,2})", res)
+        out.append({"resCompanyIdentityNo": _re2.sub(r"\D", "", str(v.get("regNo") or "")),
+                    "resClosingDate": f"{m.group(1)}{int(m.group(2)):02d}{int(m.group(3)):02d}" if m else ""})
+    return out
+
+
 def _hy_find_rrn(v, depth=0):
     """응답에서 대표자 주민번호(13자리) 찾기 — 키 이름에 resno가 들어간 값만. 요청에만 쓰고 저장·로그 안 함"""
     if depth > 6:
@@ -2784,7 +2801,11 @@ async def _hy_collect_run(job_id, st, cookie, fill):
         prog("휴·폐업 조회")
         j = await call("/in0076000264", {"bizNo": rrn})
         if not _hy_err(j)[0]:
-            print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
+            rows = _hy_closed_264(_hy_data(j))
+            if rows:
+                _safe(_closure_apply, fill, [rows], got)          # 예전 사업장 폐업 이력 → 재창업 요건 검토
+            elif rows is None:
+                print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
         await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
     if fill.get("employees") is None and st.get("empl_cnt") is not None:
         fill["employees"] = st["empl_cnt"]                     # 사업자등록 때 신고한 종업원수 — 오래됐을 수 있음
@@ -2797,19 +2818,23 @@ async def _hy_collect_run(job_id, st, cookie, fill):
     _job_save(job_id, "done", {"got": got, "failed": failed, "pending": failed, "doing": "", "fill": fill})
 
 
+HY_NPS = "/in0089000462"      # 사업장 국민연금 월별 납부확인서 — bizNum=현재가입자수 (사업장보험료결정내역 463은 '사이트 개편으로 지원 종료')
+
+
 async def _hy_pension(job_id, st, rrn, fill, got, failed, prog):
-    """국민연금 사업장보험료결정내역(463) — 간편인증 승인을 한 번 더 받아 최근 달 산출인원 = 직원 수 (대표자 제외 못 함: 가입자 명단 수)"""
+    """국민연금 월별 납부확인서(462) — 간편인증 승인을 한 번 더 받아 현재 가입자 수 = 직원 수"""
     now = datetime.utcnow() + timedelta(hours=9)
-    pm = (now.replace(day=1) - timedelta(days=1)).strftime("%Y%m")       # 지난달 (이번 달은 아직 결정 전일 수 있음)
+    pm = (now.replace(day=1) - timedelta(days=1)).strftime("%Y%m")       # 지난달
+    fm = (now.replace(day=1) - timedelta(days=360)).strftime("%Y%m")     # 1년 전부터
     login = dict(st["login"])
-    j = await _hyphen_post("/in0089000463", dict(login, bizNo=rrn, stepMode="step", step="init", syearMm=pm))
+    j = await _hyphen_post(HY_NPS, dict(login, bizNo=rrn, stepMode="step", step="init", fromDate=fm, toDate=pm))
     bad, msg = _hy_err(j)
     sd = _hy_data(j).get("step_data") or _hy_data(j).get("stepData")
     if bad or not sd:
         failed.append("직원 수(국민연금)")
         return
     ev = asyncio.Event()
-    st["np"] = {"event": ev, "action": None, "res": None, "body": dict(login, bizNo=rrn, stepMode="step", step="sign", step_data=sd, syearMm=pm)}
+    st["np"] = {"event": ev, "action": None, "res": None, "body": dict(login, bizNo=rrn, stepMode="step", step="sign", step_data=sd, fromDate=fm, toDate=pm)}
     _job_save(job_id, result={"got": list(got), "failed": list(failed), "doing": "직원 수(국민연금)", "fill": fill, "approve": "국민연금공단"})
     try:
         await asyncio.wait_for(ev.wait(), timeout=280)
@@ -2833,7 +2858,7 @@ async def _hy_pension(job_id, st, rrn, fill, got, failed, prog):
         got.append("직원 수(국민연금)")
         fill["emp_note"] = "국민연금 가입 인원"
     else:
-        print(f"[hyphen] 463 응답 구조: {_hy_shape(d)}")
+        print(f"[hyphen] 462 응답 구조: {_hy_shape(d)}")
         failed.append("직원 수(국민연금)")
 
 
@@ -2846,7 +2871,7 @@ async def _hy_np_confirm(body, st):
         return {"status": "collecting", "job": body.job}
     np["signing"] = True
     try:
-        j = await _hyphen_post("/in0089000463", np["body"])
+        j = await _hyphen_post(HY_NPS, np["body"])
     finally:
         np["signing"] = False
     bad, msg = _hy_err(j)
