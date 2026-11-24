@@ -2820,7 +2820,8 @@ async def _hy_start(body, user):
     _hometax_login_params(body, user.id)            # 입력값 검사 (이름·생년월일·휴대폰·통신사)
     biz = _re2.sub(r"\D", "", body.business_number or "")
     if len(biz) != 10:
-        biz = ""          # 사업자번호 없이: 사업자번호가 선택값인 사업자등록증명(326)으로 로그인 → 증명서에서 번호를 찾음
+        biz = ""          # 사업자번호 없이: 입력값이 없는 정정신고 정보(246)로 로그인 → 응답(로그인 정보)에서 번호를 찾음
+                          # (사업자등록증명 326은 개인사업자면 bizNo 필수 — B0001)
     org = HY_ORG.get(body.provider)
     if not org:
         raise HTTPException(status_code=400, detail="이 인증 수단은 지원하지 않아요. 다른 앱을 골라 주세요.")
@@ -2828,8 +2829,8 @@ async def _hy_start(body, user):
              "resNo": _re2.sub(r"\D", "", body.birth), "mobileNo": _re2.sub(r"\D", "", body.phone)}
     if org == "pass":
         login["mobileCo"] = HY_TEL.get(body.telecom, "S")
-    lp = "/in0076000245" if biz else "/in0076000326"
-    cert = {} if biz else {"telNo": login["mobileNo"], "hpNo": login["mobileNo"], "resnoOpYn": "N", "cvaDcumGranMthdCd": "10", "cvaDcumUseUsgCd": "99", "pdfYn": "Y"}
+    lp = "/in0076000245" if biz else "/in0076000246"
+    cert = {}
     j = await _hyphen_post(lp, dict(login, stepMode="step", step="init", **({"bizNo": biz} if biz else cert)))
     bad, msg = _hy_err(j)
     step_data = _hy_data(j).get("stepData")
@@ -2902,10 +2903,14 @@ async def _hy_complete(body, user):
         if not d.get("cookie"):
             d["cookie"] = ck
     if bad:
-        if st["tries"] >= 3:
+        code = str(((j or {}).get("common") or {}).get("errCd") or "")
+        fatal = st["tries"] >= 3 or "LOGIN-204" in msg or "검증에 실패" in msg or _re2.search(r"\[B\d{4}\]", msg) or "입력항목" in msg
+        if fatal:                               # 인증 정보가 이미 쓰였거나 요청값 문제 → 같은 인증으로는 다시 안 됨
             _hy_live.pop(body.job, None)
             _job_save(body.job, "error", {"detail": msg})
-            raise HTTPException(status_code=400, detail=f"휴대폰 인증이 확인되지 않아 종료됐어요. 처음부터 다시 인증을 요청해 주세요. ({msg})")
+            if not st["biz"] and (_re2.search(r"\[B\d{4}\]", msg) or "bizNo" in msg):
+                raise HTTPException(status_code=400, detail="사업자번호가 있어야 조회할 수 있어요. 사업자번호를 입력한 뒤 다시 인증해 주세요.")
+            raise HTTPException(status_code=400, detail=f"인증이 끝나지 않아 다시 요청해야 해요. '처음으로'를 눌러 인증을 다시 요청해 주세요. ({msg})")
         raise HTTPException(status_code=409, detail=f"아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요. ({msg})")
     fill = _safe(_hy_parse_245, d, st["biz"], default={}) or {}
     if st.get("pre_location") and not fill.get("location"):
