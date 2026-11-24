@@ -2819,9 +2819,17 @@ async def _hy_start(body, user):
     """하이픈 간편인증 1단계 — 휴대폰으로 인증 요청"""
     _hometax_login_params(body, user.id)            # 입력값 검사 (이름·생년월일·휴대폰·통신사)
     biz = _re2.sub(r"\D", "", body.business_number or "")
+    if len(biz) != 10:                 # Basic은 첫 분석 때 고정된 사업자번호를 자동으로
+        db = SessionLocal()
+        try:
+            biz = _re2.sub(r"\D", "", _basic_biz_of(db, user) or "")
+        except Exception:
+            biz = ""
+        finally:
+            db.close()
     if len(biz) != 10:
-        biz = ""          # 사업자번호 없이: 입력값이 없는 정정신고 정보(246)로 로그인 → 응답(로그인 정보)에서 번호를 찾음
-                          # (사업자등록증명 326은 개인사업자면 bizNo 필수 — B0001)
+        # 하이픈은 사업자번호 없이 로그인하는 길이 없음 — 사업자등록증명(326)·정정신고(246)도 개인사업자면 사업자번호 필수(B0001·ETIABZ0347)
+        raise HTTPException(status_code=400, detail="사업자번호를 먼저 입력한 뒤 인증해 주세요.")
     org = HY_ORG.get(body.provider)
     if not org:
         raise HTTPException(status_code=400, detail="이 인증 수단은 지원하지 않아요. 다른 앱을 골라 주세요.")
@@ -2829,7 +2837,7 @@ async def _hy_start(body, user):
              "resNo": _re2.sub(r"\D", "", body.birth), "mobileNo": _re2.sub(r"\D", "", body.phone)}
     if org == "pass":
         login["mobileCo"] = HY_TEL.get(body.telecom, "S")
-    lp = "/in0076000245" if biz else "/in0076000246"
+    lp = "/in0076000245"
     cert = {}
     j = await _hyphen_post(lp, dict(login, stepMode="step", step="init", **({"bizNo": biz} if biz else cert)))
     bad, msg = _hy_err(j)
@@ -2903,8 +2911,10 @@ async def _hy_complete(body, user):
         if not d.get("cookie"):
             d["cookie"] = ck
     if bad:
-        code = str(((j or {}).get("common") or {}).get("errCd") or "")
-        fatal = st["tries"] >= 3 or "LOGIN-204" in msg or "검증에 실패" in msg or _re2.search(r"\[B\d{4}\]", msg) or "입력항목" in msg
+        mm = _re2.search(r'"msg"\s*:\s*"([^"]+)"', msg)              # 홈택스 원문(JSON)이 섞여 오면 사람이 읽을 문장만
+        msg = (mm.group(1) if mm else _re2.sub(r"[{}\[\]\"]+.*$", "", msg) or msg).strip()[:120]
+        pending = any(k in msg for k in ("완료되지", "미완료", "대기", "진행 중", "진행중", "승인되지", "인증 전", "20초"))
+        fatal = st["tries"] >= 3 or not pending
         if fatal:                               # 인증 정보가 이미 쓰였거나 요청값 문제 → 같은 인증으로는 다시 안 됨
             _hy_live.pop(body.job, None)
             _job_save(body.job, "error", {"detail": msg})
