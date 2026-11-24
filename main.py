@@ -2547,6 +2547,17 @@ def _hy_parse_245(d, want_biz=""):
     return {k: v for k, v in out.items() if v not in ("", None)}
 
 
+def _hy_shape(v, depth=0):
+    """응답 구조(키 이름·자료형)만 — 값(개인정보)은 남기지 않음. 문서에 없는 응답을 맞추기 위한 로그용"""
+    if depth > 4:
+        return "…"
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"{k}:{_hy_shape(x, depth + 1)}" for k, x in list(v.items())[:40] if k not in ("cookie", "stepData", "pdfHex")) + "}"
+    if isinstance(v, list):
+        return f"[{len(v)}×{_hy_shape(v[0], depth + 1) if v else ''}]"
+    return type(v).__name__
+
+
 def _hy_pdf_part(j):
     """응답의 PDF(hex) → Gemini 입력 조각"""
     import base64 as _b64
@@ -2602,6 +2613,26 @@ async def _hy_collect(job_id, st, cookie, fill):
             failed.append("부가세과세표준증명")
     else:
         failed.append("부가세과세표준증명")
+    # ①-2 면세사업자 수입금액증명 — 부가세 매출이 안 잡힐 때만 (면세 업종). 응답 구조 문서가 없어 PDF 우선, 없으면 구조만 로그
+    if "부가세과세표준증명" in failed:
+        prog("면세사업자 수입금액증명")
+        j = await call("/in0076000331", {"txnrmStrtYm": str(now.year - 3), "txnrmEndYm": str(now.year), "amtOpYn": "Y", "adrOpYn": "Y", "pdfYn": "Y"})
+        bad, msg = _hy_err(j)
+        part = None if bad else _hy_pdf_part(j)
+        d = None
+        if part:
+            try:
+                d = await _extract_income_parts([part])
+            except Exception as e:
+                print(f"[hyphen] 면세 PDF 인식 오류: {e!r}")
+        elif not bad:
+            print(f"[hyphen] 331 응답 구조: {_hy_shape(_hy_data(j))}")
+        if d and (d.get("years") or d.get("ytd")):
+            failed.remove("부가세과세표준증명")
+            fill.update({k: d[k] for k in ("years", "ytd") if d.get(k)})
+            if d.get("location") and not fill.get("location"):
+                fill["location"] = d["location"]
+            got.append("면세사업자 수입금액증명")
     # ② 납세증명 — 발급되면 국세 체납 없음, 체납이면 발급 불가
     prog("납세증명")
     j = await call("/in0076000330", {"cerpUsePupClCd": "B0007", "adrOpYn": "N", "amtOpYn": "Y"})
