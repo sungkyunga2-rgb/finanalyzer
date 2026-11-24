@@ -547,6 +547,7 @@
   .ht-npki-guide ol { padding-left: 18px; margin: 4px 0 8px; }
   .ht-only-mob, .ht-only-pc { display: none; }
   .is-mob #htCertFileBox .ht-cert-hint { display: none; }
+  .is-mob #htCertFolderBtn { display: none; }
   .is-mob .ht-only-mob, .is-pc .ht-only-pc { display: inline; }
   .ht-npki-pathrow { margin-top: 8px; }
   .ht-npki-path { display: flex; gap: 6px; align-items: center; }
@@ -4810,6 +4811,7 @@ async function htNpkiCopyPath() {
   catch (e) { alertError("경로를 직접 입력해 주세요: " + t); }
 }
 async function htNpkiInit() {   // 공동인증서 탭 열 때
+  try { console.info("[npki]", { picker: typeof window.showDirectoryPicker, dirInput: htNpkiDirInputOk(), saved: !!htSavedCert(), ua: navigator.userAgent }); } catch (e) {}
   const box = document.getElementById("htNpkiBox"), fileBox = document.getElementById("htCertFileBox");
   const why = document.getElementById("htNpkiWhy");
   if (!htNpkiSupported() && htNpkiDirInputOk()) {   // 폴더 기억 기능이 없는 브라우저(엣지 일부·파이어폭스 등) → 폴더 선택으로 목록 (매번 선택)
@@ -4887,6 +4889,8 @@ async function htNpkiConnect() {
   await htNpkiScan(dir, true);
 }
 async function htNpkiScan(dir, fresh) {
+  document.getElementById("htNpkiBox").style.display = "";        // 어느 경로로 들어와도 목록 화면으로
+  document.getElementById("htCertFileBox").style.display = "none";
   document.getElementById("htNpkiList").innerHTML = `<div class="ht-npki-empty">인증서를 찾는 중…</div>`;
   const found = [];
   let seen = 0;
@@ -9053,6 +9057,7 @@ window.addEventListener("DOMContentLoaded", () => {
             <div class="ht-cert-ic">📁</div>
             <div class="ht-cert-main" id="htCertMain">인증서 폴더(NPKI)를 끌어다 놓거나<br>signCert.der + signPri.key 두 파일 또는 .pfx 파일을 선택하세요</div>
           </label>
+          <button type="button" class="ht-npki-btn" id="htCertFolderBtn" style="width:100%;margin-top:8px;" onclick="htNpkiConnect()">📂 인증서 폴더(NPKI) 선택해서 목록 보기</button>
           <div class="ht-cert-hint" style="margin-top:8px;">인증서 위치 — 복사해서 파일 선택 창 주소창에 붙여넣으세요 (Mac은 <b>⌘ Cmd + Shift + G</b> 후 붙여넣기) · 인증서 폴더 안의 두 파일을 함께 선택하세요.</div>
           <div class="ht-npki-path" style="margin-top:4px;"><span style="font-size:11px;color:var(--text3);width:56px;flex:none;">Windows</span><code>%USERPROFILE%\AppData\LocalLow\NPKI</code><button type="button" onclick="htCopyText('%USERPROFILE%\\AppData\\LocalLow\\NPKI')">경로 복사</button></div>
       <div class="ht-npki-path" style="margin-top:4px;"><span style="font-size:11px;color:var(--text3);width:56px;flex:none;">Mac</span><code>~/Library/Preferences/NPKI</code><button type="button" onclick="htCopyText('~/Library/Preferences/NPKI')">경로 복사</button></div>
