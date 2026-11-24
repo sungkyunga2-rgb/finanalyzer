@@ -2558,6 +2558,29 @@ def _hy_shape(v, depth=0):
     return type(v).__name__
 
 
+def _hy_find_rrn(v, depth=0):
+    """응답에서 대표자 주민번호(13자리) 찾기 — 키 이름에 resno가 들어간 값만. 요청에만 쓰고 저장·로그 안 함"""
+    if depth > 6:
+        return ""
+    if isinstance(v, dict):
+        for k, x in v.items():
+            if isinstance(x, (str, int)) and "resno" in str(k).lower():
+                n = _re2.sub(r"\D", "", str(x))
+                if len(n) == 13:
+                    return n
+        for x in v.values():
+            if isinstance(x, (dict, list)):
+                r = _hy_find_rrn(x, depth + 1)
+                if r:
+                    return r
+    elif isinstance(v, list):
+        for x in v:
+            r = _hy_find_rrn(x, depth + 1)
+            if r:
+                return r
+    return ""
+
+
 def _hy_find_biz(v, depth=0):
     """응답 어디에 있든 사업자번호(10자리) 찾기 — 폐업 상태 행은 뒤로"""
     keys = ("txprDscmNo", "txprDscmNoEncCntn", "bsno", "bmanNo", "bizNo", "bsnoEncCntn")
@@ -2624,6 +2647,20 @@ async def _hy_collect_run(job_id, st, cookie, fill):
             state["cookie"] = ck
         return j
 
+    # ⓪ 개인사업자: 납세증명·국민연금·휴폐업은 대표자 주민번호가 필요 — 사용자에게 묻지 않고 사업자등록증명(주민번호 공개)에서 받음 (요청에만 사용)
+    if fill.get("biz_type") != "corp" and len(_re2.sub(r"\D", "", str(st.get("_rrn") or ""))) != 13:
+        prog("사업자등록증명")
+        j = await call("/in0076000326", {"resnoOpYn": "Y", "adrOpYn": "Y"})
+        if not _hy_err(j)[0]:
+            r = _hy_find_rrn(_hy_data(j))
+            if r:
+                st["_rrn"] = r
+            else:
+                print(f"[hyphen] 326 응답 구조(주민번호 못 찾음): {_hy_shape(_hy_data(j))}")
+            if not fill.get("location"):
+                adr = next((str(x.get(k)) for x in [_hy_data(j)] for k in ("adr", "roadAdr", "ldAdr", "bsplAdr") if isinstance(x, dict) and x.get(k)), "")
+                if adr and _sido(adr):
+                    fill["location"] = _sido(adr)
     # ① 부가가치세과세표준증명 (최근 3년 + 올해) → PDF → AI 인식
     prog("부가세과세표준증명")
     j = await call("/in0076000332", {"txnrmStrtYm": f"{now.year - 3}01", "txnrmEndYm": now.strftime("%Y%m"), "pdfYn": "Y"})
