@@ -4771,6 +4771,9 @@ function htNpkiWhyNot() {
   const ua = navigator.userAgent || "";
   const mac = /Mac/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "");
   if (mac) return "Mac은 보안 정책상 브라우저가 인증서 폴더를 읽을 수 없어 <b>인증서 목록</b> 대신 파일을 직접 선택해야 해요.";
+  if (!window.isSecureContext) return "보안 연결(https) 주소가 아니어서 인증서 목록을 쓸 수 없어요. 주소가 <b>https://</b>로 시작하는 피나 사이트로 열어 주세요.";
+  if (/Edg\/|Chrome\//.test(ua) && typeof window.showDirectoryPicker !== "function" && window.top === window.self)
+    return `이 ${/Edg\//.test(ua) ? "엣지" : "크롬"}에서는 폴더 읽기 기능이 꺼져 있어 인증서 목록을 쓸 수 없어요. 회사 PC 보안 정책이나 브라우저 버전 때문일 수 있어요. 브라우저를 최신으로 업데이트하거나 다른 PC에서 시도해 주세요. <span style="color:#9b8a4e;">(${escapeHtml((ua.match(/(Edg|Chrome)\/[\d.]+/) || [""])[0])})</span>`;
   if (window.top !== window.self) return "다른 화면 안에 열린 상태라 인증서 목록을 쓸 수 없어요. <b>피나 사이트를 새 창(크롬·엣지)에서 직접 열면</b> 인증서 목록이 나와요.";
   const name = /Firefox\//.test(ua) ? "파이어폭스" : (/Safari\//.test(ua) && !/Chrome\//.test(ua)) ? "사파리" : /SamsungBrowser/.test(ua) ? "삼성 인터넷" : /KAKAOTALK|NAVER\(inapp|Instagram|FBAV|Line\//.test(ua) ? "앱 안 브라우저" : "지금 쓰는 브라우저";
   return `${name}는 인증서 목록 기능을 지원하지 않아요. <b>PC 크롬 또는 엣지</b>로 열면 인증서 폴더를 한 번 연결해 목록에서 고를 수 있어요.`;
