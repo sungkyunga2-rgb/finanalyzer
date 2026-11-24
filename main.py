@@ -2684,6 +2684,8 @@ async def _hy_collect_run(job_id, st, cookie, fill):
                 st["_rrn"] = r
             else:
                 print(f"[hyphen] 326 응답 구조(주민번호 못 찾음): {_hy_shape(_hy_data(j))}")
+        else:
+            print(f"[hyphen] 326 사업자등록증명 실패: {_hy_err(j)[1]}")
             if not fill.get("location"):
                 adr = next((str(x.get(k)) for x in [_hy_data(j)] for k in ("adr", "roadAdr", "ldAdr", "bsplAdr") if isinstance(x, dict) and x.get(k)), "")
                 if adr and _sido(adr):
@@ -2817,6 +2819,9 @@ async def _hy_collect_run(job_id, st, cookie, fill):
             elif rows is None:
                 print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
         await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
+    elif fill.get("employees") is None and st.get("empl_cnt") is None:
+        print(f"[hyphen] 국민연금 건너뜀: 대표자 주민번호 없음 (사업자 구분 {fill.get('biz_type') or '-'})")
+        failed.append("직원 수(대표자 주민번호를 못 받아 국민연금 조회 못 함)" if fill.get("biz_type") != "corp" else "직원 수(법인은 국민연금 간편조회 안 됨)")
     if fill.get("employees") is None and st.get("empl_cnt") is not None:
         fill["employees"] = st["empl_cnt"]                     # 사업자등록 때 신고한 종업원수 — 오래됐을 수 있음
         got.append("직원 수(사업자 신고)")
@@ -2842,7 +2847,7 @@ async def _hy_pension(job_id, st, rrn, fill, got, failed, prog):
     sd = _hy_data(j).get("step_data") or _hy_data(j).get("stepData")
     if bad or not sd:
         print(f"[hyphen] 462 국민연금 시작 실패: {msg or '-'} / 응답 구조: {_hy_shape(_hy_data(j))}")
-        failed.append("직원 수(국민연금)")
+        failed.append(f"직원 수(국민연금: {(msg or '승인 요청이 만들어지지 않음')[:50]})")
         return
     ev = asyncio.Event()
     st["np"] = {"event": ev, "action": None, "res": None, "body": dict(login, bizNo=rrn, stepMode="step", step="sign", step_data=sd, fromDate=fm, toDate=pm)}
