@@ -3736,7 +3736,7 @@ function htIsCorp(bizNo, name) {
   return /주식회사|\(주\)|㈜|유한회사|유한책임회사|합자회사|합명회사|법인/.test(String(name || ""));
 }
 
-function calcStability(fin, corp) {
+function calcStability(fin, corp, sales) {
   if (!fin) return null;
   const assets = htNum(fin.assets), liabilities = htNum(fin.liabilities);
   if (assets === null || liabilities === null || assets <= 0) return null;
@@ -3749,7 +3749,11 @@ function calcStability(fin, corp) {
   const noInt = interest === 0 && op !== null;
   const ice = (interest !== null && interest > 0 && op !== null) ? op / interest : null;
 
-  const drClass = capitalEroded ? "danger" : (dr === null ? "warn" : dr > 400 ? "danger" : dr > 200 ? "warn" : "safe");
+  // 개인사업자는 '자본'이 대표자 출자금(인출·입금으로 수시로 바뀜)이라 부채비율이 실제 위험을 잘 못 보여줌 → 매출 대비 부채로 평가
+  const personal = corp === false;
+  const lr = sales && sales > 0 ? liabilities / sales * 100 : null;
+  const lrClass = lr === null ? "info" : lr >= 30 ? "danger" : lr >= 15 ? "warn" : "safe";
+  const drClass = capitalEroded ? "danger" : personal ? "info" : (dr === null ? "warn" : dr > 400 ? "danger" : dr > 200 ? "warn" : "safe");
   const iceClass = noInt ? "safe" : (ice === null ? "info" : ice < 1 ? "danger" : ice < 2 ? "warn" : "safe");    // 이자비용을 모르면 '주의'가 아니라 미입력
 
   let erosionStatus, erosionClass;
@@ -3760,7 +3764,9 @@ function calcStability(fin, corp) {
   } else { erosionStatus = "정상"; erosionClass = "safe"; }
 
   const items = [];
-  if (capitalEroded) items.push({ label: "부채비율", score: 2, max: 30, comment: "위험" });
+  if (personal && !capitalEroded) {
+    if (lr !== null) items.push({ label: "매출 대비 부채", score: lrClass === "safe" ? 30 : lrClass === "warn" ? 20 : 8, max: 30, comment: lrClass === "safe" ? "우수" : lrClass === "warn" ? "보통" : "위험" });
+  } else if (capitalEroded) items.push({ label: "부채비율", score: 2, max: 30, comment: "위험" });
   else if (dr !== null) {
     const s = dr <= 200 ? 30 : dr <= 300 ? 24 : dr <= 400 ? 16 : dr <= 500 ? 8 : 2;
     items.push({ label: "부채비율", score: s, max: 30, comment: dr <= 200 ? "우수" : dr <= 400 ? "보통" : "위험" });
@@ -3778,7 +3784,7 @@ function calcStability(fin, corp) {
   const max = items.reduce((a, b) => a + b.max, 0) || 100;
   const pct = Math.round(total / max * 100);
   const grade = pct >= 80 ? "A (우수)" : pct >= 60 ? "B (양호)" : pct >= 40 ? "C (주의)" : "D (위험)";
-  return { assets, liabilities, equity, dr, drClass, ice, iceClass, noInt, capitalEroded,
+  return { assets, liabilities, equity, dr, drClass, personal, lr, lrClass, ice, iceClass, noInt, capitalEroded,
            erosionStatus, erosionClass, net, items, total, max, pct, grade };
 }
 
@@ -3896,9 +3902,14 @@ function analyzeHometax(input, opts) {
   }
 
   // 5) 재무(기존 분석)
-  const financial = calcStability(input.fin, input.biz_type === "corp" || (input.biz_type !== "personal" && htIsCorp(input.business_number, input.company_name)));
+  const finCorp = input.biz_type === "corp" || (input.biz_type !== "personal" && htIsCorp(input.business_number, input.company_name));
+  const lsV = lastWith("vat");
+  const financial = calcStability(input.fin, finCorp, lsV ? lsV.vat : null);
   if (financial) {
     if (financial.capitalEroded) flags.push({ level: "danger", title: "자본잠식", text: "자본총계가 0 이하인 완전자본잠식 상태입니다." });
+    else if (financial.personal) {
+      if (financial.lrClass === "danger") flags.push({ level: "warn", title: "매출 대비 부채 과다", text: `부채가 연 매출의 ${financial.lr.toFixed(1)}%로 많은 편입니다.` });
+    }
     else if (financial.drClass === "danger") flags.push({ level: "danger", title: "부채비율 위험", text: `부채비율 ${financial.dr.toFixed(1)}%로 위험 수준입니다.` });
     else if (financial.drClass === "warn") flags.push({ level: "warn", title: "부채비율 주의", text: `부채비율 ${financial.dr.toFixed(1)}%로 주의 수준입니다.` });
     if (financial.iceClass === "danger" && financial.ice !== null) flags.push({ level: "danger", title: "이자보상배수 위험", text: `이자보상배수 ${financial.ice.toFixed(2)}배로 영업이익이 이자를 충당하지 못합니다.` });
@@ -5942,7 +5953,9 @@ function htReportBody(r, input) {
       : `<div class="kpi-card ${k(lvl)}"><div class="kpi-label">${label}</div><div class="kpi-value ${k(lvl)}">${value}</div><span class="kpi-badge ${k(lvl)}">${lvl === "danger" ? "위험" : lvl === "warn" ? "주의" : "양호"}</span><div class="kpi-hint">${hint}</div></div>`;
     let cards = "";
     if (f) {
-      cards += card("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass, "자본 대비 부채 규모");
+      cards += f.personal && !f.capitalEroded
+        ? card("💳 매출 대비 부채", f.lr !== null ? f.lr.toFixed(1) + "%" : null, f.lrClass, "개인사업자는 부채비율 대신 매출 대비 부채로 봐요")
+        : card("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass, "자본 대비 부채 규모");
       cards += card("💰 이자보상배수", f.noInt ? "이자비용 없음" : (f.ice !== null ? f.ice.toFixed(2) + "배" : null), f.iceClass, f.ice === null && !f.noInt ? "이자비용 미입력" : "영업이익으로 이자를 감당하는 정도");
       cards += card("🏢 자본잠식", e(f.erosionStatus), f.erosionClass, f.erosionClass === "safe" ? "자본 건전" : "자본 확충 필요");
       const gl = f.pct >= 60 ? "safe" : f.pct >= 40 ? "warn" : "danger";
@@ -6050,7 +6063,8 @@ function htReportBody(r, input) {
   // 재무건전성 체크리스트
   {
     const L0 = r.limit || {};
-    const drOk = f ? (f.capitalEroded ? false : f.dr !== null ? f.dr <= 400 : null) : (q && has(q.dr) ? (q.dr >= 0 && q.dr <= 400) : null);
+    const drOk = f ? (f.capitalEroded ? false : f.personal ? (f.lr !== null ? f.lr < 30 : null) : f.dr !== null ? f.dr <= 400 : null) : (q && has(q.dr) ? (q.dr >= 0 && q.dr <= 400) : null);
+    const drName = f && f.personal ? "매출 대비 부채" : "부채비율";
     const iceOk = f ? (f.noInt ? true : f.ice !== null ? f.ice >= 1 : null) : (q && has(q.icr) ? q.icr >= 1 : null);
     const erosionOk = f ? f.erosionClass !== "danger" : (q && has(q.dr) ? q.dr >= 0 : null);
     const profitOk = f && f.net !== null && f.net !== undefined ? f.net > 0 : null;
@@ -6059,7 +6073,7 @@ function htReportBody(r, input) {
     const fail = [];
     if (arOk === false) fail.push("국세 체납");
     if (erosionOk === false) fail.push("자본잠식");
-    if (drOk === false) fail.push("부채비율 위험 수준");
+    if (drOk === false) fail.push(drName + " 위험 수준");
     if (iceOk === false) fail.push("이자보상배수 부족");
     // 정책자금 연계는 예상 한도(기관별 기준) 결과를 따른다 — 신청 가능한 기관이 있으면 가능
     const okN = L0.available ? (L0.orgs || []).filter(x => x.status === "ok").length
@@ -6070,7 +6084,7 @@ function htReportBody(r, input) {
     const items = [
       { ok: has(input.business_number) ? true : null, text: has(input.business_number) ? "사업자 정보 확인 완료" : "사업자등록번호 미입력" },
       { ok: arOk, text: arOk === false ? "국세 체납 있음 (납세증명서 발급 불가)" : arOk ? "국세 체납 없음 (납세증명서 발급 가능)" : "국세 체납 여부 미확인" },
-      { ok: drOk, text: drOk === false ? "부채비율 위험 수준" : drOk ? "부채비율 적정 수준 유지" : "부채비율 미입력" },
+      { ok: drOk, text: drOk === false ? drName + " 위험 수준" : drOk ? drName + " 적정 수준 유지" : drName + " 미입력" },
       { ok: iceOk, text: iceOk === false ? "이자보상배수 부족 (이자 상환 능력 부족)" : iceOk ? "이자보상배수 양호 (이자 상환 능력)" : "이자보상배수 미입력" },
       { ok: erosionOk, text: erosionOk === false ? "자본잠식 상태" : erosionOk ? "자본잠식 없음" : "자본잠식 여부 미입력" },
       { ok: profitOk, text: profitOk === false ? "당기순이익 적자 (수익성 미확보)" : profitOk ? "당기순이익 흑자 (수익성 확보)" : "당기순이익 미입력" },
@@ -6091,6 +6105,12 @@ function htReportBody(r, input) {
     const SC = { safe: "#0F6E56", warn: "#B8860B", danger: "#A32D2D", muted: "#9b9a95" };
     let cmp = "자료미비", cmpCls = "muted";
     if (F.capitalEroded) { cmp = "취약"; cmpCls = "danger"; }
+    else if (F.personal) {
+      if (F.lr !== null) {
+        if (F.lr < 10) { cmp = "우수"; cmpCls = "safe"; } else if (F.lr < 15) { cmp = "양호"; cmpCls = "safe"; }
+        else if (F.lr < 30) { cmp = "보통"; cmpCls = "warn"; } else if (F.lr < 50) { cmp = "열위"; cmpCls = "danger"; } else { cmp = "취약"; cmpCls = "danger"; }
+      }
+    }
     else if (F.dr !== null) {
       if (F.dr <= 200) { cmp = "우수"; cmpCls = "safe"; } else if (F.dr <= 300) { cmp = "양호"; cmpCls = "safe"; }
       else if (F.dr <= 400) { cmp = "보통"; cmpCls = "warn"; } else if (F.dr <= 500) { cmp = "열위"; cmpCls = "danger"; } else { cmp = "취약"; cmpCls = "danger"; }
@@ -6119,7 +6139,7 @@ function htReportBody(r, input) {
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:60%;height:${taPct}%;background:${f ? "#378ADD" : "#e5e4e0"};border-radius:4px 4px 0 0;"></div><div style="font-size:9px;color:#9b9a95;margin-top:4px;">총자산</div></div>
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:60%;height:${tlPct}%;background:${f ? "#D85A30" : "#e5e4e0"};border-radius:4px 4px 0 0;"></div><div style="font-size:9px;color:#9b9a95;margin-top:4px;">총부채</div></div>
           </div>
-          <div style="text-align:center;font-size:11px;color:#6b7a8d;margin-top:8px;">부채비율 <strong style="color:${SC[cmpCls]};">${F.capitalEroded ? "자본잠식" : F.dr !== null ? F.dr.toFixed(1) + "%" : (f ? "미산정" : "미입력")}</strong> · 부채자산비율 <strong>${daRatio !== null ? daRatio.toFixed(1) + "%" : (f ? "미산정" : "미입력")}</strong></div>
+          <div style="text-align:center;font-size:11px;color:#6b7a8d;margin-top:8px;">${F.personal && !F.capitalEroded ? `매출 대비 부채 <strong style="color:${SC[cmpCls]};">${F.lr !== null ? F.lr.toFixed(1) + "%" : "미산정"}</strong> · 부채비율(참고) <strong>${F.dr !== null ? F.dr.toFixed(1) + "%" : "미산정"}</strong>` : `부채비율 <strong style="color:${SC[cmpCls]};">${F.capitalEroded ? "자본잠식" : F.dr !== null ? F.dr.toFixed(1) + "%" : (f ? "미산정" : "미입력")}</strong>`} · 부채자산비율 <strong>${daRatio !== null ? daRatio.toFixed(1) + "%" : (f ? "미산정" : "미입력")}</strong></div>
         </div>
         <div style="${box}display:flex;flex-direction:column;justify-content:center;">
           <div style="font-size:10px;color:#9b9a95;font-weight:600;margin-bottom:8px;">안정성 비교${f ? "" : ' <span style="color:#b8c4cc;">· 미입력</span>'}</div>
@@ -6269,7 +6289,7 @@ function htResultCardHTML(r, input, full, opts) {
     const f = r.financial, q = r.ratios;
     const kpi = (label, value, lvl) => `<div class="srp-kpi" style="border-left-color:${LC[lvl] || "#185FA5"};"><div class="srp-kpi-label">${label}</div><div class="srp-kpi-value" style="color:${LC[lvl] || "#185FA5"};">${value}</div></div>`;
     const miK = '<span class="ht-mi" style="font-size:15px;">미입력</span>';
-    const fin = f ? kpi("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass) + kpi("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : miK), f.iceClass)
+    const fin = f ? (f.personal && !f.capitalEroded ? kpi("💳 매출 대비 부채", f.lr !== null ? f.lr.toFixed(1) + "%" : miK, f.lrClass) : kpi("📊 부채비율", f.dr !== null ? f.dr.toFixed(1) + "%" : "자본잠식", f.drClass)) + kpi("💰 이자보상배수", f.noInt ? "무차입" : (f.ice !== null ? f.ice.toFixed(2) + "배" : miK), f.iceClass)
         + kpi("🏢 자본잠식", e(f.erosionStatus), f.erosionClass) + kpi("🏆 사업 안정성 점수", `${f.total}/${f.max}`, f.pct >= 60 ? "safe" : f.pct >= 40 ? "warn" : "danger")
       : q ? kpi("📊 부채비율", has(q.dr) ? q.dr + "%" : miK, q.drClass) + kpi("💰 이자보상배수", has(q.icr) ? q.icr + "배" : miK, q.icrClass)
         + kpi("🏢 자본잠식", miK, "info") + kpi("🏆 사업 안정성 점수", miK, "info")
