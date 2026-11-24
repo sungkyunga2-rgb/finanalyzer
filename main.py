@@ -2453,10 +2453,35 @@ def _hometax_provider():
     return "hyphen" if p == "hyphen" and os.getenv("HYPHEN_USER_ID") and os.getenv("HYPHEN_HKEY") else "codef"
 
 
+_hy_lock = None
+_hy_last = [0.0]
+HY_TEST_GAP = 21          # 테스트베드: '테스트 요청은 20초에 한 번만 가능'(HDM016)
+
+
 async def _hyphen_post(path, body, timeout=120):
-    """하이픈 API 호출 → 응답 JSON (실패해도 같은 모양 {common:{errYn,errMsg}})"""
+    """하이픈 API 호출 → 응답 JSON (실패해도 같은 모양 {common:{errYn,errMsg}}).
+    테스트베드(HYPHEN_TEST=Y)는 20초에 1번만 되므로 간격을 두고, HDM016이면 한 번 기다렸다 다시"""
+    global _hy_lock
+    test = (os.getenv("HYPHEN_TEST") or "").strip().upper() == "Y"
+    if not test:
+        return await _hyphen_post_raw(path, body, timeout, False)
+    if _hy_lock is None:
+        _hy_lock = asyncio.Lock()
+    async with _hy_lock:
+        for attempt in range(2):
+            wait = HY_TEST_GAP - (_time.time() - _hy_last[0])
+            if wait > 0:
+                await asyncio.sleep(wait)
+            j = await _hyphen_post_raw(path, body, timeout, True)
+            _hy_last[0] = _time.time()
+            if str(((j or {}).get("common") or {}).get("errCd") or "") != "HDM016" and "20초" not in str(((j or {}).get("common") or {}).get("errMsg") or ""):
+                return j
+        return j
+
+
+async def _hyphen_post_raw(path, body, timeout, test):
     headers = {"Content-Type": "application/json", "user-id": os.getenv("HYPHEN_USER_ID", ""), "Hkey": os.getenv("HYPHEN_HKEY", "")}
-    if (os.getenv("HYPHEN_TEST") or "").strip().upper() == "Y":
+    if test:
         headers["hyphen-gustation"] = "Y"
     try:
         async with httpx.AsyncClient(timeout=timeout) as c:
