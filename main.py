@@ -2669,7 +2669,14 @@ async def _hy_collect_run(job_id, st, cookie, fill):
             got.append("면세사업자 수입금액증명")
     # ② 납세증명 — 발급되면 국세 체납 없음, 체납이면 발급 불가
     prog("납세증명")
-    j = await call("/in0076000330", {"cerpUsePupClCd": "B0007", "adrOpYn": "N", "amtOpYn": "Y"})
+    rrn0 = _re2.sub(r"\D", "", str(st.get("_rrn") or ""))
+    if fill.get("biz_type") == "corp":
+        j = await call("/in0076000330", {"cerpUsePupClCd": "B0007", "adrOpYn": "N", "amtOpYn": "Y"})
+    elif len(rrn0) == 13:                       # 개인사업자 납세증명은 사업자번호로 발급 불가 → 대표자 주민번호로 (요청에만 사용)
+        j = await call("/in0076000330", {"cerpUsePupClCd": "B0007", "adrOpYn": "N", "amtOpYn": "Y", "bizNo": rrn0})
+    else:
+        j = {"common": {"errYn": "Y", "errMsg": "개인사업자는 주민등록번호가 있어야 발급"}}
+    rrn0 = ""
     bad, msg = _hy_err(j)
     if not bad:
         fill["arrears"] = {"status": "none"}
@@ -2718,9 +2725,11 @@ async def _hy_collect_run(job_id, st, cookie, fill):
     elif fill.get("biz_type") == "corp":
         failed.append("재무제표(08~22시에만 조회 가능)")
     # ④ 사업자 정정신고 정보(246) — 같은 세션, 사업장 주소·신고 종업원수
-    prog("사업장 정보")
-    j = await call("/in0076000246", {})
-    d246 = {} if _hy_err(j)[0] else _hy_data(j)
+    d246 = {}
+    if fill.get("biz_type") == "corp":          # 정정신고 정보는 법인만 (개인사업자는 '사업자등록번호를 확인하세요' 오류)
+        prog("사업장 정보")
+        j = await call("/in0076000246", {})
+        d246 = {} if _hy_err(j)[0] else _hy_data(j)
     if d246:
         if not fill.get("location"):
             loc = _sido(d246.get("roadAdr") or d246.get("ldAdr") or "")
