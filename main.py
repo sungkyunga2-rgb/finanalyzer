@@ -2840,6 +2840,23 @@ async def _hy_collect_run(job_id, st, cookie, fill):
                 print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
     if len(rrn) == 13 and HY_NPS:        # 국민연금 462·463 모두 하이픈에서 '사이트 개편으로 지원 종료'(LOGIN-000) → 대체 상품 확인 전까지 호출 안 함
         await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
+    if fill.get("employees") is None and st.get("empl_cnt") is None and os.getenv("HYPHEN_NICE_DNB", "").upper() == "Y":
+        # 나이스디앤비 기업신용정보(종합) — 사업자번호만으로 직원 수(empCnt)·기준일(empAccYm). 등록 안 된 업체는 없음
+        prog("직원 수(나이스디앤비)")
+        try:
+            j = await _hyphen_post("/nd0126000790", {"bizNo": biz})
+            bad, msg = _hy_err(j)
+            body = ((_hy_data(j) or {}).get("dataBody") or {}) if not bad else {}
+            ec = _re2.sub(r"\D", "", str(body.get("empCnt") or ""))
+            if ec:
+                fill["employees"] = int(ec)
+                ym = _re2.sub(r"\D", "", str(body.get("empAccYm") or ""))[:6]
+                fill["emp_note"] = f"나이스디앤비 기업정보{f' ({ym[:4]}.{ym[4:6]} 기준)' if len(ym) == 6 else ''}"
+                got.append("직원 수(나이스디앤비)")
+            else:
+                print(f"[hyphen] 790 나이스디앤비 직원 수 없음: {msg or _hy_shape(body)}")
+        except Exception as e:
+            print(f"[hyphen] 790 나이스디앤비 오류: {e}")
     if fill.get("employees") is None and st.get("empl_cnt") is None:
         failed.append("직원 수(간편인증으로는 조회 안 됨 — 4대보험 가입자 명부·원천징수이행상황신고서를 올려 주세요)")
     if fill.get("employees") is None and st.get("empl_cnt") is not None:
