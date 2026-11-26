@@ -1288,9 +1288,7 @@
       <button class="btn btn-full mt1" id="fullReportBtn" onclick="downloadResult()" style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(90deg,#185FA5,#2e80d8);color:#fff;border-color:#185FA5;font-weight:700;box-shadow:0 4px 12px rgba(24,95,165,.25);">
         📄 분석결과 전체 확인하기
       </button>
-      <p id="printedNote" class="note text-center hidden" style="margin-top:8px;color:var(--text2);">
-        리포트 출력은 건당 1회만 가능하여 재발급되지 않습니다. 저장하신 파일을 확인해주세요.
-      </p>
+      <p id="printedNote" class="note text-center hidden" style="margin-top:8px;color:var(--text2);"></p>
       <p class="text-center" style="margin-top:8px;margin-bottom:24px;">
         <a href="#" onclick="event.preventDefault();window.open('print-guide.jpg','_blank')" style="font-size:12px;color:var(--text2);text-decoration:underline;">진단결과와 인쇄화면이 다를 경우</a>
       </p>
@@ -1326,8 +1324,7 @@
     <h2 style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">분석 이력</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
       지난 분석이력을 확인할 수 있습니다.<br>
-      분석이력은 <strong>30일간</strong> 보관되고 분석결과 출력은 <strong>1회만</strong> 가능합니다.
-      출력 이후에는 재발급이 불가능합니다.
+      분석이력은 <strong>구독 중에는 계속</strong> 보관되며(구독이 끝나면 30일 뒤 삭제), 리포트는 <strong>몇 번이든 다시 출력</strong>할 수 있습니다.
     </p>
     <div class="card">
       <div id="history-list"></div>
@@ -1682,7 +1679,7 @@
         <ul class="plan-common">
           <li><strong>Pro 분석 무제한 · Basic 월 10회</strong> · 인증 한 번으로 자동 입력</li>
           <li>재무제표 분석 · 원클릭 분석 모두 포함</li>
-          <li>분석이력 30일 보관 · 리포트 출력 1회</li>
+          <li>구독 중 분석이력 계속 보관 · 리포트 출력 무제한</li>
           <li>Basic은 처음 분석한 사업자 1곳만 분석할 수 있어요</li>
         </ul>
       </div>
@@ -1703,7 +1700,7 @@
       <p class="note text-center mt1">포트원 안전 결제 · 신용·체크카드로 결제됩니다</p>
     </div>
 
-    <p class="note text-center" style="margin-top:8px;color:var(--text2);">분석이력은 <strong>30일간</strong> 보관되며, 리포트 출력은 <strong>1회만</strong> 가능합니다. 출력 이후에는 재발급이 불가하니 꼭 저장해서 보관해주세요.</p>
+    <p class="note text-center" style="margin-top:8px;color:var(--text2);">분석이력은 <strong>구독 중에는 계속</strong> 보관되며(구독 종료 30일 뒤 삭제), 리포트는 <strong>언제든 다시 출력</strong>할 수 있습니다.</p>
     <!-- 예전 할인코드 입력 위치(구독에서는 사용하지 않음) -->
     <div id="promo-input-wrap-charge" class="hidden"></div>
   </div>
@@ -1753,7 +1750,7 @@
       ③ 대표는 팀원을 팀에서 제외할 수 있고, 팀원은 언제든지 팀에서 탈퇴할 수 있습니다. 구독이 종료되면 팀원의 구독 이용 권한도 함께 종료됩니다.<br/>
       ④ 구독 중인 대표는 구독을 해지한 후에 회원 탈퇴를 할 수 있습니다.</p>
       <br/>
-      <p><strong>제6조 (서비스 제공기간 및 리포트 출력)</strong><br/>① 회원이 업로드한 재무제표 원본은 분석 완료 후 별도로 보관하지 않습니다.<br/>② 분석이력(분석 일시, 기업 정보, 진단 결과 등)은 분석일로부터 30일간 보관되며, 기간이 지나면 조회할 수 없습니다.<br/>③ 분석 리포트의 출력(저장·인쇄)은 건당 1회만 가능하며, 출력 완료 이후에는 재발급되지 않습니다. 출력하신 리포트는 회원께서 직접 저장·보관하시기 바랍니다.</p>
+      <p><strong>제6조 (서비스 제공기간 및 리포트 출력)</strong><br/>① 회원이 업로드한 재무제표 원본은 분석 완료 후 별도로 보관하지 않습니다.<br/>② 분석이력(분석 일시, 기업 정보, 진단 결과 등)은 구독 기간 동안 보관됩니다. 구독이 없는 회원은 분석일로부터 30일, 구독이 끝난 회원은 구독 종료일로부터 30일이 지나면 삭제되며 조회할 수 없습니다.<br/>③ 분석 리포트는 보관 기간 안에서 횟수 제한 없이 다시 출력(저장·인쇄)할 수 있습니다.</p>
       <br/>
       <p><strong>제7조 (공정사용)</strong><br/>분석 횟수에 제한이 없는 요금제라도 자동화 프로그램을 이용한 대량 호출, 계정 공유, 서비스 재판매 등 서비스의 안정적 운영을 해치거나 통상적인 이용 범위를 현저히 벗어나는 이용이 확인되면, 회사는 사전 안내 후 이용을 제한하거나 구독을 해지할 수 있습니다.</p>
       <br/>
@@ -1803,7 +1800,7 @@
       <br/>
       <p><strong>7. 재무제표 분석 정보의 처리 및 열람</strong></p>
       <p>① 회사는 회원이 업로드한 재무제표 원본(이미지·PDF 파일)을 분석 완료 후 별도로 보관하지 않으며, 분석에 필요한 수치만 추출하여 처리합니다.<br/>
-      ② 추출된 분석 결과(상호, 대표자명, 사업자등록번호, 매출·부채·자산 등 재무수치 및 진단 결과)는 회원의 분석이력 조회 및 리포트 제공을 위해 분석일로부터 30일간 보관되며, 기간이 지나면 자동으로 삭제됩니다.<br/>
+      ② 추출된 분석 결과(상호, 대표자명, 사업자등록번호, 매출·부채·자산 등 재무수치 및 진단 결과)는 회원의 분석이력 조회 및 리포트 제공을 위해 구독 기간 동안 보관되며, 구독이 없는 경우 분석일로부터 30일, 구독이 끝난 경우 종료일로부터 30일이 지나면 자동으로 삭제됩니다.<br/>
       ③ 회사의 개인정보 관리책임자 및 권한이 부여된 관리자는 서비스 운영, 오류 확인, 고객 문의 대응 등 서비스 제공에 필요한 범위에서 위 분석 결과를 열람할 수 있습니다. 이 경우에도 수집 목적 외의 용도로 이용하거나 정보주체의 동의 없이 제3자에게 제공하지 않습니다.<br/>
       ④ 관리자의 열람은 관리자 인증을 거친 경우에만 가능하며, 회원이 업로드한 재무제표 원본은 보관하지 않으므로 열람 대상에 포함되지 않습니다.</p>
       <br/>
@@ -6723,13 +6720,11 @@ function renderHistoryList() {
     if (h.rep_name) sub.push("대표 " + escapeHtml(h.rep_name));
     if (h.business_number) sub.push(escapeHtml(h.business_number));
     const left = histDaysLeft(h.expires_at);
-    if (left !== null) sub.push(left > 0 ? `보관 ${left}일 남음` : "보관기간 만료 임박");
+    if (left !== null) sub.push(left > 0 ? `보관 ${left}일 남음` : "보관기간 만료 임박");   // 구독 중에는 expires_at이 없어 표시 안 함
 
     const btn = h.source_type === "hometax"
       ? `<button class="hist-btn ready" onclick="openHistoryReport(${h.id}, this)">결과 보기</button>`
-      : h.printed
-      ? `<button class="hist-btn done" disabled title="이미 출력한 리포트입니다">출력완료</button>`
-      : `<button class="hist-btn ready" onclick="openHistoryReport(${h.id}, this)">출력가능</button>`;
+      : `<button class="hist-btn ready" onclick="openHistoryReport(${h.id}, this)">${h.printed ? "다시 출력" : "출력가능"}</button>`;
 
     return `<div class="hist-item">
       <div class="hist-main">
@@ -6818,9 +6813,9 @@ async function updateAnalysisHistory(d) {
 }
 
 // 결과 화면의 "분석결과 전체 확인하기" 버튼을 출력 여부에 맞춰 잠그거나 푼다
-// (리포트 출력은 건당 1회만 가능 — 이용약관 제3조)
+// (예전: 리포트 출력 1회 제한 — 2026-11-26부터 무제한)
 function updateReportButtons() {
-  const printed = !!window.currentHistoryPrinted;
+  const printed = false;            // 리포트 출력 무제한 (2026-11-26) — 출력완료로 막지 않음
   const full = document.getElementById("fullReportBtn");
   const top  = document.getElementById("companyReportBtn");
 
@@ -7204,11 +7199,6 @@ function downloadResult() {
   if (!isSample && !HT && !faFullAccess(window.currentAnalysisData)) {
     alertError("전체 결과와 리포트는 구독 후 확인할 수 있어요.");
     showPage("charge");
-    return;
-  }
-  // 이미 출력한 건은 재발급 불가 (이용약관 제3조)
-  if (!isSample && window.currentHistoryPrinted) {
-    alertError("이미 출력하신 분석 결과입니다. 리포트 출력은 1회만 가능하며 재발급되지 않습니다.");
     return;
   }
   const now = new Date();
@@ -7854,7 +7844,7 @@ ${HT ? htReportBody(HT.r, HT.input) : `
     <p>${HT ? `※ 본 리포트는 입력·연동된 자료를 기준으로 자동 계산한 참고자료이며, 예상 한도와 신청 가능 기관은 실제 심사 결과와 다를 수 있습니다.<br/>
     ※ 중요한 의사결정 전에 홈택스 원본 서류를 반드시 확인하시기 바랍니다.<br/>` : `※ 본 리포트는 AI가 재무제표에서 추출한 수치를 기반으로 자동 계산된 참고자료로, 공인 회계사 또는 재무 전문가의 검토를 대체하지 않습니다.<br/>
     ※ 원본 이미지의 글씨가 작거나 화질이 낮은 경우 항목이나 숫자가 다르게 인식될 수 있으니, 원문 재무제표와 반드시 대조 확인하시기 바랍니다.<br/>`}
-    ※ 본 리포트의 출력은 1회만 가능하며 출력 이후에는 재발급되지 않습니다. 반드시 저장하여 별도 보관하시기 바랍니다.</p>
+    ※ 분석이력은 구독 중 계속 보관되며, 리포트는 분석 이력에서 언제든 다시 출력할 수 있습니다.</p>
   </div>
 
 </div>

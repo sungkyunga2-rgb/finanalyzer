@@ -5501,15 +5501,40 @@ class AnalysisHistoryCreate(BaseModel):
     stability_max: Optional[int] = None
     data: dict = {}
 
+def _history_cutoff(db: Session, user):
+    """이 회원의 분석이력 보관 기준 — 구독 중이면 None(계속 보관).
+    구독이 없으면 분석일로부터 30일, 구독이 끝났으면 종료일로부터 30일 동안은 전부 보관 → 지나면 30일 기준"""
+    if user_has_subscription_access(db, user):
+        return None
+    now = datetime.utcnow()
+    team, _m = get_membership(db, user)
+    ended = []
+    if team:
+        sub = db.query(models.Subscription).filter(models.Subscription.user_id == team.owner_id).first()
+        if sub and sub.period_end:
+            ended.append(sub.period_end)
+        if team.plan_updated_at and not team.plan:
+            ended.append(team.plan_updated_at)
+    if ended and now <= max(ended) + timedelta(days=HISTORY_RETENTION_DAYS):
+        return None
+    return now - timedelta(days=HISTORY_RETENTION_DAYS)
+
+
 def purge_expired_histories(db: Session) -> int:
-    """보관기간(30일)이 지난 분석이력을 실제로 삭제.
+    """보관기간이 지난 분석이력을 실제로 삭제 — 구독 중인 회원 것은 지우지 않음.
     Render에는 별도 스케줄러가 없으므로 이력을 조회할 때마다 정리한다."""
-    from datetime import timedelta
     cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
     try:
-        deleted = (db.query(models.AnalysisHistory)
-                     .filter(models.AnalysisHistory.created_at < cutoff)
-                     .delete(synchronize_session=False))
+        uids = [u for (u,) in db.query(models.AnalysisHistory.user_id).filter(models.AnalysisHistory.created_at < cutoff).distinct().limit(200).all()]
+        deleted = 0
+        for uid in uids:
+            u = db.query(models.User).filter(models.User.id == uid).first()
+            uc = _history_cutoff(db, u) if u else cutoff
+            if uc is None:
+                continue
+            deleted += (db.query(models.AnalysisHistory)
+                          .filter(models.AnalysisHistory.user_id == uid, models.AnalysisHistory.created_at < uc)
+                          .delete(synchronize_session=False))
         if deleted:
             db.commit()
             print(f"[history] 보관기간이 지난 분석이력 {deleted}건 삭제")
@@ -5520,9 +5545,8 @@ def purge_expired_histories(db: Session) -> int:
         return 0
 
 
-def _history_summary(h: "models.AnalysisHistory") -> dict:
-    from datetime import timedelta
-    expires_at = (h.created_at + timedelta(days=HISTORY_RETENTION_DAYS)) if h.created_at else None
+def _history_summary(h: "models.AnalysisHistory", keep: bool = False) -> dict:
+    expires_at = (h.created_at + timedelta(days=HISTORY_RETENTION_DAYS)) if (h.created_at and not keep) else None
     return {
         "id": h.id,
         "company_name": h.company_name or "",
@@ -5577,16 +5601,12 @@ def list_analysis_history(
 ):
     from datetime import timedelta
     purge_expired_histories(db)   # 보관기간이 지난 이력은 이 시점에 실제로 삭제
-    cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
-    rows = (
-        db.query(models.AnalysisHistory)
-        .filter(models.AnalysisHistory.user_id == user.id)
-        .filter(models.AnalysisHistory.created_at >= cutoff)
-        .order_by(models.AnalysisHistory.created_at.desc())
-        .limit(200)
-        .all()
-    )
-    return {"histories": [_history_summary(h) for h in rows], "retention_days": HISTORY_RETENTION_DAYS}
+    cutoff = _history_cutoff(db, user)
+    q = db.query(models.AnalysisHistory).filter(models.AnalysisHistory.user_id == user.id)
+    if cutoff is not None:
+        q = q.filter(models.AnalysisHistory.created_at >= cutoff)
+    rows = q.order_by(models.AnalysisHistory.created_at.desc()).limit(500).all()
+    return {"histories": [_history_summary(h, keep=cutoff is None) for h in rows], "retention_days": None if cutoff is None else HISTORY_RETENTION_DAYS}
 
 @app.get("/history/{history_id}")
 def get_analysis_history(
@@ -5596,14 +5616,16 @@ def get_analysis_history(
 ):
     import json as _json
     from datetime import timedelta
-    cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
-    h = db.query(models.AnalysisHistory).filter(
+    cutoff = _history_cutoff(db, user)
+    q = db.query(models.AnalysisHistory).filter(
         models.AnalysisHistory.id == history_id,
         models.AnalysisHistory.user_id == user.id,
-        models.AnalysisHistory.created_at >= cutoff,
-    ).first()
+    )
+    if cutoff is not None:
+        q = q.filter(models.AnalysisHistory.created_at >= cutoff)
+    h = q.first()
     if not h:
-        raise HTTPException(status_code=404, detail="분석 이력을 찾을 수 없습니다. (보관기간 30일이 지난 이력은 삭제됩니다)")
+        raise HTTPException(status_code=404, detail="분석 이력을 찾을 수 없습니다. (보관기간이 지난 이력은 삭제됩니다)")
     try:
         data = _json.loads(h.data_json or "{}")
     except Exception:
@@ -6678,8 +6700,7 @@ def admin_list_histories(
     cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
 
     query = (db.query(models.AnalysisHistory, models.User)
-               .outerjoin(models.User, models.User.id == models.AnalysisHistory.user_id)
-               .filter(models.AnalysisHistory.created_at >= cutoff))
+               .outerjoin(models.User, models.User.id == models.AnalysisHistory.user_id))     # 보관기간은 purge가 회원별로 정리
 
     if q and q.strip():
         like = f"%{q.strip()}%"
@@ -6725,10 +6746,7 @@ def admin_get_history(
     import json as _json
     from datetime import timedelta
     cutoff = datetime.utcnow() - timedelta(days=HISTORY_RETENTION_DAYS)
-    h = db.query(models.AnalysisHistory).filter(
-        models.AnalysisHistory.id == history_id,
-        models.AnalysisHistory.created_at >= cutoff,
-    ).first()
+    h = db.query(models.AnalysisHistory).filter(models.AnalysisHistory.id == history_id).first()
     if not h:
         raise HTTPException(status_code=404, detail="분석 이력을 찾을 수 없습니다. (보관기간이 지났거나 삭제됨)")
     u = db.query(models.User).filter(models.User.id == h.user_id).first()
