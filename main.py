@@ -1981,12 +1981,10 @@ def _ht_clean(o):
     return o
 
 # ══════════════════════════════════════════════════════════════
-# CODEF — 홈택스 간편인증 자동 불러오기
-#  Render 환경변수: CODEF_CLIENT_ID / CODEF_CLIENT_SECRET / CODEF_PUBLIC_KEY / CODEF_HOST
-#  흐름: ① /codef/hometax/start → 홈택스가 휴대폰으로 인증 요청(CF-03002, 추가인증)
-#        ② 사용자가 휴대폰에서 승인 → /codef/hometax/complete (simpleAuth="1", is2Way=true, twoWayInfo)
-#        ③ 같은 id(로그인 세션)로 나머지 서류를 이어서 조회(다건 요청)
-#  서버에 상태를 저장하지 않는다 — 1차 요청 정보(twoWayInfo 포함)를 화면에 돌려주고 2차 요청 때 그대로 받는다.
+# 홈택스 자동 불러오기 — 하이픈(HYPHEN) API (간편인증·공동인증서)
+#  Render 환경변수: HYPHEN_USER_ID / HYPHEN_HKEY (테스트베드는 HYPHEN_TEST=Y), 선택 HYPHEN_NICE_DNB=Y
+#  흐름: /codef/hometax/start(간편인증 요청) → 휴대폰 승인 → /codef/hometax/complete → 서류는 백그라운드로 이어서(/codef/hometax/job)
+#        공동인증서는 /codef/hometax/cert 한 번으로 로그인. 경로 이름(/codef/...)은 화면 호환을 위해 그대로 둠
 # ══════════════════════════════════════════════════════════════
 import json as _json
 import base64 as _b64
@@ -1994,140 +1992,26 @@ import time as _time
 import re as _re2
 from urllib.parse import quote as _cq, unquote_plus as _cuq
 
-CODEF_OAUTH_URL = "https://oauth.codef.io/oauth/token"
-_codef_token_cache = {"token": None, "exp": 0}
 
 # 홈택스 상품 (개발가이드 기준). path가 비어 있으면 아직 연결 전.
-CODEF_HOMETAX_PRODUCTS = {
-    "registration": "/v1/kr/public/nt/proof-issue/corporate-registration",        # 사업자등록 증명
-    "vat": "/v1/kr/public/nt/proof-issue/additional-tax-standard",                # 부가세과세표준증명
-    "withholding": "/v1/kr/public/nt/report/withholding-tax",                     # 원천징수이행상황신고서 — 기관코드 0005, 근로소득 간이세액(A01) 인원 = 직원 수
-    "taxfree": "/v1/kr/public/nt/proof-issue/tax-free-businessman-income",
-    "disability": "/v1/kr/public/mw/certificate/disability",                     # 정부24 장애인 증명서 — 대표자 장애인 여부(해당/비해당)만 사용        # 부가가치세 면세사업자 수입금액증명 — 회원(0/5), 08~22시, 면세사업자만 발급
-    "tax_payment": "/v1/kr/public/nt/proof-issue/tax-cert-all",                    # 납세증명서
-    "financial": "/v1/kr/public/nt/proof-issue/standard-financial-statements",     # 재무제표(표준재무제표증명) — 08:00~22:00
-    "closure": "/v1/kr/public/nt/certificate/business-discontinuance",            # 폐업사실증명 — 대표자의 예전 폐업 사업장(있을 때만 발급) → 재창업 여부
-    "localtax": "/v1/kr/public/mw/localtax-payment-certificate/inquiry",           # 정부24 지방세 납세증명 — 발급되면 지방세 체납 없음 (공동인증서만, 간편인증은 승인 1번 더라 보류)
-    "employees": "/v1/kr/public/cw/kcomwel-employment/detail",                     # 근로복지공단 근로자고용정보현황 → 직원 수 (기관이 달라 간편인증 승인 1번 더)
-}
-CW_LEVELS = {"1", "3", "4", "5", "6", "7", "8", "10"}       # 근로복지공단이 지원하는 간편인증 수단
 
 
-def _cw_body(params, telecom="", corp=None, bizno=""):
-    """근로자고용정보현황 요청 — 지금 일하는 일반 근로자(고용보험·산재 전체)"""
-    common = {"organization": "0001", "insuranceType": "0", "state": "1", "type": "1", "id": f"{params.get('id', 'fina')}-cw",
-              "manageNoUseYN": "1"}      # 사업장관리번호를 모르니 목록을 받아 고른다(2-way). 0이면 CF-12411
-    if params.get("loginType") in ("5", "6"):
-        if params.get("loginTypeLevel") not in CW_LEVELS or not telecom or not params.get("phoneNo"):
-            return None
-        return dict(common, loginType="5", loginTypeLevel=params["loginTypeLevel"], loginUserName=params.get("userName", ""),
-                    telecom=telecom, phoneNo=params["phoneNo"], userType="0")
-    if params.get("loginType") == "0":
-        b = dict(common, loginType="0", certType=params.get("certType", "1"), certFile=params.get("certFile", ""),
-                 certPassword=params.get("certPassword", ""), userType="2" if corp else "0")
-        if params.get("keyFile"):
-            b["keyFile"] = params["keyFile"]
-        if bizno:
-            b["identity"] = bizno
-        return b
-    return None
 
 
-def _reg_rrn(reg_data, want_biz=""):
-    """사업자등록증명(주민번호 공개)에서 대표자 주민등록번호 13자리 — 서버 안에서 근로복지공단 조회에만 쓰고 저장·반환하지 않는다"""
-    rows = reg_data if isinstance(reg_data, list) else [reg_data]
-    rows = [r for r in rows if isinstance(r, dict)]
-    digits = _re2.sub(r"\D", "", want_biz or "")
-    row = next((r for r in rows if digits and _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "") == digits), rows[0] if rows else {})
-    raw = str(row.get("resUserIdentiyNo") or "")
-    n = _re2.sub(r"\D", "", raw)
-    bn = _re2.sub(r"\D", "", row.get("resCompanyIdentityNo") or "")
-    kind = str(row.get("resBusinessmanType") or "")
-    if "법인" in kind or ("개인" not in kind and len(bn) == 10 and "81" <= bn[3:5] <= "88"):
-        return ""                      # 법인은 이 칸이 법인등록번호 — 대표자 주민번호가 아님
-    if len(n) == 13 and n[6] not in "12345678":
-        return ""
-    return n if len(n) == 13 and "*" not in raw else ""
 
 
-def _cw_manage_list(res):
-    d = res.get("data") if isinstance(res, dict) else None
-    ex = (d or {}).get("extraInfo") or {} if isinstance(d, dict) else {}
-    lst = ex.get("reqManageNoList") or []
-    return lst if isinstance(lst, list) and lst else None
 
 
-async def _cw_resolve(body, res, company=""):
-    """사업장이 여러 개라 관리번호를 고르라는 추가 요청이면 → 상호가 맞는(없으면 첫) 사업장으로 자동 선택"""
-    for _ in range(2):
-        lst = _cw_manage_list(res)
-        if not (_codef_code(res) == "CF-03002" and lst):
-            return res
-        comp = (company or "").replace("(주)", "").replace("주식회사", "").strip()
-        ceo = (body.get("loginUserName") or "").strip()
-        active = [x for x in lst if "소멸" not in str(x.get("reqStatus") or "") + str(x.get("reqStatus1") or "")] or lst
-        pick = (next((x for x in active if comp and comp in str(x.get("reqCompanyNm") or "")), None)
-                or next((x for x in active if ceo and ceo == str(x.get("reqCeoName") or "").strip()), None) or active[0])
-        d = res["data"]
-        res = await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], dict(body, reqManageNo=pick.get("reqManageNo", ""), is2Way=True,
-                                twoWayInfo={k: d.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}))
-    return res
 
 
-def _cw_no_data(code, msg):
-    """'조회 내역 없음'·'가입 사업장 없음' 류 → 직원 0명으로 본다"""
-    return code != "CF-00000" and any(k in (msg or "") for k in ("없습니다", "없음", "존재하지", "내역이 없", "결과가 없"))
 
 
-def _parse_employees(data):
-    """근로자고용정보현황 → 지금 고용 중인 근로자 수"""
-    seen = set()
-    for r in _codef_rows(data, ("resUserNm",)):
-        st = f"{r.get('resEmploymentStatus1') or ''} {r.get('resEmploymentStatus') or ''}"
-        if "종료" in st and "고용" not in st.replace("고용종료", ""):
-            continue
-        seen.add((r.get("resUserNm"), r.get("resUserIdentiyNo"), r.get("resOriginalNumber")))
-    return len(seen)
 
 
-def _parse_emp_trend(data, today=None):
-    """근로자고용정보현황 → 최근 1년 고용 'up'(증가)/'keep'(유지)/'down'(감소). 고용보험 입사·퇴사일(없으면 산재) 기준"""
-    today = today or (datetime.utcnow() + timedelta(hours=9))
-    now_s = today.strftime("%Y%m%d")
-    ago_s = f"{today.year - 1}{now_s[4:]}"
-    def d8(v):
-        v = _re2.sub(r"\D", "", str(v or ""))
-        return v if len(v) == 8 else ""
-    now_n = ago_n = 0
-    seen = set()
-    for r in _codef_rows(data, ("resUserNm",)):
-        key = (r.get("resUserNm"), r.get("resUserIdentiyNo"), r.get("resOriginalNumber"), r.get("resJoinCompanyDate1"), r.get("resJoinCompanyDate"))
-        if key in seen:
-            continue
-        seen.add(key)
-        j = d8(r.get("resJoinCompanyDate1")) or d8(r.get("resJoinCompanyDate"))
-        q = d8(r.get("resResignDate1")) if d8(r.get("resJoinCompanyDate1")) else d8(r.get("resResignDate"))
-        if not j:
-            continue
-        if j <= now_s and (not q or q > now_s): now_n += 1
-        if j <= ago_s and (not q or q > ago_s): ago_n += 1
-    if now_n == 0:
-        return None
-    _parse_emp_trend.last_diff = now_n - ago_n          # 최근 1년 증감 인원 (바로 뒤에서 읽음)
-    return "up" if now_n > ago_n else "keep" if now_n == ago_n else "down"
 
 
-def _parse_emp_change(data, today=None):
-    """(추세, 최근 1년 증감 인원)"""
-    _parse_emp_trend.last_diff = None
-    tr = _parse_emp_trend(data, today)
-    return tr, (_parse_emp_trend.last_diff if tr else None)
 
 
-def _wh_body(now):
-    """원천징수이행상황신고서 — 최근 1년 신고분(신고일 기준 최대 1년)"""
-    st_ = (now - timedelta(days=364)).strftime("%Y%m%d")
-    return {"organization": "0005", "startDate": st_, "endDate": now.strftime("%Y%m%d"), "inquiryType": "0", "infoViewYn": "0"}
 
 
 def _emp_month_ends(today, founded=None):
@@ -2156,183 +2040,32 @@ def _emp_month_ends(today, founded=None):
     return out[::-1]
 
 
-def _emp_avg_spans(spans, today, founded=None):
-    """[(입사일, 퇴사일 또는 None)] (date) → 상시근로자 수(매월 말일 인원의 평균, 소수 1자리)"""
-    ends = _emp_month_ends(today, founded)
-    tot = sum(sum(1 for a, l in spans if a and a <= d and (l is None or l > d)) for d in ends)
-    return round(tot / len(ends), 1) if ends else None
 
 
-def _d8(v):
-    v = _re2.sub(r"\D", "", str(v or ""))[:8]
-    try:
-        return datetime(int(v[:4]), int(v[4:6]), int(v[6:8])).date() if len(v) == 8 else None
-    except ValueError:
-        return None
 
 
-def _emp_spans(data):
-    """근로자고용정보현황 → [(입사일, 퇴사일)] 고용보험 기준(없으면 산재)"""
-    out, seen = [], set()
-    for r in _codef_rows(data, ("resUserNm",)):
-        key = (r.get("resUserNm"), r.get("resUserIdentiyNo"), r.get("resOriginalNumber"), r.get("resJoinCompanyDate1"), r.get("resJoinCompanyDate"))
-        if key in seen:
-            continue
-        seen.add(key)
-        j1 = _d8(r.get("resJoinCompanyDate1"))
-        j = j1 or _d8(r.get("resJoinCompanyDate"))
-        q = _d8(r.get("resResignDate1")) if j1 else _d8(r.get("resResignDate"))
-        if j:
-            out.append((j, q))
-    return out
 
 
-def _wh_months(data):
-    """원천징수이행상황신고서 → {귀속연월 'YYYYMM': 근로소득(A01) 인원}. 같은 달 수정신고가 있으면 나중 신고분"""
-    by = {}
-    for r in _codef_rows(data, ("resYearMonth",)):
-        if str(r.get("resIssueYN") or "1") == "0" or str(r.get("resDocumentType") or "0") not in ("0", ""):
-            continue
-        ym = _re2.sub(r"\D", "", str(r.get("resYearMonth") or ""))[:6]
-        if len(ym) != 6:
-            continue
-        lst = r.get("resTaxAmtSpecList") or []
-        lst = lst if isinstance(lst, list) else [lst]
-        n = 0
-        for it in lst:
-            if isinstance(it, dict) and str(it.get("resCodeNo") or "").upper() == "A01":
-                n = int(_codef_amt(it.get("resPersonnel")) or 0)
-                break
-        rd = str(r.get("resReportingDate") or "")
-        if ym not in by or rd >= by[ym][0]:
-            by[ym] = (rd, n)
-    return {k: v[1] for k, v in by.items()}
 
 
-def _wh_avg(data, today, founded=None):
-    """원천세 월별 인원 → 상시근로자 수. 산정 기간 중 절반 이상 신고분이 있으면 그 달들의 평균,
-    아니면(조회가 최근 1년까지라 직전 사업연도가 다 안 잡힐 때) 조회된 최근 12개월 평균"""
-    by = _wh_months(data)
-    if not by:
-        return None
-    want = [d.strftime("%Y%m") for d in _emp_month_ends(today, founded)]
-    have = [by[k] for k in want if k in by]
-    vals = have if len(have) * 2 >= len(want) else [by[k] for k in sorted(by)[-12:]]
-    return round(sum(vals) / len(vals), 1) if vals else None
 
 
-def _emp_fill_avg(fill, emp_datas, wh_datas, now):
-    """직원 수를 채웠으면 상시근로자 수(월말 평균)도 — 고용보험 입사·퇴사일 우선, 없으면 원천세 월별 인원"""
-    if fill.get("employees") is None:
-        return
-    fd = fill.get("founded")
-    av = None
-    for d in emp_datas:
-        sp = _safe(_emp_spans, d, default=[]) or []
-        if sp:
-            av = _emp_avg_spans(sp, now, fd)
-            break
-    if av is None:
-        av = next((v for v in (_safe(_wh_avg, d, now, fd) for d in wh_datas) if v is not None), None)
-    if av is None and fill.get("employees") == 0:
-        av = 0
-    if av is not None:
-        fill["emp_avg"] = av
 
 
-def _parse_withholding(data):
-    """원천징수이행상황신고서(최근 1년) → (최근 달 근로소득 인원, 최근 1년 추세 'up'/'keep'/'down' 또는 None, 증감 인원)
-    귀속연월별 A01(근로소득 간이세액) 인원. 같은 달 수정신고가 있으면 나중 신고분"""
-    by = {}
-    for r in _codef_rows(data, ("resYearMonth",)):
-        if str(r.get("resIssueYN") or "1") == "0" or str(r.get("resDocumentType") or "0") not in ("0", ""):
-            continue
-        ym = _re2.sub(r"\D", "", str(r.get("resYearMonth") or ""))[:6]
-        if len(ym) != 6:
-            continue
-        lst = r.get("resTaxAmtSpecList") or []
-        lst = lst if isinstance(lst, list) else [lst]
-        n = 0
-        for it in lst:
-            if isinstance(it, dict) and str(it.get("resCodeNo") or "").upper() == "A01":
-                n = int(_codef_amt(it.get("resPersonnel")) or 0)
-                break
-        rd = str(r.get("resReportingDate") or "")
-        if ym not in by or rd >= by[ym][0]:
-            by[ym] = (rd, n)
-    if not by:
-        return None, None, None
-    months = sorted(by)
-    last = by[months[-1]][1]
-    first = months[0]
-    gap = (int(months[-1][:4]) - int(first[:4])) * 12 + int(months[-1][4:]) - int(first[4:])
-    trend = diff = None
-    if gap >= 10 and last > 0:                       # 1년 가까이 떨어진 두 달을 비교
-        old = by[first][1]
-        trend = "up" if last > old else "keep" if last == old else "down"
-        diff = last - old
-    return last, trend, diff
 
 
-def _codef_host():
-    return (os.getenv("CODEF_HOST") or "https://development.codef.io").rstrip("/")
 
 
-def _codef_ready():
-    return bool(os.getenv("CODEF_CLIENT_ID") and os.getenv("CODEF_CLIENT_SECRET"))
 
 
-async def _codef_token(force=False):
-    if not force and _codef_token_cache["token"] and _time.time() < _codef_token_cache["exp"] - 300:
-        return _codef_token_cache["token"]
-    cid, sec = os.getenv("CODEF_CLIENT_ID", ""), os.getenv("CODEF_CLIENT_SECRET", "")
-    auth = _b64.b64encode(f"{cid}:{sec}".encode()).decode()
-    async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(CODEF_OAUTH_URL, headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"},
-                              data={"grant_type": "client_credentials", "scope": "read"})
-    if r.status_code != 200:
-        print(f"[CODEF] 토큰 발급 실패 {r.status_code}: {r.text[:300]}")
-        raise HTTPException(status_code=502, detail="본인 인증 서비스 연결에 실패했습니다. 잠시 후 다시 시도해주세요.")
-    j = r.json()
-    _codef_token_cache["token"] = j.get("access_token")
-    _codef_token_cache["exp"] = _time.time() + int(j.get("expires_in") or 3600)
-    return _codef_token_cache["token"]
 
 
-def _codef_parse(text):
-    """CODEF 응답은 URL 인코딩된 JSON으로 온다"""
-    t = (text or "").strip()
-    for cand in (t, _cuq(t)):
-        try:
-            return _json.loads(cand)
-        except Exception:
-            continue
-    return {"result": {"code": "PARSE", "message": "응답을 해석하지 못했습니다."}, "data": {}}
 
 
-async def _codef_post(path, body, timeout=310):
-    body = {k: v for k, v in (body or {}).items() if not str(k).startswith("_")}     # '_'로 시작하는 키는 피나 내부용
-    token = await _codef_token()
-    payload = _cq(_json.dumps(body, ensure_ascii=False))
-    for attempt in (1, 2):
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(_codef_host() + path, content=payload,
-                                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-        if r.status_code == 401 and attempt == 1:          # 토큰 만료 → 다시 받아서 한 번 더
-            token = await _codef_token(force=True)
-            continue
-        return _codef_parse(r.text)
-    return _codef_parse(r.text)
 
 
-def _codef_code(res):
-    return ((res or {}).get("result") or {}).get("code") or ""
 
 
-def _codef_msg(res):
-    r = (res or {}).get("result") or {}
-    extra = r.get("extraMessage") or ""
-    return (r.get("message") or "알 수 없는 오류") + (f" ({extra})" if extra else "")
 
 
 _SIDO = [("서울", "서울"), ("부산", "부산"), ("대구", "대구"), ("인천", "인천"), ("광주", "광주"), ("대전", "대전"), ("울산", "울산"),
@@ -2491,37 +2224,6 @@ def _restart_review_basic(rv):
     return {k: rv[k] for k in ("restart", "status", "other_biz") if k in rv} if isinstance(rv, dict) else rv
 
 
-def _parse_registration(data, want_biz=""):
-    """사업자등록 증명 → 원클릭 입력값"""
-    rows = data if isinstance(data, list) else [data]
-    rows = [x for x in rows if isinstance(x, dict) and (x.get("resCompanyIdentityNo") or x.get("resCompanyNm"))]
-    if not rows:
-        return {}
-    digits = _re2.sub(r"\D", "", want_biz or "")
-    row = next((x for x in rows if _re2.sub(r"\D", "", x.get("resCompanyIdentityNo") or "") == digits), rows[0]) if digits else rows[0]
-    bn = _re2.sub(r"\D", "", row.get("resCompanyIdentityNo") or "")
-    opened = _re2.sub(r"\D", "", row.get("resOpenDate") or "")
-    ind1, item1, ind2, item2 = _pair_biz(row.get("resBusinessTypes"), row.get("resBusinessItems"))
-    kind = (row.get("resBusinessmanType") or "") + " " + (row.get("resUserIdentiyNo") or "")
-    out = {
-        "company_name": (row.get("resCompanyNm") or "").strip() or (row.get("resUserNm") or "").strip(),
-        "rep_name": (row.get("resUserNm") or "").strip(),
-        "business_number": f"{bn[:3]}-{bn[3:5]}-{bn[5:]}" if len(bn) == 10 else bn,
-        "founded": f"{opened[:4]}-{opened[4:6]}" if len(opened) >= 6 else "",
-        "industry": ind1,
-        "item": item1,
-        "industry2": ind2,
-        "item2": item2,
-        "location": _sido(row.get("resUserAddr")),
-        "biz_type": "corp" if "법인" in kind else "personal",
-    }
-    if len(rows) > 1:
-        def _fmt(v):
-            d = _re2.sub(r"\D", "", v or "")
-            return f"{d[:3]}-{d[3:5]}-{d[5:]}" if len(d) == 10 else (v or "")
-        out["_business_list"] = [{"business_number": _fmt(x.get("resCompanyIdentityNo")), "company_name": (x.get("resCompanyNm") or "").strip() or (x.get("resUserNm") or "").strip(),
-                                  "industry": " / ".join(t for t in (x.get("resBusinessTypes"), x.get("resBusinessItems")) if t)[:60]} for x in rows]
-    return {k: v for k, v in out.items() if v not in ("", None)}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2537,9 +2239,10 @@ HY_TEL = {"0": "S", "1": "K", "2": "L"}
 _hy_live = {}       # job -> {user_id, login, biz, phone, step_data, t, tries}
 
 
-def _hometax_provider():
-    p = (os.getenv("HOMETAX_PROVIDER") or "codef").strip().lower()
-    return "hyphen" if p == "hyphen" and os.getenv("HYPHEN_USER_ID") and os.getenv("HYPHEN_HKEY") else "codef"
+def _hyphen_ready():
+    return bool(os.getenv("HYPHEN_USER_ID") and os.getenv("HYPHEN_HKEY"))
+
+
 
 
 _hy_lock = None
@@ -3019,9 +2722,9 @@ async def _hy_collect_run(job_id, st, cookie, fill):
             if ok_banks:
                 fill["loans"] = loans
                 got.append("은행 대출")
-                extra["bank_ok"] = [CODEF_BANKS.get(b, b) for b in ok_banks]
+                extra["bank_ok"] = [BANK_NAMES.get(b, b) for b in ok_banks]
             if bad:
-                extra["bank_failed"] = [f"{CODEF_BANKS.get(b, b)}({msg})" for b, msg in bad]
+                extra["bank_failed"] = [f"{BANK_NAMES.get(b, b)}({msg})" for b, msg in bad]
                 if not ok_banks:
                     failed.append("은행 대출")
         else:
@@ -3083,7 +2786,7 @@ async def _hy_cert_start(body, user):
         raise HTTPException(status_code=400, detail=f"공동인증서 인증에 실패했습니다: {(msg or '')[:120]}")
     d = _hy_data(j)
     fill = _safe(_hy_parse_245, d, biz, default={}) or {}
-    banks = [b for b in dict.fromkeys(body.banks or []) if b in CODEF_BANKS][:6]
+    banks = [b for b in dict.fromkeys(body.banks or []) if b in BANK_NAMES][:6]
     job_id = uuid.uuid4().hex
     st = {"user_id": user.id, "login": login, "biz": biz, "phone": _re2.sub(r"\D", "", user.phone or ""), "t": _time.time(),
           "tries": 0, "cert": True, "banks": banks, "rep_name": fill.get("rep_name") or ""}
@@ -3145,7 +2848,7 @@ async def _hy_bank_loans(st, biz, banks):
         j = await _hyphen_post("/in0087000519", dict(st["login"], gubun="03", bankCd=b[1:]))
         e, msg = _hy_err(j)
         if e:
-            print(f"[hyphen] 519 {CODEF_BANKS.get(b, b)} 대출 조회 실패: {msg}")
+            print(f"[hyphen] 519 {BANK_NAMES.get(b, b)} 대출 조회 실패: {msg}")
             bad.append((b, friendly_bank_msg(msg or "조회 실패")))
             continue
         ok.append(b)
@@ -3161,14 +2864,14 @@ async def _hy_bank_loans(st, biz, banks):
                     for x in v.values(): walk(x, depth + 1)
         walk(_hy_data(j))
         if not rows:
-            print(f"[hyphen] 519 응답 구조({CODEF_BANKS.get(b, b)}): {_hy_shape(_hy_data(j))}")
+            print(f"[hyphen] 519 응답 구조({BANK_NAMES.get(b, b)}): {_hy_shape(_hy_data(j))}")
         for r in rows:
             amt = next((_doc_num(r.get(k)) for k in ("loanBal", "balance", "bal", "loanAmt", "amt") if _doc_num(r.get(k))), None)
             if not amt:
                 continue
             nm = str(r.get("acctNm") or r.get("loanNm") or "대출").strip()
             dt = _re2.sub(r"\D", "", str(r.get("openDt") or r.get("loanDt") or ""))
-            loans.append({"org": f"{CODEF_BANKS.get(b, b)} · {nm}".strip(" ·"), "date": f"{dt[:4]}.{dt[4:6]}" if len(dt) >= 6 else "",
+            loans.append({"org": f"{BANK_NAMES.get(b, b)} · {nm}".strip(" ·"), "date": f"{dt[:4]}.{dt[4:6]}" if len(dt) >= 6 else "",
                           "amount": abs(amt), "kind": _loan_kind(nm, True)})
     return loans, ok, bad
 
@@ -3417,26 +3120,7 @@ def _hometax_login_params(b: CodefStartBody, user_id: int):
         raise HTTPException(status_code=400, detail="이름을 입력해주세요.")
     if b.provider == "5" and b.telecom not in ("0", "1", "2"):
         raise HTTPException(status_code=400, detail="통신사를 선택해주세요.")
-    p = {
-        "organization": "0001",
-        "loginType": "5" if b.member else "6",
-        "loginTypeLevel": b.provider,
-        "userName": b.user_name.strip(),
-        "loginIdentity": birth,
-        "phoneNo": phone,
-        "id": f"fina-{user_id}-{uuid.uuid4().hex[:12]}",   # 같은 로그인 세션으로 여러 서류를 이어서 조회
-        "usePurposes": "99",
-        "submitTargets": "99",
-        "isIdentityViewYN": "0",
-        "originDataYN": "0",
-        "applicationType": "01",
-    }
-    if b.provider == "5":
-        p["telecom"] = b.telecom
-    bn = _re2.sub(r"\D", "", b.business_number or "")
-    if len(bn) == 10:
-        p["_want_biz"] = bn      # 화면에 적힌 사업자번호는 '여러 사업장 중 고르기'에만 씀 (CODEF로 보내지 않음 — 보내면 정보 불일치 오류)
-    return p
+    return True
 
 
 class CodefCertBody(BaseModel):
@@ -3449,22 +3133,6 @@ class CodefCertBody(BaseModel):
     check_disability: bool = False   # 대표자 장애인 여부 확인 (정부24, 민감정보 — 별도 동의한 경우만)
 
 
-def _codef_rsa(text):
-    """CODEF 공개키(RSA)로 비밀번호 암호화 — 서버에서만 처리"""
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-    pub = (os.getenv("CODEF_PUBLIC_KEY") or "").strip()
-    if not pub:
-        raise HTTPException(status_code=503, detail="공동인증서 인증이 아직 설정되지 않았습니다.")
-    try:
-        if "BEGIN" in pub:
-            key = serialization.load_pem_public_key(pub.encode())
-        else:
-            key = serialization.load_der_public_key(_b64.b64decode(pub))
-    except Exception as e:
-        print(f"[CODEF] 공개키 오류: {e}")
-        raise HTTPException(status_code=503, detail="공동인증서 인증 설정에 문제가 있습니다. 관리자에게 문의해주세요.")
-    return _b64.b64encode(key.encrypt(text.encode("utf-8"), padding.PKCS1v15())).decode()
 
 
 def _b64_clean(v):
@@ -3479,56 +3147,14 @@ def _b64_clean(v):
     return t if 0 < len(raw) <= 64 * 1024 else ""
 
 
-def _hometax_cert_params(b: CodefCertBody, user_id: int):
-    ct = "pfx" if str(b.cert_type).lower() in ("pfx", "p12") else "1"
-    cert = _b64_clean(b.cert_file)
-    key = _b64_clean(b.key_file) if ct == "1" else ""
-    if not cert or (ct == "1" and not key):
-        raise HTTPException(status_code=400, detail="인증서 파일을 확인해주세요. (signCert.der + signPri.key 또는 .pfx 파일)")
-    if not b.password:
-        raise HTTPException(status_code=400, detail="인증서 비밀번호를 입력해주세요.")
-    p = {
-        "organization": "0001",
-        "loginType": "0",
-        "certType": ct,
-        "certFile": cert,
-        "certPassword": _codef_rsa(b.password),
-        "id": f"fina-{user_id}-{uuid.uuid4().hex[:12]}",
-        "usePurposes": "99",
-        "submitTargets": "99",
-        "isIdentityViewYN": "0",
-        "originDataYN": "0",
-        "applicationType": "01",
-    }
-    if key:
-        p["keyFile"] = key
-    bn = _re2.sub(r"\D", "", b.business_number or "")
-    if len(bn) == 10:
-        p["_want_biz"] = bn      # 화면에 적힌 사업자번호는 '여러 사업장 중 고르기'에만 씀 (CODEF로 보내지 않음 — 보내면 정보 불일치 오류)
-    if getattr(b, "check_disability", False):
-        p["_check_dis"] = True   # '_'로 시작하는 값은 CODEF로 보내지 않음
-    return p
 
 
 @app.post("/codef/hometax/cert")
 async def codef_hometax_cert(body: CodefCertBody, user: models.User = Depends(get_current_user)):
-    """공동인증서(구 공인인증서)로 홈택스 로그인 → 서류 4종 조회. 인증서·비밀번호는 저장하지 않고 화면에 돌려주지도 않는다."""
-    if _hometax_provider() == "hyphen":
-        return await _hy_cert_start(body, user)
-    if not _codef_ready():
+    """공동인증서(구 공인인증서)로 홈택스 로그인 → 서류 조회 (하이픈). 인증서·비밀번호는 저장하지 않고 화면에 돌려주지도 않는다."""
+    if not _hyphen_ready():
         raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
-    params = _hometax_cert_params(body, user.id)
-    params["_phone"] = _re2.sub(r"\D", "", user.phone or "")       # 지방세 납세증명 신청인 연락처 ('_' 값은 CODEF로 그대로 보내지 않음)
-    res = await _codef_post(CODEF_HOMETAX_PRODUCTS["registration"], dict(params, isIdentityViewYN="1"))   # 대표자 주민번호 공개 → 직원 수 조회에만 사용
-    code = _codef_code(res)
-    if code == "CF-00000":
-        banks = [b for b in dict.fromkeys(body.banks or []) if b in CODEF_BANKS][:6]
-        return _hometax_start_job(params, res.get("data"), user.id, banks=banks)
-    print(f"[CODEF] cert 실패 {code}: {(res.get('result') or {}).get('message')}")
-    msg = _codef_msg(res)
-    if "비밀번호" in msg or "password" in msg.lower():
-        raise HTTPException(status_code=400, detail="인증서 비밀번호가 맞지 않습니다. 다시 확인해주세요.")
-    raise HTTPException(status_code=400, detail=f"공동인증서 인증에 실패했습니다: {msg}")
+    return await _hy_cert_start(body, user)
 
 
 # ── 공동인증서 PC → 휴대폰 보내기 ──
@@ -3601,18 +3227,7 @@ def cert_relay_take(body: CertRelayBody, user: models.User = Depends(get_current
 
 @app.get("/codef/status")
 def codef_status():
-    prov = _hometax_provider()
-    return {"ready": _codef_ready() or prov == "hyphen", "provider": prov, "products": [k for k, v in CODEF_HOMETAX_PRODUCTS.items() if v]}
-
-
-# ── 간편인증: 서류 요청을 같은 id로 0.3초 간격으로 한꺼번에 보낸다 ──
-#  첫 요청만 추가인증(CF-03002)으로 돌아오고, 나머지는 사용자가 휴대폰에서 승인할 때까지 CODEF가 응답을 잡고 있다.
-#  승인 후 첫 요청에 2차 요청(simpleAuth/is2Way/twoWayInfo)을 보내면 잡혀 있던 요청들이 차례로 도착 → 승인 1번으로 서류 4종.
-#  (승인 뒤에 새로 보내면 매번 다시 승인해야 함 — 같은 세션 재사용 안 됨)
-#  진행 중인 요청·2차 인증 정보는 이 프로세스 메모리에만 둔다. 결과는 codef_jobs(DB)에 저장해 화면이 확인한다.
-_ht_live = {}     # job_id -> {"user_id", "leads": [...], "pending": n, "res": {key: [(code, data, msg)]}, "t": time}
-
-HT_DOC_LABEL = {"registration": "사업자등록증명", "vat": "부가세과세표준증명", "tax_payment": "납세증명서", "financial": "재무제표", "employees": "직원 수(고용보험)"}
+    return {"ready": _hyphen_ready(), "provider": "hyphen"}
 
 
 def _biz_is_corp(biz):
@@ -3624,235 +3239,18 @@ def _biz_is_corp(biz):
     return int(d[3:5]) in (81, 82, 84, 85, 86, 87, 88)
 
 
-def _hometax_calls(params, now, telecom=""):
-    """간편인증 세션 하나로 보낼 서류 요청 목록 [(key, body)]"""
-    base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id", "telecom", "identity") if params.get(k)}
-    phone = params.get("phoneNo", "")
-    calls = [("registration", dict(params, isIdentityViewYN="1"))]
-    y = now.year
-    if params.get("loginType") == "5":        # 부가세과세표준증명은 회원만
-        calls.append(("vat", dict(base, phoneNo=phone, startDate=f"{y - 3}01", endDate=_vat_end(now), isIdentityViewYN="0",
-                                  usePurposes="99", submitTargets="99", applicationType="01", originDataYN="0")))
-    if params.get("loginType") == "5" and params.get("_want_biz"):   # 원천징수이행상황신고서(직원 수) — 사업자번호를 알 때만
-        calls.append(("withholding", dict(base, phoneNo=phone, identity=params["_want_biz"], identity2=params.get("loginIdentity", ""),
-                                          **_wh_body(now))))
-    if params.get("loginType") == "5" and 8 <= now.hour < 22:   # 면세사업자 수입금액증명 — 면세사업자가 아니면 발급 안 됨(무시)
-        calls.append(("taxfree", dict(base, phoneNo=phone, startYear=str(y - 3), endYear=str(y - 1), isIdentityViewYN="0",
-                                      usePurposes="99", submitTargets="99", originDataYN="0")))
-    calls.append(("tax_payment", dict(base, phoneNo=phone, isIdentityViewYN="0", isAddrViewYn="0", proofType="B0007",
-                                      submitTargets="99", applicationType="01", originDataYN="0")))
-    clo = {k: v for k, v in base.items() if k != "identity"}      # 사업자번호 없이 → 대표자의 폐업 사업장 전체
-    calls.append(("closure", dict(clo, phoneNo=phone, usePurposes="99", submitTargets="99", isIdentityViewYn="0",
-                                  applicationType="01", originDataYN="0", originDataYN1="0")))
-    if 8 <= now.hour < 22:                    # 재무제표는 08~22시만. 법인/개인을 아직 모르니 둘 다 요청
-        years = [y - 1, y - 2, y - 3] + ([y - 4] if now.month < 6 else [])   # 최근 3년 매출 (상반기엔 작년 신고 전일 수 있어 한 해 더)
-        fin = dict(base, loginPhoneNo=phone, isIdentityViewYN="0", usePurposes="99", submitTargets="99", originDataYN="0")
-        if params.get("_want_biz"):
-            fin["identity"] = params["_want_biz"]
-        corp = _biz_is_corp(params.get("_want_biz"))       # 사업자번호를 알면 법인/개인에 맞는 형식만 (CODEF 호출 3~4회 절약)
-        for yy in years:
-            if corp is not False:
-                calls.append(("financial", dict(fin, startDate=f"{yy}12")))                    # 법인: 사업연도 종료연월
-            if corp is not True:
-                calls.append(("financial", dict(fin, startDate=str(yy), proofType="40")))      # 개인: 과세연도
-    return calls
 
 
-def _ht_is_2way(res):
-    d = res.get("data") if isinstance(res, dict) else None
-    return _codef_code(res) == "CF-03002" and isinstance(d, dict) and bool(d.get("continue2Way"))
 
 
-def _ht_assemble(st, now, final):
-    """지금까지 받은 서류 → {fill, got, failed}"""
-    R = st["res"]
-    ok = lambda k: [d for c, d, m in R.get(k, []) if c == "CF-00000"]
-    fill = {}
-    for d in ok("registration"):
-        fill = _safe(_parse_registration, d, st.get("identity", ""), default={}) or {}
-        break
-    got, failed = [], []
-    if fill:
-        got.append("사업자등록증명")
-    elif final or R.get("registration"):
-        failed.append("사업자등록증명")
-    years, ytd = next((v for v in (_safe(_parse_vat_split, d, now.year, default=([], None)) for d in ok("vat")) if v[0] or v[1]), ([], None))
-    if years or ytd:
-        if years:
-            fill["years"] = years
-        if ytd:
-            fill["ytd"] = ytd
-        got.append("부가세과세표준증명")
-    tf = {}
-    for d in ok("taxfree"):
-        tf.update(_safe(_taxfree_revenues, d, default={}) or {})
-    if tf:
-        _merge_fin_years(fill, tf, now.year)
-        got.append("면세사업자 수입금액증명")
-    elif not (years or ytd) and final:
-        failed.append("부가세과세표준증명")
-    tax = R.get("tax_payment", [])
-    arrears = None
-    for c, d, m in tax:
-        arrears = _safe(_parse_tax_cert, d if c == "CF-00000" else None, None if c == "CF-00000" else m)
-        if arrears:
-            break
-    if arrears:
-        fill["arrears"] = arrears
-        got.append("납세증명서")
-    elif final:
-        failed.append("납세증명서")
-    fins = [f for f in (_safe(_parse_financial, d) for d in ok("financial")) if f]
-    revs = {}
-    for d in ok("financial"):
-        revs.update(_safe(_fin_revenues, d, default={}) or {})
-    if fins:
-        fin = dict(sorted(fins, key=lambda f: f.get("_year", 0))[-1])     # 재무 수치는 가장 최근 연도
-        fin.pop("_revenue", None); fin.pop("_year", None)
-        fill["fin"] = fin
-        got.append("재무제표")
-    if revs:
-        _merge_fin_years(fill, revs, now.year)                          # 매출은 최근 3년 모두
-    if not fins and final and fill.get("biz_type") != "personal":     # 개인사업자는 재무제표가 없는 경우가 많아 안내하지 않음
-        failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
-    wh_n, wh_tr, wh_df = next((v for v in (_safe(_parse_withholding, d, default=(None, None, None)) for d in ok("withholding")) if v[0] is not None), (None, None, None))
-    if "employees" in st.get("keys", ()) or wh_n is not None:
-        n = next((v for v in (_safe(_parse_employees, d) for d in ok("employees")) if v is not None), None)
-        if n is None and any(_cw_no_data(c, m) for c, d, m in R.get("employees", [])):
-            n = 0                      # 고용보험 근로자 내역 없음 → 0명
-        tr, df = next((v for v in (_safe(_parse_emp_change, d, default=(None, None)) for d in ok("employees")) if v[0]), (None, None)) if n else (None, None)
-        if (n is None or n == 0) and wh_n:                    # 근로복지공단이 안 되면 원천세 신고 인원
-            n = wh_n
-        if n is None and wh_n == 0 and final:
-            n = 0
-        if n is not None:
-            fill["employees"] = n
-            got.append("직원 수(고용보험)")
-            if not tr:
-                tr, df = wh_tr, wh_df
-            if tr:
-                fill["emp_trend"] = tr
-                if df is not None:
-                    fill["emp_increase"] = df
-        elif final:
-            fill["employees_default"] = 0      # 조회 못 함 → 칸이 비어 있으면 0명으로
-            failed.append("직원 수(고용보험) — 0명으로 채움")
-    elif final:
-        fill["employees_default"] = 0
-    _emp_fill_avg(fill, list(ok("employees")), list(ok("withholding")), now)
-    dis = next((v for v in (_dis_result({"result": {"code": c, "message": m}, "data": d}) for c, d, m in R.get("disability", []) if c not in ("SKIP", "TIMEOUT")) if v is not None), None)
-    if dis is not None:
-        fill["rep_disabled"] = dis
-        got.append("장애인기업 여부")
-    if ok("closure"):
-        _closure_apply(fill, ok("closure"), got)
-    return {"fill": fill, "got": got, "failed": failed}
 
 
-def _ht_progress(job_id, final=False):
-    st = _ht_live.get(job_id)
-    if not st:
-        return
-    now = datetime.utcnow() + timedelta(hours=9)
-    out = _ht_assemble(st, now, final)
-    if final:
-        reason = "" if out["got"] else next((f"{m} ({c})" for k in ("registration", "vat", "tax_payment", "financial") for c, d, m in st["res"].get(k, []) if c != "CF-00000" and m), "")
-        _job_save(job_id, "done", {"status": "done", "fill": out["fill"], "got": out["got"], "pending": out["failed"], "reason": reason})
-        _ht_live.pop(job_id, None)
-    else:
-        waiting = [HT_DOC_LABEL[k] for k in HT_DOC_LABEL if k in st["keys"] and k not in st["done_keys"]]
-        lab = {"employees": "근로복지공단", "disability": "정부24"}
-        approve = "·".join(lab[k] for k in ("employees", "disability") if any(l["key"] == k for l in st["leads"]) and (k != "employees" or st.get("cw_fired")))
-        _job_save(job_id, None, {"got": out["got"], "failed": [], "doing": waiting[0] if waiting else "", "fill": out["fill"], "approve": approve})
 
 
-def _ht_settle(job_id, key, res):
-    st = _ht_live.get(job_id)
-    if not st:
-        return
-    code = _codef_code(res)
-    if code != "CF-00000":
-        print(f"[CODEF] {key} 실패 {code}: {_codef_msg(res)}")
-    st["res"].setdefault(key, []).append((code, res.get("data") if isinstance(res, dict) else None, _codef_msg(res)))
-    st["left"][key] -= 1
-    if st["left"][key] <= 0:
-        st["done_keys"].add(key)
-    st["pending"] -= 1
-    # 정부24 장애인 증명서 — 사업자등록증명이 오면 바로 (개인사업자 대표 주민번호가 있을 때만)
-    if key == "registration" and st.get("dis_body") and not st.get("dis_fired"):
-        st["dis_fired"] = True
-        rd = res.get("data") if code == "CF-00000" else None
-        rrn_x = _safe(_reg_rrn, rd, st.get("identity", ""), default="") if rd is not None else ""
-        reg_x = _safe(_parse_registration, rd, st.get("identity", ""), default={}) if rd is not None else {}
-        if rrn_x and (reg_x or {}).get("biz_type") != "corp":
-            body_d = dict(st["dis_body"], identity=rrn_x, address=_safe(_reg_addr, rd, st.get("identity", ""), default="") or "서울특별시")
-            if (reg_x or {}).get("rep_name"):
-                body_d["userName"] = reg_x["rep_name"]
-            _spawn(_ht_fire(job_id, "disability", body_d))
-        else:
-            st["res"].setdefault("disability", []).append(("SKIP", None, "확인 대상 아님"))
-            st["left"]["disability"] = 0
-            st["done_keys"].add("disability")
-            st["pending"] -= 1
-    # 근로복지공단(두 번째 승인)은 사업자등록증명 + 원천세 신고서 결과를 본 뒤에 — 원천세로 직원 수가 나오면 건너뛰어 승인 한 번으로 끝냄
-    reg_rows = st["res"].get("registration", [])
-    wh_wait = "withholding" in st["keys"] and "withholding" not in st["done_keys"]
-    if key in ("registration", "withholding") and st.get("cw_body") and not st.get("cw_fired") and reg_rows and not wh_wait:
-        st["cw_fired"] = True
-        reg_code, reg_data, _m = reg_rows[0]
-        wh_ok = any(c == "CF-00000" and (_safe(_parse_withholding, d, default=(None, None, None)) or (None,))[0] is not None
-                    for c, d, m in st["res"].get("withholding", []))
-        if reg_code == "CF-00000" and not wh_ok:
-            rrn = _safe(_reg_rrn, reg_data, st.get("identity", ""), default="") or ""
-            reg = _safe(_parse_registration, reg_data, st.get("identity", ""), default={}) or {}
-            biz = _re2.sub(r"\D", "", reg.get("business_number", ""))
-            cw = dict(st["cw_body"], identity=rrn or biz)       # 대표자 개인명의 → 주민번호 (서버 안에서만)
-            _spawn(_ht_fire(job_id, "employees", cw))
-        else:
-            st["res"].setdefault("employees", []).append(("SKIP", None, "원천세 신고서로 확인" if wh_ok else "사업자등록증명 실패"))
-            st["left"]["employees"] = 0
-            st["done_keys"].add("employees")
-            st["pending"] -= 1
-    _ht_progress(job_id, final=st["pending"] <= 0 and not st["leads"])
 
 
-async def _cw_watchdog(job_id, lead, wait=285):
-    """근로복지공단 인증을 4분 45초 안에 승인하지 않으면 직원 수만 건너뛰고 마무리"""
-    await asyncio.sleep(wait)
-    st = _ht_live.get(job_id)
-    if st and lead in st["leads"]:
-        st["leads"].remove(lead)
-        st["pending"] += 1
-        _ht_settle(job_id, lead["key"], {"result": {"code": "TIMEOUT", "message": "추가 인증 시간이 지났습니다."}, "data": None})
 
 
-async def _ht_fire(job_id, key, body):
-    try:
-        res = await _codef_post(CODEF_HOMETAX_PRODUCTS[key], body)
-        if key == "employees":
-            res = await _cw_resolve(body, res)
-    except Exception as e:
-        print(f"[CODEF] {key} 호출 오류: {e!r}")
-        res = {"result": {"code": "NETWORK", "message": "연결 오류"}, "data": None}
-    st = _ht_live.get(job_id)
-    if not st:
-        return
-    if _ht_is_2way(res) and key == "withholding" and st["leads"]:
-        res = {"result": {"code": "SKIP", "message": "별도 승인 필요 — 건너뜀"}, "data": None}   # 승인을 두 번 받게 하지 않음
-    if _ht_is_2way(res):
-        d = res["data"]
-        lead = {"key": key, "body": body, "two_way": {k: d.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}}
-        st["leads"].append(lead)
-        st["pending"] -= 1          # 2차 요청 때 다시 집계
-        st["approval"].set()
-        if key in ("employees", "disability"):      # 홈택스 승인 뒤 새로 온 인증(근로복지공단·정부24) → 확인 횟수 새로, 화면에 승인 안내
-            st["tries"] = 0
-            _spawn(_cw_watchdog(job_id, lead))
-            _ht_progress(job_id)
-        return
-    _ht_settle(job_id, key, res)
-    if st["pending"] <= 0:
-        st["approval"].set()
 
 
 def _spawn(coro):
@@ -3862,14 +3260,6 @@ def _spawn(coro):
     return t
 
 
-async def _ht_launch(job_id, calls):
-    for key, body in calls:
-        _spawn(_ht_fire(job_id, key, body))
-        await asyncio.sleep(0.3)
-    await asyncio.sleep(0.5)
-    st = _ht_live.get(job_id)
-    if st:
-        st["launched"].set()      # 모든 서류 요청이 나간 뒤에만 승인 확인(2차 요청)을 보낸다
 
 
 class CodefCompleteBody(BaseModel):
@@ -3877,166 +3267,40 @@ class CodefCompleteBody(BaseModel):
     auto: bool = False        # 화면이 자동으로 확인 (앱에서 돌아왔을 때·일정 시간 후)
 
 
-HT_CONFIRM_MAX = 3            # CODEF: 승인 전 2차 확인이 3번째도 미승인이면 CF-12872로 거래 종료
-HT_AUTO_MAX = 2               # 자동 확인은 2번까지 — 마지막 1번은 사용자가 누르는 '인증 완료'용
 
 
 @app.post("/codef/hometax/start")
 async def codef_hometax_start(body: CodefStartBody, user: models.User = Depends(get_current_user)):
-    """서류 요청을 한꺼번에 보내고, 휴대폰 승인 요청이 뜨면 바로 알려준다"""
-    if _hometax_provider() == "hyphen":
-        return await _hy_start(body, user)
-    if not _codef_ready():
+    """간편인증 요청 (하이픈) — 휴대폰 승인 뒤 /codef/hometax/complete"""
+    if not _hyphen_ready():
         raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
-    params = _hometax_login_params(body, user.id)
-    now = datetime.utcnow() + timedelta(hours=9)
-    calls = _hometax_calls(params, now, body.telecom)
-    # 오래된 진행 정보 정리 (15분)
-    for k in [k for k, v in _ht_live.items() if _time.time() - v["t"] > 900]:
-        _ht_live.pop(k, None)
-    job_id = uuid.uuid4().hex
-    keys = [k for k, _ in calls]
-    cw = _cw_body(params, body.telecom)        # 근로복지공단(직원 수)은 사업자등록증명에서 대표자 주민번호를 받은 뒤 따로 요청
-    if cw:
-        keys.append("employees")
-    dis = None    # 정부24 장애인 증명서(장애인기업)는 간편인증에선 조회하지 않음 — 승인이 한 번 더 필요해서 (공동인증서만). 다시 켜려면 _dis_body_simple(params, body.telecom)
-    if dis:
-        keys.append("disability")
-    _ht_live[job_id] = {"user_id": user.id, "leads": [], "pending": len(keys), "res": {}, "t": _time.time(),
-                        "keys": set(keys), "done_keys": set(), "left": {k: keys.count(k) for k in set(keys)},
-                        "identity": params.get("_want_biz", ""), "approval": asyncio.Event(), "launched": asyncio.Event(),
-                        "cw_body": cw, "dis_body": dis}
-    db = SessionLocal()
-    try:
-        db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
-        db.add(models.CodefJob(id=job_id, user_id=user.id, status="running", result=_json.dumps({"got": [], "doing": "사업자등록증명", "fill": {}})))
-        db.commit()
-    finally:
-        db.close()
-    _spawn(_ht_launch(job_id, calls))
-    st = _ht_live[job_id]
-    try:
-        await asyncio.wait_for(st["approval"].wait(), timeout=60)
-    except asyncio.TimeoutError:
-        pass
-    st0 = st
-    st = _ht_live.get(job_id)
-    if st and st["leads"]:
-        return {"status": "need_approval", "job": job_id}
-    regs0 = st0["res"].get("registration") or []
-    if not st and body.member and regs0 and regs0[0][0] != "CF-00000" and _ht_not_member(regs0[0][2]):
-        st = st0                                 # 전부 실패로 끝났어도 '회원 아님'이면 아래에서 비회원으로 다시
-    if not st:                                   # 승인 없이 모두 끝남
-        return {"status": "collecting", "job": job_id}
-    regs = st["res"].get("registration") or []
-    if regs and regs[0][0] != "CF-00000" and not st["leads"]:
-        _ht_live.pop(job_id, None)
-        if body.member and _ht_not_member(regs[0][2]):        # 홈택스 회원이 아니면 비회원 간편인증으로 자동 재시도
-            print(f"[CODEF] 홈택스 회원 아님 → 비회원 인증으로 다시 요청 ({regs[0][2]})")
-            _job_save(job_id, "error", {"detail": "비회원으로 다시 요청"})
-            return await codef_hometax_start((body.model_copy(update={"member": False}) if hasattr(body, "model_copy") else body.copy(update={"member": False})), user)
-        _job_save(job_id, "error", {"detail": regs[0][2]})
-        raise HTTPException(status_code=400, detail=f"본인 인증 요청에 실패했습니다: {regs[0][2]}")
-    return {"status": "collecting", "job": job_id}
+    return await _hy_start(body, user)
 
 
-def _ht_not_member(msg):
-    """'홈택스 회원이 아님' 류 오류인지 — 회원 간편인증(5) 실패 시 비회원(6)으로 자동 전환"""
-    m = str(msg or "").replace(" ", "")
-    return ("회원" in m and any(k in m for k in ("아닙", "아님", "미가입", "비회원", "가입되", "가입정보", "없습", "없는", "존재하지"))) or "미가입" in m
 
 
 @app.post("/codef/hometax/skip-employees")
 async def codef_hometax_skip_employees(body: CodefCompleteBody, user: models.User = Depends(get_current_user)):
-    """근로복지공단 인증을 건너뛰고(직원 수 제외) 마무리"""
+    """추가 승인(국민연금)을 건너뛰고 마무리"""
     hy = _hy_live.get(body.job)
     if hy and hy["user_id"] == user.id and hy.get("np"):
-        hy["np"]["event"].set()                      # 하이픈: 국민연금 승인 건너뛰기
-        return {"status": "collecting", "job": body.job}
-    st = _ht_live.get(body.job)
-    if not st or st["user_id"] != user.id:
-        return {"status": "collecting", "job": body.job}
-    for lead in [l for l in st["leads"] if l["key"] in ("employees", "disability")]:
-        st["leads"].remove(lead)
-        st["pending"] += 1
-        _ht_settle(body.job, lead["key"], {"result": {"code": "SKIP", "message": "건너뜀"}, "data": None})
+        hy["np"]["event"].set()
     return {"status": "collecting", "job": body.job}
 
 
 @app.post("/codef/hometax/complete")
 async def codef_hometax_complete(body: CodefCompleteBody, user: models.User = Depends(get_current_user)):
-    """사용자가 휴대폰에서 승인한 뒤 — 첫 요청에 2차 요청을 보내면 잡혀 있던 나머지 서류도 이어서 도착"""
-    if body.job in _hy_live:
-        return await _hy_complete(body, user)
-    st = _ht_live.get(body.job)
-    if not st or st["user_id"] != user.id:
+    """휴대폰 승인 뒤 로그인 → 사업자 정보 → 나머지 서류는 이어서 (하이픈)"""
+    if body.job not in _hy_live:
         raise HTTPException(status_code=400, detail="인증 시간이 지났거나 서버가 다시 시작됐어요. 처음부터 다시 시도해 주세요.")
-    leads = list(st["leads"])
-    if not leads:
-        return {"status": "collecting", "job": body.job}
-    try:
-        await asyncio.wait_for(st["launched"].wait(), timeout=10)
-    except asyncio.TimeoutError:
-        pass
-    tries = st.get("tries", 0)
-    if body.auto and tries >= HT_AUTO_MAX:
-        return {"status": "waiting", "job": body.job}
-    if tries >= HT_CONFIRM_MAX:
-        raise HTTPException(status_code=400, detail="인증 확인 횟수를 넘었어요. 처음부터 다시 인증을 요청해 주세요.")
-    st["tries"] = tries + 1
-
-    async def confirm(lead):
-        req = dict(lead["body"], simpleAuth="1", is2Way=True, twoWayInfo=lead["two_way"])
-        try:
-            res = await _codef_post(CODEF_HOMETAX_PRODUCTS[lead["key"]], req)
-            if lead["key"] == "employees":
-                regs = [d for c, d, m in st["res"].get("registration", []) if c == "CF-00000"]
-                comp = (_safe(_parse_registration, regs[0], default={}) or {}).get("company_name", "") if regs else ""
-                res = await _cw_resolve(lead["body"], res, comp)
-        except Exception as e:
-            print(f"[CODEF] 2차 요청 오류: {e!r}")
-            res = {"result": {"code": "NETWORK", "message": "연결 오류"}, "data": None}
-        return lead, res
-
-    results = await asyncio.gather(*(confirm(l) for l in leads))
-    waiting = False
-    for lead, res in results:
-        code = _codef_code(res)
-        if code == "CF-03002":
-            waiting = True
-            continue
-        if code == "CF-12872" and lead["key"] in ("employees", "disability"):   # 추가 인증만 끝난 것 → 그 항목만 빼고 계속
-            if lead in st["leads"]:
-                st["leads"].remove(lead)
-                st["pending"] += 1
-                _ht_settle(body.job, lead["key"], res)
-            continue
-        if code == "CF-12872":       # 확인 횟수 초과로 거래 종료
-            _ht_live.pop(body.job, None)
-            _job_save(body.job, "error", {"detail": "인증 확인 횟수를 넘어 종료됐어요. 다시 요청해 주세요."})
-            raise HTTPException(status_code=400, detail="휴대폰 인증이 확인되지 않아 종료됐어요. 처음부터 다시 인증을 요청해 주세요.")
-        if lead in st["leads"]:
-            st["leads"].remove(lead)
-            st["pending"] += 1
-            _ht_settle(body.job, lead["key"], res)
-    if waiting:
-        if body.auto:
-            return {"status": "waiting", "job": body.job}
-        left = HT_CONFIRM_MAX - st["tries"]
-        raise HTTPException(status_code=409, detail="아직 휴대폰 인증이 완료되지 않았어요. 휴대폰에서 인증을 마친 뒤 다시 눌러주세요." + (" (마지막 확인이에요 — 꼭 인증을 마친 뒤 눌러주세요)" if left == 1 else ""))
-    reg = (_ht_live.get(body.job) or {}).get("res", {}).get("registration") or []
-    if reg and all(c != "CF-00000" for c, _, _ in reg) and any(l["key"] == "registration" for l, _ in results):
-        print(f"[CODEF] complete 실패: {reg[0][2]}")
-    return {"status": "collecting", "job": body.job}
+    return await _hy_complete(body, user)
 
 
 _codef_tasks = set()      # 백그라운드 작업이 중간에 정리되지 않도록 참조 보관
 
 
-# ── 은행 대출 (공동인증서 전용) ──
-#  CODEF 은행 상품은 connectedId 방식: 인증서를 은행별로 등록(account/create) → 보유계좌 조회 → 대출 계좌만 추림 → 등록 삭제.
-#  법인은 기업뱅킹(clientType B, /bank/b/), 개인·개인사업자는 개인뱅킹(P, /bank/p/). 은행 대출만 나온다(중진공 직접대출·캐피탈 등 제외).
-CODEF_BANKS = {"0004": "국민은행", "0088": "신한은행", "0020": "우리은행", "0081": "하나은행", "0003": "기업은행", "0011": "농협은행",
+# ── 은행 대출 (공동인증서·법인 전용, 하이픈 기업계좌 대출 조회) — 화면의 은행 코드(4자리) → 은행 이름
+BANK_NAMES = {"0004": "국민은행", "0088": "신한은행", "0020": "우리은행", "0081": "하나은행", "0003": "기업은행", "0011": "농협은행",
                "0002": "산업은행", "0007": "수협은행", "0023": "SC은행", "0027": "씨티은행", "0031": "대구은행", "0032": "부산은행",
                "0034": "광주은행", "0035": "제주은행", "0037": "전북은행", "0039": "경남은행", "0045": "새마을금고", "0048": "신협",
                "0071": "우체국"}     # K뱅크(0089)는 2023.05 개인뱅킹 웹 서비스 종료
@@ -4046,33 +3310,10 @@ async def _safe_async(coro, default=None):
     try:
         return await coro
     except Exception as e:
-        print(f"[CODEF] 처리 오류: {e!r}")
+        print(f"[hometax] 처리 오류: {e!r}")
         return default
 
 
-def _bank_loan_rows(data):
-    """보유계좌 응답 → 대출 계좌 (대출 + 마이너스통장)"""
-    rows = data if isinstance(data, list) else [data]
-    out = []
-    for d in rows:
-        if not isinstance(d, dict):
-            continue
-        loans = d.get("resLoan") or []
-        loans = loans if isinstance(loans, list) else [loans]
-        for l in loans:
-            if isinstance(l, dict) and str(l.get("resAccountDeposit") or "40") != "99":
-                out.append({"name": l.get("resAccountName") or "대출", "balance": _codef_amt(l.get("resAccountBalance")),
-                            "start": l.get("resAccountStartDate") or "", "account": l.get("resAccount") or "",
-                            "exec": l.get("resAccountLoanExecNo") or ""})
-        deps = d.get("resDepositTrust") or []
-        deps = deps if isinstance(deps, list) else [deps]
-        for a in deps:     # 마이너스통장(한도대출)
-            if isinstance(a, dict) and str(a.get("resOverdraftAcctYN")) == "1":
-                bal = _codef_amt(a.get("resLoanBalance"))
-                if bal:
-                    out.append({"name": a.get("resLoanKind") or "마이너스통장", "balance": abs(bal), "start": a.get("resLoanStartDate") or a.get("resAccountStartDate") or "",
-                                "account": "", "exec": "", "overdraft": True})
-    return out
 
 
 _LOAN_BIZ = _re2.compile(r"사업자|기업|운전|시설|소상공인|소호|SOHO|자영업|중소|보증서|신보|기보|재단|정책|사업|매출|카드가맹|가맹점|POS|창업|법인")
@@ -4091,7 +3332,6 @@ def _loan_kind(name, corp):
     return "business"
 
 
-BANK_P_UNSUPPORTED = {"0020": "개인 조회는 출금계좌번호·계좌 비밀번호가 추가로 필요해 지원하지 않음"}   # CODEF 은행 로그인 파라미터표(2026.11.10)
 
 
 def friendly_bank_msg(m):
@@ -4107,67 +3347,6 @@ def friendly_bank_msg(m):
     return m.split(".")[0][:50] or "인증서 등록 실패"
 
 
-async def _bank_loans(params, banks, corp):
-    """고른 은행들의 대출 → ([{org, date, amount}], 성공 은행, [(은행, 사유)])"""
-    client = "B" if corp else "P"
-    skipped = [] if corp else [(b, BANK_P_UNSUPPORTED[b]) for b in banks if b in BANK_P_UNSUPPORTED]
-    banks = [b for b in banks if corp or b not in BANK_P_UNSUPPORTED]
-    if not banks:
-        return [], [], skipped
-    acc = {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "password": params.get("certPassword", "")}
-    if params.get("certType") == "pfx":
-        acc.update(certType="pfx", certFile=params.get("certFile", ""))
-    else:
-        acc.update(derFile=params.get("certFile", ""), keyFile=params.get("keyFile", ""))
-    res = await _codef_post("/v1/account/create", {"accountList": [dict(acc, organization=b) for b in banks]})
-    data = res.get("data") or {}
-    cid = data.get("connectedId") if isinstance(data, dict) else None
-    ok = [x.get("organization") for x in (data.get("successList") or []) if isinstance(x, dict)] if isinstance(data, dict) else []
-    bad = [(x.get("organization"), x.get("message") or "등록 실패") for x in (data.get("errorList") or []) if isinstance(x, dict)] if isinstance(data, dict) else []
-    if not cid:
-        print(f"[CODEF] 은행 계정 등록 실패 {_codef_code(res)}: {_codef_msg(res)}")
-        for b, m in bad:
-            print(f"[CODEF]   └ {CODEF_BANKS.get(b, b)}({b}): {m}")
-        reasons = dict(bad)          # 전부 실패(CF-04000)여도 은행별 이유는 errorList에 있음
-        return [], [], [(b, friendly_bank_msg(reasons.get(b) or "인증서 등록 실패")) for b in banks] + skipped
-    loans, ok_banks = [], []
-    path = f"/v1/kr/bank/{'b' if corp else 'p'}/account/account-list"
-    try:
-        for b in ok:
-            r = await _codef_post(path, {"connectedId": cid, "organization": b})
-            if _codef_code(r) != "CF-00000":
-                print(f"[CODEF] {b} 보유계좌 실패 {_codef_code(r)}: {_codef_msg(r)}")
-                bad.append((b, (r.get("result") or {}).get("message") or "조회 실패"))
-                continue
-            ok_banks.append(b)
-            now_k = datetime.utcnow() + timedelta(hours=9)
-            for l in _bank_loan_rows(r.get("data")):
-                d = _re2.sub(r"\D", "", str(l["start"]))
-                kind_txt = l["name"]
-                disp = l["name"]
-                if len(d) < 6 and l.get("account"):        # 신규일이 없으면 대출 거래내역에서 신규일·대출종류
-                    q = {"connectedId": cid, "organization": b, "account": l["account"],
-                         "startDate": (now_k - timedelta(days=30)).strftime("%Y%m%d"), "endDate": now_k.strftime("%Y%m%d")}
-                    if l.get("exec"):
-                        q["accountLoanExecNo"] = l["exec"]
-                    t = await _safe_async(_codef_post(f"/v1/kr/bank/{'b' if corp else 'p'}/loan/transaction-list", q), default={})
-                    if _codef_code(t) == "CF-00000":
-                        td = t.get("data") or {}
-                        td = td[0] if isinstance(td, list) and td else td
-                        if isinstance(td, dict):
-                            d = _re2.sub(r"\D", "", str(td.get("resAccountStartDate") or ""))
-                            kind_txt = f"{kind_txt} {td.get('resLoanKind') or ''}"
-                            if td.get("resLoanKind"):
-                                disp = str(td["resLoanKind"]).strip()       # 계좌명보다 대출종류가 더 구체적
-                    else:
-                        print(f"[CODEF] {b} 대출 거래내역 실패 {_codef_code(t)}: {_codef_msg(t)}")
-                loans.append({"org": f"{CODEF_BANKS.get(b, b)} · {disp}".strip(" ·"),
-                              "date": f"{d[:4]}.{d[4:6]}" if len(d) >= 6 else "", "amount": l["balance"],
-                              "kind": _loan_kind(kind_txt, corp)})
-    finally:      # 인증서 등록은 조회 후 바로 지운다
-        await _safe_async(_codef_post("/v1/account/delete", {"connectedId": cid, "accountList": [
-            {"countryCode": "KR", "businessType": "BK", "clientType": client, "loginType": "0", "organization": b} for b in ok]}))
-    return loans, ok_banks, [(b, friendly_bank_msg(m)) for b, m in bad] + skipped
 
 
 def _job_save(job_id, status=None, result=None):
@@ -4181,147 +3360,28 @@ def _job_save(job_id, status=None, result=None):
                 row.result = _json.dumps(result, ensure_ascii=False, default=str)
             db.commit()
     except Exception as e:
-        print(f"[CODEF] 작업 저장 오류: {e!r}")
+        print(f"[hometax] 작업 저장 오류: {e!r}")
     finally:
         db.close()
 
 
-async def _hometax_job(job_id, params, reg_data, banks=None):
-    try:
-        res = await _hometax_collect(params, reg_data, progress=lambda p: _job_save(job_id, result=dict(p, banks=bool(banks))))
-        if banks:      # 공동인증서: 고른 거래 은행의 대출까지
-            _job_save(job_id, result={"got": res["got"], "failed": res["pending"], "doing": "은행 대출", "fill": res["fill"], "banks": True})
-            corp = (res.get("fill") or {}).get("biz_type") == "corp"
-            loans, ok_banks, bad = await _safe_async(_bank_loans(params, banks, corp), default=([], [], [(b, "조회 오류") for b in banks]))
-            if ok_banks:
-                res["fill"]["loans"] = loans
-                res["got"].append("은행 대출")
-                res["bank_ok"] = [CODEF_BANKS[b] for b in ok_banks]
-            if bad:
-                res["bank_failed"] = [f"{CODEF_BANKS.get(b, b)}({m})" for b, m in bad]
-                if not ok_banks:
-                    res["pending"].append("은행 대출")
-        _job_save(job_id, "done", res)
-    except Exception as e:
-        print(f"[CODEF] 작업 오류 {job_id}: {e!r}")
-        _job_save(job_id, "error", {"detail": "홈택스 자료를 불러오는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요."})
 
 
-def _hometax_start_job(params, reg_data, user_id, banks=None):
-    """인증 성공 → 나머지 서류는 서버에서 이어서 조회 (요청 하나가 너무 길어 연결이 끊기는 문제 방지)"""
-    job_id = uuid.uuid4().hex
-    fill = _safe(_parse_registration, reg_data, params.get("_want_biz", ""), default={}) or {}
-    db = SessionLocal()
-    try:
-        db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
-        db.add(models.CodefJob(id=job_id, user_id=user_id, status="running",
-                               result=_json.dumps({"got": ["사업자등록증명"] if fill else [], "doing": "", "fill": fill}, ensure_ascii=False)))
-        db.commit()
-    finally:
-        db.close()
-    t = asyncio.create_task(_hometax_job(job_id, params, reg_data, banks))
-    _codef_tasks.add(t)
-    t.add_done_callback(_codef_tasks.discard)
-    return {"status": "collecting", "job": job_id, "fill": fill}
 
 
-# ── 크레딧포유(신용정보원) 신용정보조회서 → 기대출 ──
-#  CODEF 상품은 크레딧포유 아이디·비밀번호 로그인만 지원(간편인증 X). 보안문자는 CODEF가 자동 인식, 7번 실패 시 사용자 입력.
-#  결과는 조회서 PDF(Base64)뿐 → AI로 읽어 대출·보증·연체 정리. 아이디·비밀번호·PDF는 저장하지 않는다.
-CODEF_CREDIT4U_REPORT = "/v1/kr/insurance/is/credit4u/credit-report"
-C4U_NOT_MEMBER = "크레딧포유 미가입 회원이에요. 크레딧포유에 가입된 경우에만 대출내역을 불러올 수 있어요. (가입했다면 아이디·비밀번호를 확인해 주세요)"
-_c4u_live = {}      # job_id -> {"user_id", "params", "two_way", "t"}
 
 
-class Credit4uBody(BaseModel):
-    user_id: str
-    password: str
 
 
-class Credit4uSecureBody(BaseModel):
-    job: str
-    secure_no: str = ""
-    refresh: bool = False
 
 
-def _c4u_login_fail(res):
-    msg = _codef_msg(res)
-    code = _codef_code(res)
-    return code.startswith("CF-128") or any(k in msg for k in ("아이디", "비밀번호", "패스워드", "회원", "로그인", "일치하지"))
 
 
-async def _c4u_run(job_id, req):
-    """크레딧포유 요청 1번 → 보안문자 필요 / 성공(PDF 해석) / 실패를 작업에 기록"""
-    st = _c4u_live.get(job_id)
-    if not st:
-        return
-    try:
-        res = await _codef_post(CODEF_CREDIT4U_REPORT, req)
-    except Exception as e:
-        print(f"[CODEF] credit4u 호출 오류: {e!r}")
-        _c4u_live.pop(job_id, None)
-        return _job_save(job_id, "error", {"detail": "크레딧포유 연결에 실패했어요. 잠시 후 다시 시도해 주세요."})
-    code, data = _codef_code(res), (res.get("data") or {})
-    if code == "CF-03002" and isinstance(data, dict) and data.get("continue2Way"):
-        ex = data.get("extraInfo") or {}
-        st["two_way"] = {k: data.get(k) for k in ("jobIndex", "threadIndex", "jti", "twoWayTimestamp")}
-        img = ex.get("reqSecureNo") or ""
-        return _job_save(job_id, "need_secure", {"secure_img": img if str(img).startswith("data:") else (f"data:image/png;base64,{img}" if img else "")})
-    _c4u_live.pop(job_id, None)
-    if code != "CF-00000":
-        print(f"[CODEF] credit4u 실패 {code}: {_codef_msg(res)}")
-        return _job_save(job_id, "error", {"detail": C4U_NOT_MEMBER if _c4u_login_fail(res) else f"크레딧포유 조회에 실패했어요: {_codef_msg(res)}",
-                                           "not_member": _c4u_login_fail(res)})
-    rows = data if isinstance(data, list) else [data]
-    pdf = next((r.get("resOriGinalData") or r.get("resOriginalData") for r in rows if isinstance(r, dict) and (r.get("resOriGinalData") or r.get("resOriginalData"))), "")
-    if not pdf:
-        return _job_save(job_id, "error", {"detail": "크레딧포유에서 조회서를 받지 못했어요. 잠시 후 다시 시도해 주세요."})
-    _job_save(job_id, "running", {"doing": "조회서 읽는 중"})
-    parsed, err = await _gemini_json([{"inline_data": {"mime_type": "application/pdf", "data": pdf}}], CREDIT_DOC_PROMPT)
-    if parsed is None:
-        print(f"[CODEF] credit4u PDF 해석 실패: {err}")
-        return _job_save(job_id, "error", {"detail": "조회서를 읽지 못했어요. 잠시 후 다시 시도해 주세요."})
-    out = _credit_clean(parsed)
-    out["kcb"] = out["nice"] = None        # 크레딧포유에는 신용점수가 없음
-    _job_save(job_id, "done", {"credit": out})
 
 
-@app.post("/codef/credit4u/report")
-async def codef_credit4u_report(body: Credit4uBody, user: models.User = Depends(get_current_user)):
-    if not _codef_ready():
-        raise HTTPException(status_code=503, detail="연동이 아직 설정되지 않았습니다.")
-    uid = (body.user_id or "").strip()
-    if not uid or not body.password:
-        raise HTTPException(status_code=400, detail="크레딧포유 아이디와 비밀번호를 입력해 주세요.")
-    for k in [k for k, v in _c4u_live.items() if _time.time() - v["t"] > 600]:
-        _c4u_live.pop(k, None)
-    params = {"organization": "0001", "userId": uid, "userPass": _codef_rsa(body.password),
-              "isIdentityViewYn": "0", "originDataYN": "1"}
-    job_id = uuid.uuid4().hex
-    _c4u_live[job_id] = {"user_id": user.id, "params": params, "two_way": None, "t": _time.time()}
-    db = SessionLocal()
-    try:
-        db.add(models.CodefJob(id=job_id, user_id=user.id, status="running", result=_json.dumps({"doing": "크레딧포유 조회 중"})))
-        db.commit()
-    finally:
-        db.close()
-    _spawn(_c4u_run(job_id, params))
-    return {"status": "running", "job": job_id}
 
 
-@app.post("/codef/credit4u/secure")
-async def codef_credit4u_secure(body: Credit4uSecureBody, user: models.User = Depends(get_current_user)):
-    """보안문자 입력(또는 새로고침) → 이어서 조회"""
-    st = _c4u_live.get(body.job)
-    if not st or st["user_id"] != user.id or not st.get("two_way"):
-        raise HTTPException(status_code=400, detail="조회 시간이 지났어요. 처음부터 다시 시도해 주세요.")
-    req = dict(st["params"], secureNo=(body.secure_no or "").strip(), secureNoRefresh="1" if body.refresh else "0",
-               is2Way=True, twoWayInfo=st["two_way"])
-    if not body.refresh and not req["secureNo"]:
-        raise HTTPException(status_code=400, detail="보안문자를 입력해 주세요.")
-    _job_save(body.job, "running", {"doing": "크레딧포유 조회 중"})
-    _spawn(_c4u_run(body.job, req))
-    return {"status": "running", "job": body.job}
+
 
 
 @app.get("/codef/hometax/job/{job_id}")
@@ -4348,456 +3408,48 @@ def _safe(fn, *a, default=None):
     try:
         return fn(*a)
     except Exception as e:
-        print(f"[CODEF] 해석 오류 {getattr(fn, '__name__', fn)}: {e!r}")
+        print(f"[hometax] 해석 오류 {getattr(fn, '__name__', fn)}: {e!r}")
         return default
 
 
-async def _hometax_collect(params, reg_data, progress=None):
-    """인증이 끝난 세션(같은 id)으로 나머지 서류를 이어서 조회해 원클릭 입력값으로 정리"""
-    fill = _safe(_parse_registration, reg_data, params.get("_want_biz", ""), default={}) or {}
-    got, failed = (["사업자등록증명"] if fill else []), []
-    step = (lambda doing: progress and progress({"got": list(got), "failed": list(failed), "doing": doing, "fill": fill}))
-    now = datetime.utcnow() + timedelta(hours=9)
-    corp = fill.get("biz_type") == "corp"
-    base = {k: params[k] for k in ("organization", "loginType", "loginTypeLevel", "userName", "loginIdentity", "id",
-                                   "certType", "certFile", "keyFile", "certPassword") if k in params}
-    if params.get("telecom"):
-        base["telecom"] = params["telecom"]
-    phone = params.get("phoneNo", "")
-    ph = (lambda key: {key: phone} if phone else {})    # 간편인증만 휴대폰 번호를 보낸다
-
-    errs = []
-
-    async def call(key, extra):
-        try:
-            res = await _codef_post(CODEF_HOMETAX_PRODUCTS[key], dict(base, **extra))
-        except Exception as e:
-            print(f"[CODEF] {key} 호출 오류: {e}")
-            return None, "connection"
-        code = _codef_code(res)
-        if code == "CF-00000":
-            return res.get("data"), None
-        print(f"[CODEF] {key} 실패 {code}: {_codef_msg(res)}")
-        errs.append(f"{_codef_msg(res)} ({code})")
-        return None, _codef_msg(res)
-
-    # ① 부가세과세표준증명 — 최근 3개 연도 (회원 인증서·회원 간편인증만 지원)
-    if params.get("loginType") in ("0", "5"):
-        step("부가세과세표준증명")
-        y = now.year
-        data, err = await call("vat", {**ph("phoneNo"), "startDate": f"{y - 3}01", "endDate": _vat_end(now),
-                                       "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
-        years, ytd = _safe(_parse_vat_split, data, now.year, default=([], None)) if data is not None else ([], None)
-        if years or ytd:
-            if years:
-                fill["years"] = years
-            if ytd:
-                fill["ytd"] = ytd
-            got.append("부가세과세표준증명")
-        else:
-            failed.append("부가세과세표준증명")
-    else:
-        failed.append("부가세과세표준증명")
-    # ①-2 면세사업자 수입금액증명 — 면세사업자(또는 부가세 증명이 안 나온 경우)만
-    if params.get("loginType") in ("0", "5") and 8 <= now.hour < 22 and ("부가세과세표준증명" in failed or _safe(_is_taxfree, reg_data, default=False)):
-        step("면세사업자 수입금액증명")
-        data, err = await call("taxfree", {**ph("phoneNo"), "startYear": str(now.year - 3), "endYear": str(now.year - 1),
-                                           "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"})
-        tf = _safe(_taxfree_revenues, data, default={}) if data is not None else {}
-        if tf:
-            _merge_fin_years(fill, tf, now.year)
-            got.append("면세사업자 수입금액증명")
-            if "부가세과세표준증명" in failed:
-                failed.remove("부가세과세표준증명")      # 면세사업자는 부가세 증명이 없는 게 정상
-
-    # ② 납세증명서 — 발급되면 체납 없음
-    step("납세증명서")
-    data, err = await call("tax_payment", {**ph("phoneNo"), "isIdentityViewYN": "0", "isAddrViewYn": "0", "proofType": "B0007",
-                                           "submitTargets": "99", "applicationType": "01", "originDataYN": "0"})
-    arrears = _safe(_parse_tax_cert, data, err)
-    if arrears:
-        fill["arrears"] = arrears
-        got.append("납세증명서")
-    else:
-        failed.append("납세증명서")
-
-    # ②-2 폐업사실증명 — 예전에 폐업한 사업장이 있으면 재창업 (없으면 발급이 안 되는 게 정상이라 실패로 안내하지 않음)
-    try:
-        cres = await _codef_post(CODEF_HOMETAX_PRODUCTS["closure"], dict(base, **ph("phoneNo"), usePurposes="99", submitTargets="99",
-                                                                          isIdentityViewYn="0", applicationType="01", originDataYN="0", originDataYN1="0"))
-        if _codef_code(cres) == "CF-00000":
-            _closure_apply(fill, [cres.get("data")], got)
-    except Exception as e:
-        print(f"[CODEF] closure 호출 오류: {e}")
-
-    # ③ 재무제표 — 마지막 신고분 (법인: 사업연도 종료연월 / 개인: 과세연도)
-    fin = None
-    bizno = _re2.sub(r"\D", "", fill.get("business_number", "") or params.get("_want_biz", ""))
-    if 8 <= now.hour < 22:
-        step("재무제표")
-        yrs = [now.year - 1, now.year - 2, now.year - 3] + ([now.year - 4] if now.month < 6 else [])
-        tries = [f"{yy}12" for yy in yrs] if corp else [str(yy) for yy in yrs]
-        fin_revs = {}
-        for sd in tries:
-            extra = {**ph("loginPhoneNo"), "startDate": sd, "isIdentityViewYN": "0", "usePurposes": "99", "submitTargets": "99", "originDataYN": "0"}
-            if not corp:
-                extra["proofType"] = "40"
-            if bizno and params.get("loginType") == "0":
-                extra["identity"] = bizno          # 인증서 로그인은 재무제표에 사업자번호 필수 (CF-12850)
-            data, err = await call("financial", extra)
-            if data is None:
-                continue
-            f1 = _safe(_parse_financial, data)
-            fin_revs.update(_safe(_fin_revenues, data, default={}) or {})
-            if f1 and (not fin or f1.get("_year", 0) > fin.get("_year", 0)):
-                fin = f1                                   # 재무 수치는 가장 최근 연도
-            if len([yy for yy in fin_revs if yy < now.year]) >= 3:
-                break
-        _merge_fin_years(fill, fin_revs, now.year)          # 매출은 최근 3년 모두
-    if fin:
-        fin.pop("_revenue", None)
-        fin.pop("_year", None)
-        fill["fin"] = fin
-        got.append("재무제표")
-    elif corp:                                # 개인사업자는 재무제표가 없는 경우가 많아 안내하지 않음
-        failed.append("재무제표" if 8 <= now.hour < 22 else "재무제표(08~22시에만 조회 가능)")
-    # ③-2 원천징수이행상황신고서 — 근로소득 인원(직원 수)과 최근 1년 추세 (기관코드 0005, 사업자번호 필수)
-    wh_n = wh_tr = wh_df = wh_data = None
-    res = {}
-    if bizno and params.get("loginType") == "0":
-        data, err = await call("withholding", dict(_wh_body(now), identity=bizno))
-        if data is not None:
-            wh_data = data
-            wh_n, wh_tr, wh_df = _safe(_parse_withholding, data, default=(None, None, None))
-    # ④ 직원 수 — 근로복지공단 근로자고용정보현황 (인증서는 추가 승인 없음)
-    cw = _cw_body(params, corp=corp, bizno=bizno)
-    if cw:
-        step("직원 수(고용보험)")
-        rrn = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
-        # 대표자 개인명의(0)는 주민번호, 사업자명의 인증서(2)는 사업자번호 — 맞는 조합을 차례로 시도
-        # 법인: 사업자명의 인증서(2)+사업자번호 먼저 / 개인: 대표자 개인명의(0)+주민번호 먼저
-        tries = ([("2", bizno)] + ([("0", rrn)] if rrn else [])) if corp else (([("0", rrn)] if rrn else []) + [("2", bizno), ("0", bizno)])
-        tries = [t for i, t in enumerate(tries) if t[1] and t not in tries[:i]]
-        res = {}
-        try:
-            for i, (ut, ident) in enumerate(tries):
-                body = dict(cw, userType=ut, identity=ident)
-                res = await _cw_resolve(body, await _codef_post(CODEF_HOMETAX_PRODUCTS["employees"], body), fill.get("company_name", ""))
-                if _codef_code(res) == "CF-00000" or _cw_no_data(_codef_code(res), _codef_msg(res)):
-                    break
-                print(f"[CODEF] employees 시도{i + 1}(구분 {ut}, {'주민번호' if ident == rrn else '사업자번호'}) 실패 {_codef_code(res)}: {_codef_msg(res)}")
-        except Exception as e:
-            print(f"[CODEF] employees 호출 오류: {e!r}")
-            res = {}
-        n = _safe(_parse_employees, res.get("data")) if _codef_code(res) == "CF-00000" else (0 if _cw_no_data(_codef_code(res), _codef_msg(res)) else None)
-        if _codef_code(res) not in ("", "CF-00000"):
-            print(f"[CODEF] employees 실패 {_codef_code(res)}: {_codef_msg(res)}")
-        tr, df = _safe(_parse_emp_change, res.get("data"), default=(None, None)) if (_codef_code(res) == "CF-00000" and n) else (None, None)
-        if (n is None or n == 0) and wh_n:                    # 근로복지공단이 안 되면 원천세 신고 인원
-            n = wh_n
-        if n is None and wh_n == 0:
-            n = 0
-        if n is not None:
-            fill["employees"] = n
-            got.append("직원 수(고용보험)")
-            if not tr:
-                tr, df = wh_tr, wh_df
-            if tr:
-                fill["emp_trend"] = tr
-                if df is not None:
-                    fill["emp_increase"] = df
-        else:
-            fill["employees_default"] = 0
-            failed.append("직원 수(고용보험) — 0명으로 채움")
-    elif wh_n is not None:
-        fill["employees"] = wh_n
-        got.append("직원 수(고용보험)")
-        if wh_tr:
-            fill["emp_trend"] = wh_tr
-            if wh_df is not None:
-                fill["emp_increase"] = wh_df
-    else:
-        fill["employees_default"] = 0
-    _emp_fill_avg(fill, [res.get("data")] if _codef_code(res) == "CF-00000" else [], [wh_data] if wh_data is not None else [], now)
-    # ⑤ 대표자 장애인 여부(장애인기업) — 정부24 장애인 증명서 (개인사업자 대표 주민번호가 있을 때). 해당 여부만 남기고 세부 내용은 버림
-    if params.get("loginType") == "0" and not corp:
-        rrn_d = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
-        if rrn_d and fill.get("rep_name"):
-            step("장애인기업 여부(정부24)")
-            dis = await _check_disability(params, fill["rep_name"], rrn_d, _safe(_reg_addr, reg_data, params.get("_want_biz", ""), default="") or "")
-            if dis is not None:
-                fill["rep_disabled"] = dis
-                got.append("장애인기업 여부")
-    # ⑥ 지방세 체납 — 정부24 지방세 납세증명 (개인사업자, 대표 주민번호가 있을 때). 발급되면 체납 없음
-    if params.get("loginType") == "0" and not corp:
-        rrn_l = _safe(_reg_rrn, reg_data, params.get("_want_biz", ""), default="") or ""
-        if rrn_l and fill.get("rep_name"):
-            step("지방세 납세증명(정부24)")
-            lt = await _check_localtax(params, fill["rep_name"], rrn_l, _safe(_reg_addr, reg_data, params.get("_want_biz", ""), default="") or "")
-            if lt:
-                fill["arrears_local"] = lt
-                got.append("지방세 체납 여부")
-            else:
-                failed.append("지방세 납세증명")
-    return {"status": "done", "fill": fill, "got": got, "pending": failed, "reason": "" if got else (errs[0] if errs else "")}
 
 
-def _reg_addr(reg_data, want_biz=""):
-    rows = reg_data if isinstance(reg_data, list) else [reg_data]
-    rows = [r for r in rows if isinstance(r, dict)]
-    digits = _re2.sub(r"\D", "", want_biz or "")
-    row = next((r for r in rows if digits and _re2.sub(r"\D", "", r.get("resCompanyIdentityNo") or "") == digits), rows[0] if rows else {})
-    return str(row.get("resUserAddr") or "").strip()
 
 
-DIS_LEVELS = {"1", "3", "4", "5", "6", "7", "8", "9", "10"}     # 정부24가 지원하는 간편인증 수단
 
 
-def _dis_result(res):
-    """정부24 장애인 증명서 응답 → True(등록)/False(해당 없음)/None(확인 못 함)"""
-    code, msg = _codef_code(res), _codef_msg(res)
-    if code == "CF-00000":
-        d = res.get("data") if isinstance(res, dict) else None
-        return bool(_codef_rows(d, ("resRegNumber",)) or _codef_rows(d, ("resMainDisability",)))
-    if any(k in (msg or "") for k in ("장애인으로 등록되어 있지", "등록되지 않", "대상자가 아", "발급 대상이 아", "해당 정보가 없", "조회된 정보가 없", "존재하지 않", "발급대상이 아")):
-        return False
-    return None
 
 
-def _dis_body_simple(params, telecom=""):
-    """간편인증(비회원)으로 정부24 장애인 증명서 요청 — 주민번호·주소는 사업자등록증명을 받은 뒤 채움 (별도 승인 1회)"""
-    if params.get("loginType") not in ("5", "6") or params.get("loginTypeLevel") not in DIS_LEVELS or not params.get("phoneNo"):
-        return None
-    if params.get("loginTypeLevel") == "5" and not telecom:
-        return None
-    b = {"organization": "0001", "loginType": "6", "loginTypeLevel": params["loginTypeLevel"], "userName": params.get("userName", ""),
-         "phoneNo": params["phoneNo"], "id": f"{params.get('id', 'fina')}-dis", "isIdentityViewYn": "0", "originDataYN": "0"}
-    if telecom:
-        b["telecom"] = telecom
-    return b
 
 
-async def _check_disability(params, name, rrn, addr):
-    """정부24 장애인 증명서(비회원 인증서 로그인) → True(장애인 등록)/False(해당 없음)/None(확인 못 함). 주민번호·장애 내용은 저장·로그하지 않음"""
-    body = {"organization": "0001", "loginType": "3", "certType": params.get("certType", "1"), "certFile": params.get("certFile", ""),
-            "certPassword": params.get("certPassword", ""), "userName": name, "identity": rrn, "address": addr or "서울특별시",
-            "isIdentityViewYn": "0", "originDataYN": "0", "timeout": "120", "id": f"{params.get('id', 'fina')}-dis"}
-    if params.get("keyFile"):
-        body["keyFile"] = params["keyFile"]
-    try:
-        res = await _codef_post(CODEF_HOMETAX_PRODUCTS["disability"], body)
-    except Exception as e:
-        print(f"[CODEF] disability 호출 오류: {type(e).__name__}")
-        return None
-    r = _dis_result(res)
-    if r is None:
-        print(f"[CODEF] disability 실패 {_codef_code(res)}: {_codef_msg(res)}")
-    return r
 
 
-def _localtax_result(res):
-    """정부24 지방세 납세증명 → {"status": "none"(발급됨=체납 없음) | "has"(체납으로 발급 불가)} / None(확인 못 함)"""
-    code, msg = _codef_code(res), _codef_msg(res) or ""
-    if code == "CF-00000":
-        return {"status": "none"}
-    if "체납" in msg:
-        return {"status": "has"}
-    return None
 
 
-async def _check_localtax(params, name, rrn, addr):
-    """정부24 지방세 납세증명(비회원 인증서 로그인). 주민번호는 요청에만 쓰고 저장·로그하지 않음"""
-    body = {"organization": "0001", "loginType": "3", "certType": params.get("certType", "1"), "certFile": params.get("certFile", ""),
-            "certPassword": params.get("certPassword", ""), "userName": name, "identity": rrn, "address": addr or "서울특별시",
-            "phoneNo1": params.get("_phone", ""), "proofType": "99", "isIdentityViewYn": "0", "originDataYN": "0", "originDataYN1": "0",
-            "timeout": "120", "id": f"{params.get('id', 'fina')}-ltx"}
-    if params.get("keyFile"):
-        body["keyFile"] = params["keyFile"]
-    try:
-        res = await _codef_post(CODEF_HOMETAX_PRODUCTS["localtax"], body)
-    except Exception as e:
-        print(f"[CODEF] localtax 호출 오류: {type(e).__name__}")
-        return None
-    r = _localtax_result(res)
-    if r is None:
-        print(f"[CODEF] localtax 실패 {_codef_code(res)}: {_codef_msg(res)}")
-    return r
 
 
-def _codef_amt(v):
-    t = str(v or "").replace(",", "").replace(" ", "").strip()
-    neg = t.startswith("-") or t.startswith("△") or t.startswith("(")
-    t = _re2.sub(r"[^\d.]", "", t)
-    if not t:
-        return None
-    try:
-        n = float(t)
-    except ValueError:
-        return None
-    return -n if neg else n
 
 
-def _codef_rows(obj, must):
-    """응답 안에서 must 키를 가진 dict를 모두 찾는다 (단건=객체 / 다건=리스트 모두 처리)"""
-    out = []
-    if isinstance(obj, dict):
-        if all(k in obj for k in must):
-            out.append(obj)
-        for v in obj.values():
-            if isinstance(v, (dict, list)):
-                out.extend(_codef_rows(v, must))
-    elif isinstance(obj, list):
-        for v in obj:
-            out.extend(_codef_rows(v, must))
-    return out
 
 
-def _vat_end(now):
-    """조회 끝 과세기간 — 올해 1기 확정신고(7월 25일)가 끝난 8월부터는 올해 1기까지"""
-    return f"{now.year}01" if now.month >= 8 else f"{now.year - 1}07"
 
 
-def _parse_vat_split(data, this_year):
-    """부가세과세표준증명 → (지난 연도별 매출 최근 3년, 올해 누적 {year, month, sales})"""
-    by_year, months = {}, {}
-    for r in _codef_rows(data, ("commStartDate",)):
-        amt = _codef_amt(r.get("resIncomeTotalAmt"))
-        if amt is None:
-            amt = _codef_amt(r.get("resIncomeAmt"))
-        st, en = str(r.get("commStartDate") or ""), str(r.get("commEndDate") or "")
-        y = st[:4]
-        if amt is None or not y.isdigit():
-            continue
-        y = int(y)
-        try:
-            m = int(en[4:6]) - int(st[4:6]) + 1 if len(en) >= 6 and en[:4] == st[:4] else 6
-        except ValueError:
-            m = 6
-        by_year[y] = by_year.get(y, 0) + amt
-        months[y] = months.get(y, 0) + max(1, min(12, m))
-    past = [{"year": y, "vat": by_year[y]} for y in sorted(by_year) if y < this_year][-3:]
-    ytd = {"year": this_year, "month": min(12, months[this_year]), "sales": by_year[this_year]} if this_year in by_year else None
-    return past, ytd
 
 
-def _parse_vat(data):
-    """부가세과세표준증명 → 연도별 매출 (1기+2기 합계)"""
-    by_year = {}
-    for r in _codef_rows(data, ("commStartDate",)):
-        amt = _codef_amt(r.get("resIncomeTotalAmt"))
-        if amt is None:
-            amt = _codef_amt(r.get("resIncomeAmt"))
-        y = str(r.get("commStartDate") or "")[:4]
-        if amt is None or not y.isdigit():
-            continue
-        by_year[int(y)] = by_year.get(int(y), 0) + amt
-    return [{"year": y, "vat": by_year[y]} for y in sorted(by_year)][-3:]
 
 
-def _parse_tax_cert(data, err):
-    """납세증명서 → 국세 체납 여부"""
-    if data is not None:
-        rows = data if isinstance(data, list) else [data]
-        arrears_rows = [a for r in rows if isinstance(r, dict) for a in (r.get("resArrearsList") or [])
-                        if isinstance(a, dict) and (a.get("resTaxItemName") or _codef_amt(a.get("resLocalTaxAmt")))]
-        if arrears_rows:
-            amt = sum((_codef_amt(a.get("resLocalTaxAmt")) or 0) + (_codef_amt(a.get("resAdditionalCharges")) or 0) for a in arrears_rows)
-            return {"status": "has", "amount": amt or None}
-        return {"status": "none"}
-    if err and "체납" in err:
-        return {"status": "has"}
-    return None
 
 
-_FIN_KEYS = {
-    "assets": ("자산총계",), "liabilities": ("부채총계",), "capital_stock": ("자본금",), "retained_earnings": ("이익잉여금", "결손금"),
-    "operating_income": ("영업이익", "영업손익"), "interest_expense": ("이자비용",),
-    "net_income": ("당기순이익", "당기순손익"), "_revenue": ("매출액", "수입금액"),
-    "short_borrowings": ("단기차입금",), "long_borrowings": ("장기차입금",),
-}
 
 
-def _fin_revenues(data):
-    """표준재무제표증명 → {연도: 매출액(수입금액)} — 응답에 여러 연도가 있으면 모두"""
-    rows = data if isinstance(data, list) else [data]
-    out = {}
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        yr = str(r.get("resAttrYear") or r.get("commEndDate") or "")[:4]
-        if not yr.isdigit():
-            continue
-        for it in (r.get("resIncomeStatement") or []):
-            if not isinstance(it, dict):
-                continue
-            t = _re2.sub(r"[^가-힣]", "", it.get("_title") or "")
-            a = _codef_amt(it.get("_amt"))
-            if a is not None and any(t.startswith(n) or t.endswith(n) for n in _FIN_KEYS["_revenue"]):
-                out[int(yr)] = a
-                break
-    return out
 
 
-def _taxfree_revenues(data):
-    """면세사업자 수입금액증명 → {귀속연도: 수입금액} (업종별 여러 줄이면 합계)"""
-    out = {}
-    for r in _codef_rows(data, ("commStartDate",)):
-        a = _codef_amt(r.get("resEarningsAmt"))
-        y = str(r.get("commStartDate") or r.get("commEndDate") or "")[:4]
-        if a is not None and y.isdigit():
-            out[int(y)] = out.get(int(y), 0) + a
-    return out
 
 
-def _is_taxfree(reg_data):
-    rows = reg_data if isinstance(reg_data, list) else [reg_data]
-    return any("면세" in str((r or {}).get("resBusinessmanType") or "") for r in rows if isinstance(r, dict))
 
 
-def _merge_fin_years(fill, revs, this_year):
-    """재무제표 매출로 연도별 매출 채우기 — 부가세과세표준증명 값이 있는 연도는 그대로, 최근 3년"""
-    if not revs:
-        return
-    by = {int(y["year"]): dict(y) for y in (fill.get("years") or []) if y.get("year")}
-    for yr, rev in revs.items():
-        if yr >= this_year:
-            continue
-        cur = by.get(yr)
-        if not cur or cur.get("vat") in (None, 0):
-            by[yr] = dict(cur or {}, year=yr, vat=rev)
-    fill["years"] = [by[y] for y in sorted(by)][-3:]
 
 
-def _parse_financial(data):
-    """표준재무제표증명 → 원클릭 재무 수치 (총자산·총부채·자본금·영업이익·이자비용·당기순이익)"""
-    if data is None:
-        return None
-    rows = data if isinstance(data, list) else [data]
-    rows = [r for r in rows if isinstance(r, dict)]
-    if not rows:
-        return None
-    row = sorted(rows, key=lambda r: str(r.get("commEndDate") or r.get("resAttrYear") or ""))[-1]   # 가장 최근 연도
-    items = []
-    for key in ("resBalanceSheet", "resIncomeStatement"):
-        for it in (row.get(key) or []):
-            if isinstance(it, dict):
-                items.append((_re2.sub(r"[^가-힣]", "", it.get("_title") or ""), _codef_amt(it.get("_amt"))))
-    out = {}
-    for k, names in _FIN_KEYS.items():
-        for title, amt in items:
-            if amt is not None and any(title.startswith(n) or title.endswith(n) for n in names):   # 예: 영업이익(손실)
-                if k == "retained_earnings" and "결손" in title and "이익잉여금" not in title and amt > 0:
-                    amt = -amt                   # '미처리결손금'은 양수로 적혀 있어도 결손
-                out[k] = amt
-                break
-    if "assets" not in out and "liabilities" not in out:
-        return None
-    if "interest_expense" not in out and ("operating_income" in out or "net_income" in out) and row.get("resIncomeStatement"):
-        out["interest_expense"] = 0          # 손익계산서에 이자비용 항목이 없으면 이자비용 없음
-    yr = str(row.get("resAttrYear") or row.get("commEndDate") or "")[:4]
-    if yr.isdigit():
-        out["_year"] = int(yr)
-    return out
 
 
 # ══════════════════════════════════════════════════════════════
@@ -5044,6 +3696,62 @@ CREDIT_DOC_PROMPT = """이 문서는 한국의 개인 신용정보 조회 결과
 
 아래 JSON 형식으로만 응답하세요:
 {"doc_type":문서 종류,"name":문자열또는null,"kcb":숫자또는null,"nice":숫자또는null,"loans":[...] 또는 null,"guarantees":[...] 또는 null,"has_delinquency":true/false/null,"comment":"인식 관련 메모 1문장"}"""
+
+
+def _vat_end(now):
+    """조회 끝 과세기간 — 올해 1기 확정신고(7월 25일)가 끝난 8월부터는 올해 1기까지"""
+    return f"{now.year}01" if now.month >= 8 else f"{now.year - 1}07"
+
+
+def _codef_amt(v):
+    t = str(v or "").replace(",", "").replace(" ", "").strip()
+    neg = t.startswith("-") or t.startswith("△") or t.startswith("(")
+    t = _re2.sub(r"[^\d.]", "", t)
+    if not t:
+        return None
+    try:
+        n = float(t)
+    except ValueError:
+        return None
+    return -n if neg else n
+
+
+def _codef_rows(obj, must):
+    """응답 안에서 must 키를 가진 dict를 모두 찾는다 (단건=객체 / 다건=리스트 모두 처리)"""
+    out = []
+    if isinstance(obj, dict):
+        if all(k in obj for k in must):
+            out.append(obj)
+        for v in obj.values():
+            if isinstance(v, (dict, list)):
+                out.extend(_codef_rows(v, must))
+    elif isinstance(obj, list):
+        for v in obj:
+            out.extend(_codef_rows(v, must))
+    return out
+
+
+def _parse_vat_split(data, this_year):
+    """부가세과세표준증명 → (지난 연도별 매출 최근 3년, 올해 누적 {year, month, sales})"""
+    by_year, months = {}, {}
+    for r in _codef_rows(data, ("commStartDate",)):
+        amt = _codef_amt(r.get("resIncomeTotalAmt"))
+        if amt is None:
+            amt = _codef_amt(r.get("resIncomeAmt"))
+        st, en = str(r.get("commStartDate") or ""), str(r.get("commEndDate") or "")
+        y = st[:4]
+        if amt is None or not y.isdigit():
+            continue
+        y = int(y)
+        try:
+            m = int(en[4:6]) - int(st[4:6]) + 1 if len(en) >= 6 and en[:4] == st[:4] else 6
+        except ValueError:
+            m = 6
+        by_year[y] = by_year.get(y, 0) + amt
+        months[y] = months.get(y, 0) + max(1, min(12, m))
+    past = [{"year": y, "vat": by_year[y]} for y in sorted(by_year) if y < this_year][-3:]
+    ytd = {"year": this_year, "month": min(12, months[this_year]), "sales": by_year[this_year]} if this_year in by_year else None
+    return past, ytd
 
 
 def _credit_clean(data):
@@ -5385,7 +4093,7 @@ def _income_doc_post(data):
                 data["business_number"] = f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
             elif not digits:
                 data["business_number"] = None
-        # 과세기간별 금액 → 지난 연도별 매출 + 올해 누적 (CODEF와 같은 방식)
+        # 과세기간별 금액 → 지난 연도별 매출 + 올해 누적
         pr = data.get("periods")
         if isinstance(pr, list) and pr:
             rows = []
