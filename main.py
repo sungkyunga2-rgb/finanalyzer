@@ -138,6 +138,7 @@ COST_PER_ANALYSIS = 10  # 분석 1회당 차감 크레딧
 # 무료 분석: 구독이 없어도 분석은 할 수 있고, 결과는 일부만 보여준다(예상 한도부터는 구독 시 공개).
 # AI 비용이 드는 만큼 구독 없는 회원은 월 무료 분석 횟수를 둔다.
 FREE_ANALYSES_PER_MONTH = 30
+BASIC_ANALYSES_PER_MONTH = 10      # Basic 월 분석 10회 (Pro 무제한)
 
 CREDIT_PACKAGES = {
     "single":   {"price": 13900, "credits": 10,  "label": "1건"},
@@ -152,9 +153,9 @@ CREDIT_PACKAGES = {
 SUBSCRIPTION_PLANS = {
     # year_month: 연간 구독 시 월 환산 금액 (연 결제금액 = year_month × 12)
     "basic":    {"label": "Basic",     "seats": 1,  "price": 39900,  "year_month": 29000,  "tier": "basic",
-                 "desc": "소상공인 사장님용", "features": ["내 사업자 1곳 분석", "신청 가능 기관 + 총 예상 한도", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
+                 "desc": "소상공인 사장님용", "features": ["내 사업자 1곳 분석", "월 분석 10회", "신청 가능 기관 + 총 예상 한도", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
     "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "year_month": 330000, "tier": "pro", "popular": True,
-                 "desc": "컨설턴트용", "features": [{"t": "업체 수 제한 없이 분석", "hi": True}, {"t": "신청 가능 기관 + 자금 명칭 + 기관별 한도", "hi": True},
+                 "desc": "컨설턴트용", "features": [{"t": "업체 수·분석 횟수 무제한", "hi": True}, {"t": "신청 가능 기관 + 자금 명칭 + 기관별 한도", "hi": True},
                               {"t": "신청 가능 지원금 (희망리턴패키지 등)", "hi": True}, "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
 }
 
@@ -842,8 +843,8 @@ def _fin_biz_info(data, today=None):
 async def _analyze_financial(body, user, db, consume: bool):
     from fastapi.concurrency import run_in_threadpool
     subscribed = await run_in_threadpool(user_has_subscription_access, db, user)
-    if consume and not subscribed:
-        await run_in_threadpool(_check_free_quota, db, user)
+    if consume:
+        await run_in_threadpool(_check_plan_quota, db, user)
 
     prompt = """이 문서는 한국 기업/개인사업자의 재무제표입니다(이미지 또는 PDF, 1장 이상 첨부될 수 있음). 여러 장이 첨부된 경우 표지·재무상태표·손익계산서 등 서로 다른 페이지일 수 있으니, 페이지 번호(예: "1/5", "2/5")를 참고해 순서대로 모든 이미지를 함께 분석한 뒤 아래 항목들을 추출하세요. 절대로 짐작하지 말고, 각 숫자가 어느 페이지의 어느 항목(계정과목/코드)에서 나온 것인지 반드시 확인하고 추출하세요.
 
@@ -4851,8 +4852,7 @@ def hometax_limit(body: HometaxLimitBody, user: models.User = Depends(get_curren
     if body.consume:
         if tier == "basic":
             _basic_bind_check(db, user, (body.input or {}).get("business_number"))
-        if not subscribed:
-            _check_free_quota(db, user)
+        _check_plan_quota(db, user, tier)
         used, full = _consume_analysis(db, user, subscribed)
     else:
         full = subscribed
@@ -4883,10 +4883,29 @@ def analyze_manual(
     db: Session = Depends(get_db)
 ):
     subscribed = user_has_subscription_access(db, user)
-    if not subscribed:
-        _check_free_quota(db, user)
+    _check_plan_quota(db, user)
     used, full = _consume_analysis(db, user, subscribed)
     return {"credits_used": used, "remaining_credits": user.credits, "subscribed": subscribed, "full": full}
+
+def _month_analyses(db: Session, user):
+    now = datetime.utcnow() + timedelta(hours=9)                     # 한국 시간 기준 '이번 달'
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=9)
+    return db.query(models.AnalysisLog).filter(models.AnalysisLog.user_id == user.id, models.AnalysisLog.created_at >= month_start).count()
+
+
+def _check_plan_quota(db: Session, user, tier=None):
+    """요금제별 월 분석 횟수 — Pro 무제한 / Basic 월 10회 / 미구독 무료 횟수"""
+    tier = user_plan_tier(db, user) if tier is None else tier
+    if tier == "pro":
+        return
+    if tier == "basic":
+        if _month_analyses(db, user) >= BASIC_ANALYSES_PER_MONTH:
+            raise HTTPException(status_code=402, detail=f"Basic은 월 {BASIC_ANALYSES_PER_MONTH}회까지 분석할 수 있어요. 이번 달 분석을 모두 사용했어요. Pro로 전환하면 분석 횟수 제한 없이 이용할 수 있어요.")
+        return
+    if user_has_subscription_access(db, user):        # 예전 요금제·관리자 지정 등 tier 없는 구독 — 제한 없음
+        return
+    _check_free_quota(db, user)
+
 
 def _check_free_quota(db: Session, user):
     """구독·충전분이 없는 회원의 이번 달 무료 분석 횟수 확인"""
@@ -4898,7 +4917,7 @@ def _check_free_quota(db: Session, user):
         models.AnalysisLog.created_at >= month_start,
     ).count()
     if n >= FREE_ANALYSES_PER_MONTH:
-        raise HTTPException(status_code=402, detail=f"이번 달 무료 분석 {FREE_ANALYSES_PER_MONTH}회를 모두 사용했어요. 구독하시면 분석 횟수 제한 없이 이용할 수 있어요. (구독이 필요합니다)")
+        raise HTTPException(status_code=402, detail=f"이번 달 무료 분석 {FREE_ANALYSES_PER_MONTH}회를 모두 사용했어요. 구독하시면 계속 이용할 수 있어요(Basic 월 10회, Pro 무제한). (구독이 필요합니다)")
 
 def _consume_analysis(db: Session, user, subscribed: bool):
     """분석 1회 기록. (차감 크레딧, 전체 결과 공개 여부)"""
