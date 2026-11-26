@@ -3981,8 +3981,8 @@ function analyzeHometax(input, opts) {
   {  // 신용보증기금 — 전년 대비 매출이 크게 줄면 위험·불가 (기준 숫자는 표시하지 않음)
     const L0 = opts.limit || {};
     let ks = L0.kodit_sales || null;
-    if (!ks && !L0.available) {        // 한도 결과가 없을 때(무료 등) — 서버와 같은 기준: 올해 연 환산 vs 작년, 없으면 최근 두 해
-      let d = null;
+    let d = null;                      // 전년 대비 매출 증감률(%) — 서버와 같은 기준: 올해 연 환산 vs 작년, 없으면 최근 두 해
+    {
       const yt = input.ytd || {}, m = htNum(yt.month), sv = htNum(yt.sales), yy = parseInt(yt.year, 10);
       const vr = rows.filter(x => x.vat !== null);
       if (m && m >= 1 && m <= 12 && sv !== null) {
@@ -3992,10 +3992,10 @@ function analyzeHometax(input, opts) {
         const a = vr[vr.length - 2], b = vr[vr.length - 1];
         if (b.year - a.year === 1 && a.vat > 0) d = (b.vat - a.vat) / a.vat * 100;
       }
-      if (d !== null) ks = d <= -40 ? "blocked" : d <= -25 ? "risk" : null;
+      if (!ks && !L0.available && d !== null) ks = d <= -40 ? "blocked" : d <= -25 ? "risk" : null;   // 한도 결과가 없을 때(무료 등)
     }
     if (ks === "blocked") flags.push({ level: "danger", title: "신용보증기금 신청 어려움", text: "전년보다 매출이 크게 줄어 신용보증기금은 현재 신청이 어렵습니다." });
-    else if (ks === "risk") flags.push({ level: "warn", title: "매출 감소 주의", text: "전년보다 매출이 많이 줄어 신용보증기금 한도가 줄었고, 심사에서도 불리할 수 있습니다." });
+    else if (ks === "risk") flags.push({ level: "warn", title: "매출 감소 주의", text: d !== null && d < 0 ? `전년보다 매출이 ${Math.round(-d)}% 줄어 한도가 줄었고, 심사에서도 불리할 수 있습니다.` : "전년보다 매출이 많이 줄어 한도가 줄었고, 심사에서도 불리할 수 있습니다." });
   }
   if ((opts.limit || {}).jungjin_used)
     flags.push({ level: "warn", title: "중진공 추가 지원", text: "이미 중진공 자금을 이용 중이라 추가 지원은 어렵습니다. 일시적인 경영애로(매출 감소 등)가 있으면 긴급경영안정자금을 검토할 수 있습니다." });
@@ -4809,9 +4809,13 @@ function htIdb(mode, fn) {
 const htNpkiGetDir = () => htIdb("readonly", st => st.get("npki_dir")).catch(() => null);
 const htNpkiSetDir = h => htIdb("readwrite", st => st.put(h, "npki_dir")).catch(() => null);
 
+function htCertKeepRow(show) {
+  const r = document.getElementById("htCertKeepRow");
+  if (r) r.style.display = show ? "" : "none";
+}
 function htNpkiShowFiles() {
   document.getElementById("htNpkiBox").style.display = "none";
-  document.getElementById("htCertFileBox").style.display = "";
+  document.getElementById("htCertFileBox").style.display = ""; htCertKeepRow(true);
   const b = document.getElementById("htCertBackList");
   if (b) b.style.display = (htNpkiSupported() || htNpkiDirInputOk()) ? "" : "none";
 }
@@ -4831,19 +4835,19 @@ async function htNpkiInit() {   // 공동인증서 탭 열 때
   if (!htNpkiSupported() && htNpkiDirInputOk()) {   // 폴더 기억 기능이 없는 브라우저(엣지 일부·파이어폭스 등) → 폴더 선택으로 목록 (매번 선택)
     if (why) why.style.display = "none";
     box.style.display = ""; fileBox.style.display = "none";
-    document.getElementById("htCertKeep").checked = false;
+    document.getElementById("htCertKeep").checked = false; htCertKeepRow(false);
     if (htNpki.certs.length) return htNpkiRender();
     return htNpkiRenderMsg(`<button type="button" class="ht-npki-btn" onclick="htNpkiConnect()">📂 내 PC 인증서 불러오기</button><div style="font-size:11.5px;color:#6b7a8d;margin-top:8px;line-height:1.5;">NPKI 폴더를 고르면 인증서 목록이 나와요. 브라우저가 '파일 업로드' 확인을 물으면 <b>업로드</b>를 눌러 주세요 — 파일은 이 화면에서만 읽고 서버로 보내지 않아요.</div>`, true);
   }
   if (!htNpkiSupported()) {
-    box.style.display = "none"; fileBox.style.display = "";
+    box.style.display = "none"; fileBox.style.display = ""; htCertKeepRow(true);
     const r = htNpkiWhyNot();
     if (why) { why.innerHTML = r; why.style.display = r ? "" : "none"; }
     return;
   }
   if (why) why.style.display = "none";
   box.style.display = ""; fileBox.style.display = "none";
-  document.getElementById("htCertKeep").checked = false;   // PC는 폴더에서 바로 읽으니 따로 보관할 필요 없음
+  document.getElementById("htCertKeep").checked = false; htCertKeepRow(false);   // PC는 폴더에서 바로 읽으니 따로 보관할 필요 없음 → 체크 칸도 숨김
   if (htNpki.certs.length) return htNpkiRender();
   const dir = await htNpkiGetDir();
   if (dir && typeof dir.queryPermission === "function") {
@@ -4905,6 +4909,7 @@ async function htNpkiConnect() {
 async function htNpkiScan(dir, fresh) {
   document.getElementById("htNpkiBox").style.display = "";        // 어느 경로로 들어와도 목록 화면으로
   document.getElementById("htCertFileBox").style.display = "none";
+  htCertKeepRow(false); document.getElementById("htCertKeep").checked = false;
   document.getElementById("htNpkiList").innerHTML = `<div class="ht-npki-empty">인증서를 찾는 중…</div>`;
   const found = [];
   let seen = 0;
@@ -5819,13 +5824,13 @@ function htOrgAmt(o, maxWord) {
 // Pro — 요건에 맞는 자금 이름
 // 자금명 — 여러 개면 한 줄에 하나씩 (<br>로 확실하게 줄바꿈)
 // 희망리턴패키지 재기사업화 (지원금 사업 — 융자 한도와 별개). Basic은 가능 여부만, Pro는 안내 한 줄까지
-function htHopeHtml(L, small) {
+function htHopeHtml(L, small, noHead) {
   const H = L && L.hope_return;
   if (!H || !(H.items || []).length) return "";
   const lab = { ok: ["가능", "#0F6E56", "#E1F5EE"], cond: ["조건부", "#B8860B", "#FFF6DD"], check: ["확인 필요", "#6b7a8d", "#EEF1F5"], no: ["불가", "#9b9a95", "#F3F2EF"] };
   const fs = small ? 11 : 13;
   return `<div style="margin-top:12px;">
-    <div style="font-size:${small ? 11 : 12}px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 지원금 <span style="font-weight:500;color:var(--text3);">(융자 한도와 별개)</span></div>
+    ${noHead ? `<div style="font-size:11px;color:var(--text3);margin-bottom:4px;">융자 한도와 별개로 신청할 수 있는 지원금이에요.</div>` : `<div style="font-size:${small ? 11 : 12}px;font-weight:600;color:var(--text2);margin-bottom:6px;">신청 가능 지원금 <span style="font-weight:500;color:var(--text3);">(융자 한도와 별개)</span></div>`}
     <div style="font-size:${fs}px;font-weight:700;color:#1a1a18;padding:4px 0 2px;">${escapeHtml(H.name)}</div>
     ${H.items.map(i => { const [t, c, bg] = lab[i.s] || lab.check; return `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;font-size:${fs}px;padding:6px 0;border-bottom:1px solid #f0efeb;">
       <span><span style="font-weight:600;color:${i.s === "no" ? "#9b9a95" : "#1a1a18"};">${escapeHtml(i.name)}</span>${i.note ? `<span style="display:block;font-size:${fs - 1.5}px;color:#6b7a8d;margin-top:2px;">${escapeHtml(i.note)}</span>` : ""}</span>
@@ -6053,9 +6058,10 @@ function htReportBody(r, input) {
       `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">${htOrgFundsHtml(g)}</div>` : ""}${g.bojeung ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">현재 보증상품(${e(g.bojeung.at)} 기준): ${e(g.bojeung.items.slice(0, 6).map(x => x.name + (x.limit ? " " + htKwon(x.limit) : "")).join(", "))}${g.bojeung.items.length > 6 ? ` 외 ${g.bojeung.items.length - 6}개` : ""}</div>` : ""}${g.status === "ok" && g.priority ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">정책우선도 해당 ${g.priority.count}/${g.priority.total}: ${e(g.priority.items.filter(x => x.s === "ok").map(x => x.t).join(", "))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
     limHTML += htBasicNote(L, true);
   }
-  limHTML += htHopeHtml(L, true);
+
   if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;
   html += sh("예상 한도 · 신청 가능 기관 (Expected Funding)") + limHTML;
+  if (L && L.hope_return) html += sh("신청 가능 지원금 (Grants)", "join") + htHopeHtml(L, true, true);
 
   // 재무 분석 (비율 카드) — 금액은 아래 재무건전성 진단·재무 수치에서
   const f = r.financial, q = r.ratios;
@@ -9079,7 +9085,7 @@ window.addEventListener("DOMContentLoaded", () => {
           </label>
           <button type="button" class="ht-npki-other" id="htCertBackList" style="display:none;" onclick="htNpkiInit()">← 내 PC 인증서 목록으로</button>
           </div>
-          <label class="ht-auth-check"><input type="checkbox" id="htCertKeep" checked /> 이 기기에 인증서 보관하기 (다음부터 비밀번호만 입력)</label>
+          <label class="ht-auth-check" id="htCertKeepRow"><input type="checkbox" id="htCertKeep" checked /> 이 기기에 인증서 보관하기 (다음부터 비밀번호만 입력)</label>
         </div>
         <div class="ht-cert-move">
           <button type="button" id="htRelayGetBtn" onclick="htRelayOpen()">📲 PC에서 인증서 가져오기</button>

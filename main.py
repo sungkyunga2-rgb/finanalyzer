@@ -1676,7 +1676,7 @@ def _ht_hope_return(inp, today=None):
     # ❷ 업종전환 — 사업개시 60일 경과 + 협약기간 내 다른 업종으로 업태 변경
     if common: r2 = mk("no", common)
     elif bam is not None and bam < 2: r2 = mk("no", "사업 개시 60일이 지나야 신청할 수 있어요")
-    else: r2 = mk("ok", "다른 업종(업태)으로 바꾸는 계획이 있으면 신청할 수 있어요" + (" — 지금 업종은 정책자금 제외 업종이라 전환이 필요해요" if restricted else ""))
+    else: r2 = mk("ok", "다른 업종(업태)으로 바꿀 계획이 있으면 신청할 수 있어요" + (" — 지금 업종은 정책자금 제외 업종이라 전환이 필요해요" if restricted else ""))
     items.append(dict(r2, key="convert", name="업종전환"))
     # ❸ 창업도약 — 먼저 폐업(영업 60일 이상) → 재창업, 공고일 기준 재창업 1년 미만, 현재 업종이 융자제외 업종 아님
     rv = inp.get("restart_review") or {}
