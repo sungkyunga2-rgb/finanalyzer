@@ -2585,7 +2585,8 @@ async def _hy_collect_run(job_id, st, cookie, fill):
     if 8 <= now.hour < 22:
         prog("재무제표")
         fin_ok = False
-        for yy in (now.year - 1, now.year - 2):
+        # 개인사업자는 간편장부라 재무제표가 없는 경우가 대부분 → 작년 1번만 (조회 건수 = 비용 절약)
+        for yy in ((now.year - 1, now.year - 2) if fill.get("biz_type") == "corp" else (now.year - 1,)):
             extra = {"txnrmStrtYm": f"{yy}01", "txnrmEndYm": f"{yy}12", "pdfYn": "Y"}
             if fill.get("biz_type") != "corp":
                 extra["incClCd"] = "40"
@@ -2731,7 +2732,9 @@ async def _hy_collect_run(job_id, st, cookie, fill):
             failed.append("은행 대출(개인사업자 대출은 은행 조회로 볼 수 없어요)")
     st.pop("login", None)                     # 인증서·비밀번호는 조회가 끝나면 바로 버림
     _hy_live.pop(job_id, None)
-    _job_save(job_id, "done", dict({"got": got, "failed": failed, "pending": failed, "doing": "", "fill": fill}, **extra))
+    final = dict({"got": got, "failed": failed, "pending": failed, "doing": "", "fill": fill}, **extra)
+    _hy_cache_put(st.get("user_id"), biz, final)
+    _job_save(job_id, "done", final)
 
 
 def _hy_cert_login(b):
@@ -2767,6 +2770,9 @@ async def _hy_cert_start(body, user):
     """하이픈 공동인증서 — 홈택스 로그인(승인 단계 없음) → 사업자 정보 → 나머지 서류·직원 수·은행 대출은 이어서"""
     login = _hy_cert_login(body)
     biz = _re2.sub(r"\D", "", body.business_number or "")
+    hit = _hy_cache_get(user.id, biz, need_banks=bool(body.banks))
+    if hit:
+        return hit
     if len(biz) != 10:
         db = SessionLocal()
         try:
@@ -2961,6 +2967,9 @@ async def _hy_start(body, user):
     if len(biz) != 10:
         # 하이픈은 사업자번호 없이 로그인하는 길이 없음 — 사업자등록증명(326)·정정신고(246)도 개인사업자면 사업자번호 필수(B0001·ETIABZ0347)
         raise HTTPException(status_code=400, detail="사업자번호를 먼저 입력한 뒤 인증해 주세요.")
+    hit = _hy_cache_get(user.id, biz)
+    if hit:
+        return hit
     org = HY_ORG.get(body.provider)
     if not org:
         raise HTTPException(status_code=400, detail="이 인증 수단은 지원하지 않아요. 다른 앱을 골라 주세요.")
@@ -3063,6 +3072,35 @@ async def _hy_complete(body, user):
     _job_save(body.job, result={"got": ["사업자등록사항"] if fill else [], "failed": [], "doing": "부가세과세표준증명", "fill": fill})
     _spawn(_hy_collect(body.job, st, d.get("cookie") or "", fill))
     return {"status": "collecting", "job": body.job}
+
+
+# 같은 회원이 같은 사업자를 하루 안에 다시 원클릭하면 하이픈을 다시 부르지 않고 직전 결과를 씀 (조회 건당 과금 절약)
+#  서버 메모리에만 둠(재시작하면 비워짐). 인증서·비밀번호·주민번호는 들어 있지 않음
+HY_CACHE_SEC = 24 * 3600
+_hy_cache = {}
+
+
+def _hy_cache_put(user_id, biz, result):
+    b = _re2.sub(r"\D", "", str(biz or ""))
+    if not user_id or len(b) != 10:
+        return
+    if any(not str(x).startswith(("직원 수", "은행 대출(개인")) for x in (result.get("failed") or [])):
+        return                                          # 일부 서류를 못 받은 결과는 저장 안 함 → 다시 누르면 새로 조회
+    now = _time.time()
+    for k in [k for k, v in _hy_cache.items() if now - v[0] > HY_CACHE_SEC]:
+        _hy_cache.pop(k, None)
+    _hy_cache[(user_id, b)] = (now, _json.loads(_json.dumps(result, ensure_ascii=False, default=str)))
+
+
+def _hy_cache_get(user_id, biz, need_banks=False):
+    b = _re2.sub(r"\D", "", str(biz or ""))
+    hit = _hy_cache.get((user_id, b)) if len(b) == 10 else None
+    if not hit or _time.time() - hit[0] > HY_CACHE_SEC:
+        return None
+    res = hit[1]
+    if need_banks and not res.get("banks"):
+        return None                                   # 은행 대출을 새로 고른 경우는 다시 조회
+    return dict(_json.loads(_json.dumps(res, ensure_ascii=False)), status="done", cached=True)
 
 
 def _hy_await_pick(job_id, st, d, fill):

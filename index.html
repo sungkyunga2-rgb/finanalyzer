@@ -5370,7 +5370,7 @@ function htAuthApply(res) {
   }
   if (bankFailed.length) notes.push(`일부 은행은 대출을 불러오지 못했어요.\n${bankFailed.join("\n")}\n\n공동인증서는 은행마다 따로 등록해야 조회돼요. 거래하는 은행 인터넷뱅킹에서 '타행/타기관 인증서 등록'을 한 뒤 다시 시도해 주세요.`);
   if (notes.length) alertError(notes.join("\n\n"));
-  else toast("인증 정보로 입력 칸을 채웠어요. 확인한 뒤 분석해 주세요.");
+  else toast(res.cached ? "오늘 조회한 결과로 입력 칸을 채웠어요. (다시 조회하지 않아 추가 요금 없음)" : "인증 정보로 입력 칸을 채웠어요. 확인한 뒤 분석해 주세요.");
   if (f._business_list && f._business_list.length > 1 && !htAuthState.bizChosen) htBizPickOpen(f._business_list, f.business_number);
   htAuthState.bizChosen = false;
 }
