@@ -155,7 +155,7 @@ SUBSCRIPTION_PLANS = {
                  "desc": "소상공인 사장님용", "features": ["내 사업자 1곳 분석", "신청 가능 기관 + 총 예상 한도", "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
     "fina_pro": {"label": "Pro",       "seats": 1,  "price": 399000, "year_month": 330000, "tier": "pro", "popular": True,
                  "desc": "컨설턴트용", "features": [{"t": "업체 수 제한 없이 분석", "hi": True}, {"t": "신청 가능 기관 + 자금 명칭 + 기관별 한도", "hi": True},
-                              "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
+                              {"t": "신청 가능 지원금 (희망리턴패키지 등)", "hi": True}, "사업장에 맞는 자금일정 안내", "승인가능성 검토"]},
 }
 
 def _public_plans():
@@ -2675,8 +2675,8 @@ async def _hy_closed_sales(call, rv, chk, prog):
         chk["s"] = "ok"
         chk["d"] = "폐업 사업장 매출 신고 있음 (" + ", ".join(f"{y.get('year')}년 {round(_doc_num(y.get('vat')) / 10000):,}만원" for y in pos[-3:]) + ")"
     else:
-        chk["s"] = "no"
-        chk["d"] = "폐업 사업장 매출 신고 내역 없음"
+        chk["s"] = "check"
+        chk["d"] = "폐업 사업장 매출 신고가 0원으로 나와 확인이 필요해요"
     ss = [x.get("s") for x in rv.get("checks") or []]
     rv["status"] = "no" if "no" in ss else ("check" if "check" in ss else "ok")
 
@@ -7595,8 +7595,7 @@ def _ht_mask_basic(L):
         return L
     L = dict(L)
     L["orgs"] = [{"key": o.get("key"), "name": o.get("name"), "status": o.get("status")} for o in (L.get("orgs") or []) if isinstance(o, dict)]
-    if isinstance(L.get("hope_return"), dict):          # Basic — 가능 여부만
-        L["hope_return"] = dict(L["hope_return"], items=[{"key": i.get("key"), "name": i.get("name"), "s": i.get("s")} for i in L["hope_return"].get("items") or []])
+    L.pop("hope_return", None)                           # 신청 가능 지원금(희망리턴패키지)은 Pro 전용
     L["tier"] = "basic"
     return L
 
