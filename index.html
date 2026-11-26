@@ -8362,7 +8362,9 @@ async function finishSubscription(billingKey, planId, cycle) {
     userHasSub = true;
     updateCreditBadges();
     showPage("dashboard");
-    alertInfo("구독이 시작되었습니다.\n지금 바로 원클릭 분석을 이용해 보세요.");
+    const kst = new Date(Date.now() + 9 * 3600000);        // 결제일 = 오늘(한국 시간) 기준으로 매월/매년 같은 날
+    const payDay = cycle === "year" ? `매년 ${kst.getUTCMonth() + 1}월 ${kst.getUTCDate()}일` : `매월 ${kst.getUTCDate()}일${kst.getUTCDate() >= 29 ? " (그날이 없는 달은 말일)" : ""}`;
+    alertInfo(`결제가 완료되었습니다.\n결제일: ${payDay}`);
     return true;
   } catch (e) {
     try { localStorage.removeItem("fa_pending_sub"); } catch (err) {}
