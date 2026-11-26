@@ -3097,6 +3097,8 @@ async def _hy_cert_start(body, user):
         db.commit()
     finally:
         db.close()
+    if len(fill.get("_business_list") or []) > 1:            # 사업장이 여럿 → 고른 뒤 이어서 (인증서 다시 안 고름)
+        return _hy_await_pick(job_id, st, d, fill)
     _spawn(_hy_collect(job_id, st, d.get("cookie") or "", fill))
     return {"status": "collecting", "job": job_id, "fill": fill}
 
@@ -3353,9 +3355,44 @@ async def _hy_complete(body, user):
         fill["location"] = st["pre_location"]
     st["_closed245"] = [r for r in (d.get("bmanBscInfrInqrDVOList") or []) if isinstance(r, dict) and "폐업" in str(r.get("txprStatNm") or "")][:5]
     st["_rrn"] = str(d.get("rprsResno") or "")           # 대표자 주민번호 — 국민연금·휴폐업 요청에만 (저장·응답·로그 안 함)
+    if len(fill.get("_business_list") or []) > 1:            # 사업장이 여럿 → 서류 받기 전에 고르게 (같은 로그인 세션 그대로 이어서)
+        return _hy_await_pick(body.job, st, d, fill)
     _job_save(body.job, result={"got": ["사업자등록사항"] if fill else [], "failed": [], "doing": "부가세과세표준증명", "fill": fill})
     _spawn(_hy_collect(body.job, st, d.get("cookie") or "", fill))
     return {"status": "collecting", "job": body.job}
+
+
+def _hy_await_pick(job_id, st, d, fill):
+    st.update(await_pick=True, d245=d, cookie=d.get("cookie") or "", fill=fill, t=_time.time())
+    _hy_live[job_id] = st
+    _job_save(job_id, "running", {"got": ["사업자등록사항"], "failed": [], "doing": "사업장 선택", "fill": fill})
+    return {"status": "need_pick", "job": job_id, "fill": fill, "businesses": fill.get("_business_list")}
+
+
+class HyPickBody(BaseModel):
+    job: str
+    business_number: str = ""
+
+
+@app.post("/codef/hometax/pick")
+async def hy_pick(body: HyPickBody, user: models.User = Depends(get_current_user)):
+    """여러 사업장 중 고른 사업장으로 이어서 조회 (인증 다시 안 함)"""
+    st = _hy_live.get(body.job)
+    if not st or st.get("user_id") != user.id or not st.get("await_pick"):
+        raise HTTPException(status_code=400, detail="인증 시간이 지났어요. 처음부터 다시 시도해 주세요.")
+    st.pop("await_pick", None)
+    d, fill = st.pop("d245", {}) or {}, st.pop("fill", {}) or {}
+    want = _re2.sub(r"\D", "", body.business_number or "")
+    if len(want) == 10 and want != _re2.sub(r"\D", "", fill.get("business_number") or ""):
+        nf = _safe(_hy_parse_245, d, want, default={}) or {}
+        if nf:
+            if fill.get("location") and not nf.get("location"):
+                nf["location"] = fill["location"]
+            fill = nf
+        st["biz"] = want
+    _job_save(body.job, result={"got": ["사업자등록사항"] if fill else [], "failed": [], "doing": "부가세과세표준증명", "fill": fill, "banks": bool(st.get("banks"))})
+    _spawn(_hy_collect(body.job, st, st.pop("cookie", "") or d.get("cookie") or "", fill))
+    return {"status": "collecting", "job": body.job, "fill": fill}
 
 
 

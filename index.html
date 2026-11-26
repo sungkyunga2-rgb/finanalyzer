@@ -5375,6 +5375,12 @@ function htAuthProgress(p) {
   }).join("");
 }
 async function htAuthFinish(res) {
+  if (res && res.status === "need_pick") {          // 사업장이 여럿 — 서류 받기 전에 고르고, 같은 인증으로 이어서
+    const chosen = await htBizPickWait(res.businesses || [], (res.fill || {}).business_number);
+    htAuthShow(3);
+    res = await api("POST", "/codef/hometax/pick", { job: res.job, business_number: chosen || "" });
+    htAuthState.bizChosen = true;                   // 이미 골랐으니 끝나고 다시 묻지 않음
+  }
   if (!res || res.status !== "collecting") return htAuthApply(res);
   htAuthShow(3);
   htAuthProgress(res);
@@ -5532,10 +5538,24 @@ function htBizPickOpen(list, current) {
   }).join("");
   document.getElementById("htBizPick").style.display = "flex";
 }
-function htBizPickClose() { document.getElementById("htBizPick").style.display = "none"; }
+let htBizPickResolve = null;
+function htBizPickWait(list, current) {              // 인증 중 사업장 고르기 — 고른 사업자번호로 resolve
+  return new Promise(r => { htBizPickResolve = r; htBizPickOpen(list, current); });
+}
+function htBizPickClose() {
+  document.getElementById("htBizPick").style.display = "none";
+  if (htBizPickResolve) { const r = htBizPickResolve; htBizPickResolve = null; r(""); }   // 지금 사업장 그대로
+}
 function htBizPickGo() {
   const sel = document.querySelector('input[name="htBizPick"]:checked');
   if (!sel) return alertError("사업장을 선택해 주세요.");
+  if (htBizPickResolve) {
+    const r = htBizPickResolve; htBizPickResolve = null;
+    document.getElementById("htBizPick").style.display = "none";
+    const el = document.getElementById("ht-biz");
+    if (el) { el.value = sel.value; el.dispatchEvent(new Event("input")); }
+    return r(sel.value);
+  }
   const cur = String(htReadForm().business_number || "").replace(/\D/g, "");
   htBizPickClose();
   if (sel.value.replace(/\D/g, "") === cur) return;          // 지금 채운 사업장 그대로
@@ -8980,13 +9000,13 @@ window.addEventListener("DOMContentLoaded", () => {
     </div>
   </div>
 </div>
-<div id="htBizPick" class="ht-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:3000;align-items:center;justify-content:center;padding:16px;">
+<div id="htBizPick" class="ht-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9500;align-items:center;justify-content:center;padding:16px;">
   <div style="background:#fff;border-radius:16px;max-width:440px;width:100%;padding:22px 20px;box-shadow:0 12px 40px rgba(0,0,0,.2);">
     <div style="font-size:16px;font-weight:700;margin-bottom:4px;">사업장을 선택해 주세요</div>
-    <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px;line-height:1.6;">사업장이 여러 곳이에요. 분석할 사업장을 고르면 그 사업장 자료로 다시 불러와요. (인증을 한 번 더 해야 해요)</p>
+    <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px;line-height:1.6;">사업장이 여러 곳이에요. 분석할 사업장을 고르면 그 사업장 자료를 이어서 불러와요. (인증은 다시 하지 않아요)</p>
     <div id="htBizPickList" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto;"></div>
     <div style="display:flex;gap:8px;margin-top:16px;">
-      <button type="button" class="btn" style="flex:1;" onclick="htBizPickClose()">지금 사업장으로 두기</button>
+      <button type="button" class="btn" style="flex:1;" onclick="htBizPickClose()">첫 번째 사업장으로</button>
       <button type="button" class="btn btn-primary" style="flex:1;" onclick="htBizPickGo()">이 사업장으로 불러오기</button>
     </div>
   </div>
