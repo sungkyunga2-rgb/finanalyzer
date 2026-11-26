@@ -382,6 +382,12 @@
   .ht-rp-btn2.locked { color:var(--text2); border-color:var(--border); }
   .plan-cta { width:100%; margin-top:12px; justify-content:center; font-weight:700; background:var(--text); color:#fff; border-color:var(--text); }
   .plan-card.featured .plan-cta { background:#FFD166; color:#123f7a; border-color:#FFD166; }
+  /* Basic 카드 — 초록 계열로 Pro(파랑)와 구분 */
+  .plan-card:not(.featured) { border-top:4px solid #0F6E56; }
+  .plan-card:not(.featured):hover, .plan-card:not(.featured).selected { border-color:#0F6E56; }
+  .plan-card:not(.featured).selected { box-shadow:0 0 0 3px rgba(15,110,86,.18); }
+  .plan-card:not(.featured) .plan-name { color:#0F6E56; }
+  .plan-card:not(.featured) .plan-cta { background:#0F6E56; border-color:#0F6E56; color:#fff; }
   .sub-upgrade { margin-top:1rem; border-radius:14px; padding:14px 16px; color:#fff; background:linear-gradient(160deg, #123f7a 0%, #185FA5 100%); }
   .sub-upgrade .plan-feats { color:rgba(255,255,255,.85); }
   .sub-upgrade .plan-feats li.hi { color:#FFD166; }
@@ -1615,7 +1621,9 @@
   <div class="main" style="max-width:720px;">
     <h2 id="sub-page-title" style="font-size:20px;font-weight:600;margin-bottom:.4rem;letter-spacing:-0.02em;">구독</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:1.25rem;line-height:1.6;">
-      월 구독으로 기업분석·평가를 <strong>횟수 제한 없이</strong> 이용하세요. 내 사업장을 확인하는 사장님은 <strong>Basic</strong>, 여러 업체를 분석하는 컨설턴트는 <strong>Pro</strong>가 맞아요.
+      월 구독으로 기업분석·평가를 <strong>횟수 제한 없이</strong> 이용하세요.<br/>
+      내 사업장의 한도가 궁금하다면 <strong style="color:#0F6E56;">Basic</strong><br/>
+      여러 사업장을 운영 중이거나 신청 가능한 자금명과 지원금 정보까지 필요하다면 <strong style="color:#185FA5;">Pro</strong>가 맞아요.
     </p>
 
     <div id="sub-loading" class="card" style="text-align:center;color:var(--text3);font-size:13px;">불러오는 중...</div>
