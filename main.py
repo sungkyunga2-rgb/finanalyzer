@@ -1689,7 +1689,7 @@ def _ht_hope_return(inp, today=None):
         r3 = mk("check", "예전 사업장 폐업 이력(폐업사실증명) 확인이 필요해요")
     elif o and (c - o).days < 60: r3 = mk("no", "예전 사업장 영업 기간이 60일 미만이에요")
     elif opened and c > opened: r3 = mk("no", "먼저 폐업한 뒤 재창업한 경우만 해당돼요")
-    else: r3 = mk("ok", "신청 후 매출이 10% 이상 늘어야 사업화가 완료돼요")
+    else: r3 = mk("ok", "신청 후 매출이 10% 이상 늘어야 사업화가 완료돼요" + ("" if o else " · 예전 사업장이 영업 60일 이상이었는지 확인이 필요해요"))
     items.append(dict(r3, key="leap", name="창업도약"))
     if debt and not common:
         for it in items:
@@ -2646,6 +2646,18 @@ def _hy_shape(v, depth=0):
     return type(v).__name__
 
 
+def _hy_regnos_264(d):
+    """사업자상태조회(주민번호) 응답의 사업자번호(10자리) 전부"""
+    vals = list(d.values()) if isinstance(d, dict) else (d if isinstance(d, list) else [])
+    out = []
+    for v in vals:
+        if isinstance(v, dict):
+            n = _re2.sub(r"\D", "", str(v.get("regNo") or v.get("bizNo") or ""))
+            if len(n) == 10 and n not in out:
+                out.append(n)
+    return out
+
+
 def _hy_closed_264(d):
     """사업자상태조회(주민번호) {0:{regNo, result}} → 폐업한 사업장 [{resCompanyIdentityNo, resClosingDate}] (폐업 없으면 [], 형식 모르면 None)"""
     vals = list(d.values()) if isinstance(d, dict) else (d if isinstance(d, list) else [])
@@ -2888,34 +2900,45 @@ async def _hy_collect_run(job_id, st, cookie, fill):
     # ⑤ 대표자 주민번호가 있으면(요청에만 쓰고 저장·로그 안 함): 휴폐업 조회(264, 같은 세션) → 응답 구조 로그 / 국민연금 인원(463, 승인 1번 더)
     rrn = _re2.sub(r"\D", "", str(st.pop("_rrn", "") or ""))
     closed245 = st.pop("_closed245", None) or []
-    if closed245:
-        # ⑤-1 재창업: 사업자등록사항(245)에 나온 폐업 사업장 → 사업자상태조회(263, 사업자번호)로 폐업일 → 재창업 요건 검토
-        prog("폐업 사업장 확인")
-        rows = []
-        for r in closed245:
-            bn = _re2.sub(r"\D", "", str(r.get("txprDscmNoEncCntn") or r.get("txprDscmNo") or ""))
-            if len(bn) != 10 or bn == biz:
-                continue
-            j = await _hyphen_post("/in0076000263", {"bizNo": bn})
-            dd = _hy_data(j) if not _hy_err(j)[0] else {}
-            cd = _re2.sub(r"\D", "", str(dd.get("closeDt") or ""))
-            if len(cd) != 8:
-                print(f"[hyphen] 263 폐업일 못 받음: {_hy_err(j)[1] or _hy_shape(dd)}")
-                continue
-            rows.append({"resCompanyNm": str(r.get("txprNm") or "").strip(), "resCompanyIdentityNo": bn,
-                         "resOpenDate": _re2.sub(r"\D", "", str(r.get("txprDscmDt") or "")), "resClosingDate": cd,
-                         "resBusinessTypes": str(r.get("bcNm") or "").strip(), "resBusinessItems": str(r.get("itmNm") or "").strip()})
-        if rows:
-            _safe(_closure_apply, fill, [rows], got)
-    if len(rrn) == 13 and not closed245:
+    # ⑤ 재창업 이력: 사업자등록사항(245)의 폐업 사업장 + 사업자상태조회(264, 대표자 주민번호)의 사업자번호 전부
+    #    → 사업자상태조회(263, 사업자번호)로 폐업 여부·폐업일 → 재창업 요건 검토. 개업일은 245에 있을 때만(없으면 '영업 60일 확인 필요')
+    cand = {}
+    for r in closed245:
+        bn = _re2.sub(r"\D", "", str(r.get("txprDscmNoEncCntn") or r.get("txprDscmNo") or ""))
+        if len(bn) == 10 and bn != biz:
+            cand[bn] = {"resCompanyNm": str(r.get("txprNm") or "").strip(), "resOpenDate": _re2.sub(r"\D", "", str(r.get("txprDscmDt") or "")),
+                        "resBusinessTypes": str(r.get("bcNm") or "").strip(), "resBusinessItems": str(r.get("itmNm") or "").strip()}
+    rows264 = None
+    if len(rrn) == 13:
         prog("휴·폐업 조회")
         j = await call("/in0076000264", {"bizNo": rrn})
         if not _hy_err(j)[0]:
-            rows = _hy_closed_264(_hy_data(j))
-            if rows:
-                _safe(_closure_apply, fill, [rows], got)          # 예전 사업장 폐업 이력 → 재창업 요건 검토
-            elif rows is None:
+            rows264 = _hy_closed_264(_hy_data(j))
+            if rows264 is None:
                 print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
+            for v in _hy_regnos_264(_hy_data(j)):
+                if v != biz and v not in cand:
+                    cand[v] = {}
+        else:
+            print(f"[hyphen] 264 실패: {_hy_err(j)[1]}")
+    rows = []
+    if cand:
+        prog("폐업 사업장 확인")
+        for bn, info in list(cand.items())[:8]:
+            j = await _hyphen_post("/in0076000263", {"bizNo": bn})
+            dd = _hy_data(j) if not _hy_err(j)[0] else {}
+            cd = _re2.sub(r"\D", "", str(dd.get("closeDt") or ""))
+            if str(dd.get("taxSt") or "") not in ("01", "1") and len(cd) != 8:
+                continue                                       # 운영 중·휴업 — 폐업 아님
+            if len(cd) != 8:                                   # 263에 폐업일이 없으면 264 결과 문구의 날짜
+                cd = next((x.get("resClosingDate") for x in (rows264 or []) if x.get("resCompanyIdentityNo") == bn and x.get("resClosingDate")), "")
+            if len(cd) != 8:
+                print(f"[hyphen] 263 폐업일 못 받음: {_hy_err(j)[1] or _hy_shape(dd)}")
+                continue
+            rows.append(dict({"resCompanyNm": "", "resOpenDate": "", "resBusinessTypes": "", "resBusinessItems": ""}, **info,
+                             resCompanyIdentityNo=bn, resClosingDate=cd))
+    if rows:
+        _safe(_closure_apply, fill, [rows], got)              # 예전 사업장 폐업 이력 → 재창업 요건 검토
     if len(rrn) == 13 and HY_NPS:        # 국민연금 462·463 모두 하이픈에서 '사이트 개편으로 지원 종료'(LOGIN-000) → 대체 상품 확인 전까지 호출 안 함
         await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
     if st.get("cert") and fill.get("employees") is None:
