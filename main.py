@@ -1108,6 +1108,7 @@ HT_LIMIT_RULE = {
     "jungjinMinSales": 500000000, "jungjinAvgSales": 1000000000,   # 중진공(소상공인): 최근 매출 5억 미만 불가, 최근 3년 평균 10억 미만은 가능성 낮음
     "exportUsd10k": 140000000,
     "jungjinYouthMax": 100000000, "jungjinYouthFocusMax": 200000000,   # 중진공 청년전용창업자금 기업당 1억 (제조업·중점지원분야 2억)                                      # 수출실적 10만불 ≈ 1.4억 원 (수출기업화 / 글로벌화 구분)
+    "interestEstRate": 0.05,                                 # 차입금 칸이 없고 이자비용만 있으면 이자비용 ÷ 5%로 기대출 추정 (절반 단기·절반 장기로 봄)
     "collateralRate": 0.30, "collateralRateEmp": 0.25,      # 장기차입금(담보로 봄)은 30%만 차감 (최근 1년 고용 유지·증가면 25%)
 }
 
@@ -1300,14 +1301,30 @@ def _ht_loan_amt(l, inp=None):
     return _ht_num(l.get("amount")) or 0
 
 
+def _ht_est_borrow(inp):
+    """차입금 칸이 비었고 기대출 입력도 없는데 이자비용이 있으면 → 추정 차입금 (이자비용 ÷ 추정 금리). 아니면 None"""
+    fin = inp.get("fin") or {}
+    if _ht_num(fin.get("short_borrowings")) is not None or _ht_num(fin.get("long_borrowings")) is not None:
+        return None
+    if any(_ht_loan_amt(l) > 0 for l in (inp.get("loans") or []) if isinstance(l, dict)):
+        return None
+    it = _ht_num(fin.get("interest_expense"))
+    if not it or it <= 0:
+        return None
+    return round(it / HT_LIMIT_RULE["interestEstRate"] / 1000000) * 1000000
+
+
 def _ht_fin_borrow(inp):
-    """재무제표 차입금 → 한도에서 뺄 금액 (단기 100% + 장기 30%/25%). 차입금 칸이 둘 다 비어 있으면 None"""
+    """재무제표 차입금 → 한도에서 뺄 금액 (단기 100% + 장기 30%/25%). 차입금 칸이 둘 다 비어 있으면 이자비용 추정, 그것도 없으면 None"""
     fin = inp.get("fin") or {}
     sb, lb = _ht_num(fin.get("short_borrowings")), _ht_num(fin.get("long_borrowings"))
-    if sb is None and lb is None:
-        return None
     emp = bool(inp.get("emp_keep")) or _ht_s(inp.get("emp_trend")) in ("up", "keep")
     rate = HT_LIMIT_RULE["collateralRateEmp"] if emp else HT_LIMIT_RULE["collateralRate"]
+    if sb is None and lb is None:
+        est = _ht_est_borrow(inp)
+        if est is None:
+            return None
+        sb, lb = est / 2, est / 2
     return max(0, sb or 0) + max(0, lb or 0) * rate
 
 _HT_IND = {
@@ -1856,6 +1873,9 @@ def _ht_estimate_limit_core(inp, today=None):
         jj["priority"] = _ht_jungjin_priority(inp, ind_text, used["jungjin"], jj_ys)     # 정책우선도 지표 (Pro)
 
     base = {"available": True, "sales": sales, "small": small, "orgs": orgs}
+    eb = _ht_est_borrow(inp)
+    if eb:
+        base["est_borrow"] = eb                     # 화면 안내용 — 이자비용으로 추정한 기대출
     if jd_recent:
         base["jaedan_recent"] = jd_recent           # 12(서울) 또는 6 — 화면 안내용
     if jj_again == "used":

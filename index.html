@@ -3995,6 +3995,8 @@ function analyzeHometax(input, opts) {
   }
   if ((opts.limit || {}).jungjin_used)
     flags.push({ level: "warn", title: "중진공 추가 지원", text: "이미 중진공 자금을 이용 중이라 추가 지원은 어렵습니다. 일시적인 경영애로(매출 감소 등)가 있으면 긴급경영안정자금을 검토할 수 있습니다." });
+  if ((opts.limit || {}).est_borrow)
+    flags.push({ level: "warn", title: "기대출 추정 반영", text: `재무제표에 차입금 항목이 없어 이자비용으로 기대출을 약 ${(opts.limit.est_borrow / 100000000).toFixed(1)}억원으로 추정해 한도에 반영했습니다. 실제 대출 내역을 입력하면 더 정확해집니다.` });
   if ((opts.limit || {}).jungjin_sales === "low")
     flags.push({ level: "warn", title: "중진공 승인 가능성", text: "매출 규모가 중진공 주요 지원 기업보다 작아 중진공은 승인 가능성이 낮을 수 있습니다." });
   if (loans.filter(l => /카드|현금\s*서비스|대부|러시앤캐시|산와|리드코프/.test(l.org || "")).length >= 3)
