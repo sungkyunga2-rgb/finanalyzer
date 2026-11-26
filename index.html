@@ -1218,6 +1218,7 @@
               <label class="ht-f"><span>총자산</span><input type="text" inputmode="numeric" id="ht-assets" oninput="formatMoneyInput(this)" /></label>
               <label class="ht-f"><span>총부채</span><input type="text" inputmode="numeric" id="ht-debt" oninput="formatMoneyInput(this)" /></label>
               <label class="ht-f"><span>자본금</span><input type="text" inputmode="numeric" id="ht-capital" oninput="formatMoneyInput(this)" /></label>
+              <label class="ht-f"><span>이익잉여금 (결손금은 -)</span><input type="text" inputmode="text" id="ht-retained" oninput="htSignedMoney(this)" placeholder="법인만" /></label>
               <label class="ht-f"><span>영업이익 (연)</span><input type="text" inputmode="text" id="ht-opincome" oninput="htSignedMoney(this)" /></label>
               <label class="ht-f"><span>이자비용 (연)</span><input type="text" inputmode="numeric" id="ht-interest" oninput="formatMoneyInput(this)" /></label>
               <label class="ht-f"><span>당기순이익 (연)</span><input type="text" inputmode="text" id="ht-netincome" oninput="htSignedMoney(this)" /></label>
@@ -3149,7 +3150,7 @@ function htFillFromFinancial(d) {
   }
   setMoney("ht-y2-vat", num(d.revenue));
   const fin = { "ht-assets": sum(d.current_assets, d.noncurrent_assets), "ht-debt": sum(d.current_liabilities, d.noncurrent_liabilities),
-                "ht-capital": num(d.capital_stock), "ht-opincome": num(d.operating_income), "ht-interest": num(d.interest_expense), "ht-netincome": num(d.net_income),
+                "ht-capital": num(d.capital_stock), "ht-retained": num(d.retained_earnings), "ht-opincome": num(d.operating_income), "ht-interest": num(d.interest_expense), "ht-netincome": num(d.net_income),
                 "ht-short-borrow": num(d.short_borrowings), "ht-long-borrow": num(d.long_borrowings) };
   // 업체 정보: 지역·업태/종목(2개까지)·대표자 나이 — 인식된 값은 덮어씀
   const bizKeys = ["location", "industry", "item", "industry2", "item2"].filter(k => d[k]);
@@ -3744,6 +3745,8 @@ function calcStability(fin, corp, sales) {
   const equity = assets - liabilities;
   const capitalStock = htNum(fin.capital_stock);
   const op = htNum(fin.operating_income), interest = htNum(fin.interest_expense), net = htNum(fin.net_income);
+  const retained = htNum(fin.retained_earnings);
+  const accDeficit = retained !== null && retained < 0;          // 누적 결손 (이익잉여금 마이너스 = 결손금)
 
   const capitalEroded = equity <= 0;
   const dr = equity > 0 ? liabilities / equity * 100 : null;
@@ -3757,10 +3760,10 @@ function calcStability(fin, corp, sales) {
   const drClass = capitalEroded ? "danger" : personal ? "info" : (dr === null ? "warn" : dr > 400 ? "danger" : dr > 200 ? "warn" : "safe");
   const iceClass = noInt ? "safe" : (ice === null ? "info" : ice < 1 ? "danger" : ice < 2 ? "warn" : "safe");    // 이자비용을 모르면 '주의'가 아니라 미입력
 
-  let erosionStatus, erosionClass;
+  let erosionStatus, erosionClass, erosionRate = null;
   if (capitalEroded) { erosionStatus = "완전자본잠식"; erosionClass = "danger"; }
   else if (corp && capitalStock && equity < capitalStock) {
-    const r = (capitalStock - equity) / capitalStock * 100;
+    const r = (capitalStock - equity) / capitalStock * 100; erosionRate = r;
     erosionStatus = `부분자본잠식 (${r.toFixed(1)}%)`; erosionClass = r >= 50 ? "danger" : "warn";
   } else { erosionStatus = "정상"; erosionClass = "safe"; }
 
@@ -3786,7 +3789,7 @@ function calcStability(fin, corp, sales) {
   const pct = Math.round(total / max * 100);
   const grade = pct >= 80 ? "A (우수)" : pct >= 60 ? "B (양호)" : pct >= 40 ? "C (주의)" : "D (위험)";
   return { assets, liabilities, equity, dr, drClass, personal, lr, lrClass, ice, iceClass, noInt, capitalEroded,
-           erosionStatus, erosionClass, net, items, total, max, pct, grade };
+           erosionStatus, erosionClass, erosionRate, net, retained, accDeficit, items, total, max, pct, grade };
 }
 
 // ── 예상 한도는 서버에서 계산한다 (POST /hometax/limit) — 기관별 기준은 화면 코드에 두지 않는다 ──
@@ -3908,6 +3911,9 @@ function analyzeHometax(input, opts) {
   const financial = calcStability(input.fin, finCorp, lsV ? lsV.vat : null);
   if (financial) {
     if (financial.capitalEroded) flags.push({ level: "danger", title: "자본잠식", text: "자본총계가 0 이하인 완전자본잠식 상태입니다." });
+    else if (financial.erosionRate !== null && financial.erosionRate >= 50) flags.push({ level: "danger", title: "부분자본잠식", text: `자본금의 ${financial.erosionRate.toFixed(1)}%가 잠식된 상태입니다.` });
+    if (financial.accDeficit && !financial.capitalEroded) flags.push({ level: "warn", title: "누적 결손", text: `과거 손실이 쌓여 결손금 ${Math.round(-financial.retained / 10000).toLocaleString()}만원이 있습니다.${financial.net !== null && financial.net > 0 ? " 올해는 이익이지만 결손 보전 계획을 설명할 수 있어야 해요." : ""}` });
+    if (financial.capitalEroded) { /* 위에서 자본잠식으로 표시 */ }
     else if (financial.personal) {
       if (financial.lrClass === "danger") flags.push({ level: "warn", title: "매출 대비 부채 과다", text: `부채가 연 매출의 ${financial.lr.toFixed(1)}%로 많은 편입니다.` });
     }
@@ -4080,7 +4086,7 @@ const HT_FIELDS = [
   ["smart_tech", "ht-smart", "check"], ["retry.restart", "ht-rt-restart", "check"], ["retry.edu", "ht-rt-edu", "check"], ["retry.revival", "ht-rt-revival", "check"], ["retry.debt", "ht-rt-debt", "check"],
   ["employees", "ht-employees", "int"], ["emp_avg", "ht-emp-avg", "num"], ["emp_keep", "ht-emp-keep", "check"], ["emp_increase", "ht-emp-inc", "int"], ["naeil", "ht-naeil", "text"], ["umbrella", "ht-umbrella", "text"],
   ["factory", "ht-factory", "text"],
-  ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"],
+  ["fin.assets", "ht-assets", "money"], ["fin.liabilities", "ht-debt", "money"], ["fin.capital_stock", "ht-capital", "money"], ["fin.retained_earnings", "ht-retained", "signed"],
   ["fin.operating_income", "ht-opincome", "signed"], ["fin.interest_expense", "ht-interest", "money"], ["fin.net_income", "ht-netincome", "signed"],
   ["fin.short_borrowings", "ht-short-borrow", "money"], ["fin.long_borrowings", "ht-long-borrow", "money"],
 
@@ -6071,7 +6077,11 @@ function htReportBody(r, input) {
         <div style="font-size:15px;font-weight:700;color:${CC[cls]};">${CI[cls]} ${text}</div></div>`;
     // 재무건전성 진단
     const ero = f ? [f.erosionClass, e(f.erosionStatus)] : ["muted", "미입력"];
-    const def = net === null ? ["muted", "미입력"] : net < 0 ? ["danger", "손실 " + won0(-net)] : ["safe", "이익 " + won0(net)];
+    const ret = N(fin.retained_earnings);
+    const defNow = net === null ? null : net < 0 ? "당기 손실 " + won0(-net) : "당기 이익 " + won0(net);
+    const defAcc = ret === null ? null : ret < 0 ? "누적 결손 " + won0(-ret) : "누적 결손 없음";
+    const def = (net === null && ret === null) ? ["muted", "미입력"]
+      : [(net !== null && net < 0) ? "danger" : (ret !== null && ret < 0) ? "warn" : "safe", [defNow, defAcc].filter(Boolean).join(" · ")];
     const lr = Lb !== null && sales ? Lb / sales * 100 : null;
     const lrc = lr === null ? "muted" : lr >= 30 ? "danger" : lr >= 15 ? "warn" : "safe";
     const lrt = lr === null ? "미산정" : `${lr.toFixed(1)}% (${lrc === "safe" ? "적정" : lrc === "warn" ? "주의" : "과다"})`;

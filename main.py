@@ -858,6 +858,7 @@ async def _analyze_financial(body, user, db, consume: bool):
 - 비유동부채(계) → noncurrent_liabilities
 - 부채총계(Ⅰ+Ⅱ) → current_liabilities + noncurrent_liabilities 합과 반드시 일치해야 함
 - 자본금 (부채총계 아래, 보통 "Ⅲ.자본금" 항목) → capital_stock ※ 개인사업자는 마이너스(-)로 표기되는 경우가 흔함. 부호를 반드시 그대로 반영할 것
+- 법인 표준재무상태표의 자본 하위 "이익잉여금(또는 결손금)" / "미처분이익잉여금(미처리결손금)" → retained_earnings ※ 결손금·미처리결손금이면 마이너스(-)로. 개인사업자 양식처럼 이 항목이 없으면 null
 - 당기순이익 (보통 "Ⅳ.당기순이익") → 아래 손익계산서의 최종 당기순손익과 반드시 같은 값이어야 함
 - 자본총계(Ⅲ+Ⅳ) → total_equity ※ "자본금 + 당기순이익"과 반드시 일치해야 함. 절대 다른 항목(예: 영업외수익 등)을 여기 넣지 말 것
 - 부채및자본총계(Ⅰ+Ⅱ+Ⅲ+Ⅳ) → 유동자산+비유동자산(자산총계)과 반드시 일치해야 함
@@ -879,12 +880,12 @@ async def _analyze_financial(body, user, db, consume: bool):
 
 ━━━ 추출 후 자체 검증 (반드시 수행) ━━━
 1. current_assets + noncurrent_assets ≈ current_liabilities + noncurrent_liabilities + total_equity (자산총계 = 부채총계 + 자본총계)
-2. total_equity ≈ capital_stock + net_income (자본총계 = 자본금 + 당기순이익)
+2. (개인사업자 표준재무상태표) total_equity ≈ capital_stock + net_income (자본총계 = 자본금 + 당기순이익). 법인은 자본잉여금·이익잉여금 등이 더해지므로 이 식은 보지 않습니다
 위 두 식이 맞지 않으면, 각 숫자를 다시 원본에서 확인하고 올바른 값으로 정정하세요. 그래도 확신이 없으면 comment에 어떤 항목이 불확실한지 명시하세요.
 
 추출 항목: company_name(회사명, 문자열), rep_name(대표자명, 문자열), business_number(사업자등록번호, 문자열, 000-00-00000 형식), address(사업장 소재지), business_type(업태), business_item(종목), birth_date(대표자 생년월일 YYYY-MM-DD),
 revenue(매출액), current_assets(유동자산), noncurrent_assets(비유동자산), current_liabilities(유동부채),
-noncurrent_liabilities(비유동부채), capital_stock(자본금), total_equity(자본총계),
+noncurrent_liabilities(비유동부채), capital_stock(자본금), retained_earnings(이익잉여금, 결손금이면 마이너스), total_equity(자본총계),
 operating_income(영업이익), interest_expense(이자비용), net_income(당기순이익), short_borrowings(단기차입금), long_borrowings(장기차입금)
 
 대표자명과 사업자등록번호는 재무제표 표지, 법인/개인 정보란, 사업자등록증 첨부 등에서 찾을 수 있습니다. 문서에 없으면 null로 두세요.
@@ -896,7 +897,7 @@ operating_income(영업이익), interest_expense(이자비용), net_income(당�
 
 아래 JSON 형식으로만 응답하세요. 없는 항목은 null:
 {"company_name":문자열또는null,"rep_name":문자열또는null,"business_number":문자열또는null,"address":문자열또는null,"business_type":문자열또는null,"business_item":문자열또는null,"birth_date":문자열또는null,"revenue":숫자또는null,"current_assets":숫자또는null,"noncurrent_assets":숫자또는null,"current_liabilities":숫자또는null,
-"noncurrent_liabilities":숫자또는null,"capital_stock":숫자또는null,"total_equity":숫자또는null,
+"noncurrent_liabilities":숫자또는null,"capital_stock":숫자또는null,"retained_earnings":숫자또는null,"total_equity":숫자또는null,
 "operating_income":숫자또는null,"interest_expense":숫자또는null,"net_income":숫자또는null,"short_borrowings":숫자또는null,"long_borrowings":숫자또는null,
 "comment":"인식 관련 메모 1~2문장. 자체 검증에서 불일치가 있었다면 반드시 언급"}"""
 
@@ -2777,7 +2778,7 @@ async def _hy_collect_run(job_id, st, cookie, fill):
             num = lambda v: _doc_num(v)
             add = lambda a, b: None if num(a) is None and num(b) is None else (num(a) or 0) + (num(b) or 0)
             fin = {"assets": add(fd.get("current_assets"), fd.get("noncurrent_assets")), "liabilities": add(fd.get("current_liabilities"), fd.get("noncurrent_liabilities")),
-                   "capital_stock": num(fd.get("capital_stock")), "operating_income": num(fd.get("operating_income")),
+                   "capital_stock": num(fd.get("capital_stock")), "retained_earnings": num(fd.get("retained_earnings")), "operating_income": num(fd.get("operating_income")),
                    "interest_expense": num(fd.get("interest_expense")), "net_income": num(fd.get("net_income")),
                    "short_borrowings": num(fd.get("short_borrowings")), "long_borrowings": num(fd.get("long_borrowings"))}
             fin = {k: v for k, v in fin.items() if v is not None}
@@ -4370,7 +4371,7 @@ def _parse_tax_cert(data, err):
 
 
 _FIN_KEYS = {
-    "assets": ("자산총계",), "liabilities": ("부채총계",), "capital_stock": ("자본금",),
+    "assets": ("자산총계",), "liabilities": ("부채총계",), "capital_stock": ("자본금",), "retained_earnings": ("이익잉여금", "결손금"),
     "operating_income": ("영업이익", "영업손익"), "interest_expense": ("이자비용",),
     "net_income": ("당기순이익", "당기순손익"), "_revenue": ("매출액", "수입금액"),
     "short_borrowings": ("단기차입금",), "long_borrowings": ("장기차입금",),
@@ -4446,6 +4447,8 @@ def _parse_financial(data):
     for k, names in _FIN_KEYS.items():
         for title, amt in items:
             if amt is not None and any(title.startswith(n) or title.endswith(n) for n in names):   # 예: 영업이익(손실)
+                if k == "retained_earnings" and "결손" in title and "이익잉여금" not in title and amt > 0:
+                    amt = -amt                   # '미처리결손금'은 양수로 적혀 있어도 결손
                 out[k] = amt
                 break
     if "assets" not in out and "liabilities" not in out:
