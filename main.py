@@ -2861,6 +2861,8 @@ async def _hy_collect_run(job_id, st, cookie, fill):
                 print(f"[hyphen] 264 응답 구조: {_hy_shape(_hy_data(j))}")
     if len(rrn) == 13 and HY_NPS:        # 국민연금 462·463 모두 하이픈에서 '사이트 개편으로 지원 종료'(LOGIN-000) → 대체 상품 확인 전까지 호출 안 함
         await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
+    if st.get("cert") and fill.get("employees") is None:
+        await _hy_health_employees(st, biz, fill, got, prog)
     if fill.get("employees") is None and st.get("empl_cnt") is None and os.getenv("HYPHEN_NICE_DNB", "").upper() == "Y":
         # 나이스디앤비 기업신용정보(종합) — 사업자번호만으로 직원 수(empCnt)·기준일(empAccYm). 등록 안 된 업체는 없음
         prog("직원 수(나이스디앤비)")
@@ -2887,8 +2889,165 @@ async def _hy_collect_run(job_id, st, cookie, fill):
     if fill.get("employees") is None:
         fill["employees_default"] = 0
     rrn = ""
+    extra = {}
+    if st.get("cert") and st.get("banks"):
+        extra["banks"] = True
+        if fill.get("biz_type") == "corp":
+            prog("은행 대출")
+            loans, ok_banks, bad = await _hy_bank_loans(st, biz, st["banks"])
+            if ok_banks:
+                fill["loans"] = loans
+                got.append("은행 대출")
+                extra["bank_ok"] = [CODEF_BANKS.get(b, b) for b in ok_banks]
+            if bad:
+                extra["bank_failed"] = [f"{CODEF_BANKS.get(b, b)}({msg})" for b, msg in bad]
+                if not ok_banks:
+                    failed.append("은행 대출")
+        else:
+            failed.append("은행 대출(개인사업자 대출은 은행 조회로 볼 수 없어요)")
+    st.pop("login", None)                     # 인증서·비밀번호는 조회가 끝나면 바로 버림
     _hy_live.pop(job_id, None)
-    _job_save(job_id, "done", {"got": got, "failed": failed, "pending": failed, "doing": "", "fill": fill})
+    _job_save(job_id, "done", dict({"got": got, "failed": failed, "pending": failed, "doing": "", "fill": fill}, **extra))
+
+
+def _hy_cert_login(b):
+    """공동인증서 → 하이픈 인증서 로그인 값 (signCert/signPri PEM + signPw). 저장하지 않음"""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    pem = lambda raw, label: f"-----BEGIN {label}-----\n" + "\n".join(__import__("textwrap").wrap(_b64.b64encode(raw).decode(), 64)) + f"\n-----END {label}-----\n"
+    cert = _b64_clean(b.cert_file)
+    if not cert or not b.password:
+        raise HTTPException(status_code=400, detail="인증서 파일과 비밀번호를 확인해주세요.")
+    raw = _b64.b64decode(cert)
+    if str(b.cert_type).lower() in ("pfx", "p12"):
+        try:
+            key, crt, _ = pkcs12.load_key_and_certificates(raw, b.password.encode("utf-8"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="인증서 비밀번호가 맞지 않거나 이 .pfx 파일은 읽을 수 없어요. signCert.der·signPri.key 두 파일로 다시 시도해 주세요.")
+        except Exception:
+            raise HTTPException(status_code=400, detail="이 .pfx 파일은 읽을 수 없어요. signCert.der·signPri.key 두 파일로 다시 시도해 주세요.")
+        if not key or not crt:
+            raise HTTPException(status_code=400, detail="인증서 파일을 확인해주세요.")
+        sc = crt.public_bytes(serialization.Encoding.PEM).decode()
+        sp = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                               serialization.BestAvailableEncryption(b.password.encode("utf-8"))).decode()
+    else:
+        kf = _b64_clean(b.key_file)
+        if not kf:
+            raise HTTPException(status_code=400, detail="signCert.der와 signPri.key 두 파일을 함께 선택해주세요.")
+        sc, sp = pem(raw, "CERTIFICATE"), pem(_b64.b64decode(kf), "ENCRYPTED PRIVATE KEY")
+    return {"loginMethod": "CERT", "signCert": sc, "signPri": sp, "signPw": b.password}
+
+
+async def _hy_cert_start(body, user):
+    """하이픈 공동인증서 — 홈택스 로그인(승인 단계 없음) → 사업자 정보 → 나머지 서류·직원 수·은행 대출은 이어서"""
+    login = _hy_cert_login(body)
+    biz = _re2.sub(r"\D", "", body.business_number or "")
+    if len(biz) != 10:
+        db = SessionLocal()
+        try:
+            biz = _re2.sub(r"\D", "", _basic_biz_of(db, user) or "")
+        except Exception:
+            biz = ""
+        finally:
+            db.close()
+    j = await _hyphen_post("/in0076000245", dict(login, showCookie="Y", **({"bizNo": biz} if len(biz) == 10 else {})))
+    bad, msg = _hy_err(j)
+    if bad:
+        print(f"[hyphen] 인증서 로그인 실패: {msg}")
+        if "비밀번호" in (msg or "") or "password" in (msg or "").lower():
+            raise HTTPException(status_code=400, detail="인증서 비밀번호가 맞지 않습니다. 다시 확인해주세요.")
+        if len(biz) != 10 and (_re2.search(r"\[B\d{4}\]", msg or "") or "bizNo" in (msg or "")):
+            raise HTTPException(status_code=400, detail="사업자번호를 먼저 입력한 뒤 인증해 주세요.")
+        raise HTTPException(status_code=400, detail=f"공동인증서 인증에 실패했습니다: {(msg or '')[:120]}")
+    d = _hy_data(j)
+    fill = _safe(_hy_parse_245, d, biz, default={}) or {}
+    banks = [b for b in dict.fromkeys(body.banks or []) if b in CODEF_BANKS][:6]
+    job_id = uuid.uuid4().hex
+    st = {"user_id": user.id, "login": login, "biz": biz, "phone": _re2.sub(r"\D", "", user.phone or ""), "t": _time.time(),
+          "tries": 0, "cert": True, "banks": banks, "rep_name": fill.get("rep_name") or ""}
+    st["_closed245"] = [r for r in (d.get("bmanBscInfrInqrDVOList") or []) if isinstance(r, dict) and "폐업" in str(r.get("txprStatNm") or "")][:5]
+    st["_rrn"] = str(d.get("rprsResno") or "")
+    db = SessionLocal()
+    try:
+        db.query(models.CodefJob).filter(models.CodefJob.created_at < datetime.utcnow() - timedelta(hours=1)).delete()
+        db.add(models.CodefJob(id=job_id, user_id=user.id, status="running",
+                               result=_json.dumps({"got": ["사업자등록사항"] if fill else [], "doing": "부가세과세표준증명", "fill": fill, "banks": bool(banks)}, ensure_ascii=False)))
+        db.commit()
+    finally:
+        db.close()
+    _spawn(_hy_collect(job_id, st, d.get("cookie") or "", fill))
+    return {"status": "collecting", "job": job_id, "fill": fill}
+
+
+async def _hy_health_employees(st, biz, fill, got, prog):
+    """공동인증서: 건강보험 개인별 산출내역(441) 최근 달 가입자 → 직원 수 (대표자 제외). 이름·주민번호는 세기만 하고 버림"""
+    prog("직원 수(건강보험)")
+    now = datetime.utcnow() + timedelta(hours=9)
+    yms = []
+    y, mth = now.year, now.month
+    for _ in range(3):                       # 이번 달 고지가 아직 없을 수 있어 최근 3개월
+        yms.append(f"{y}{mth:02d}")
+        y, mth = (y, mth - 1) if mth > 1 else (y - 1, 12)
+    corp = fill.get("biz_type") == "corp"
+    base = dict(st["login"], bizNo=biz, schYyyyMm=",".join(yms))
+    j = None
+    for rep in (("N", "Y") if corp else ("Y", "N")):          # 법인 인증서 / 대표자 개인인증서 — 맞는 쪽으로
+        j = await _hyphen_post("/in0002000441", dict(base, representYn=rep))
+        if not _hy_err(j)[0]:
+            break
+    bad, msg = _hy_err(j)
+    if bad:
+        print(f"[hyphen] 441 건강보험 직원 수 실패: {msg}")
+        return
+    d = _hy_data(j)
+    rows = [r for r in (d.get("list") or []) if isinstance(r, dict)]
+    if not rows:
+        print(f"[hyphen] 441 응답 구조: {_hy_shape(d)}")
+        return
+    last = max(_re2.sub(r"\D", "", str(r.get("ym") or "")) for r in rows)
+    rep_nm = _re2.sub(r"\s", "", st.get("rep_name") or fill.get("rep_name") or "")
+    people = {(_re2.sub(r"\s", "", str(r.get("mname") or "")), str(r.get("mregno") or "")[:6]) for r in rows
+              if _re2.sub(r"\D", "", str(r.get("ym") or "")) == last}
+    n = len([p for p in people if not (rep_nm and p[0] == rep_nm)])
+    fill["employees"] = n
+    fill["emp_note"] = f"건강보험 가입자 ({last[:4]}.{last[4:6]} 기준, 대표자 제외)" if len(last) >= 6 else "건강보험 가입자"
+    got.append("직원 수(건강보험)")
+
+
+async def _hy_bank_loans(st, biz, banks):
+    """공동인증서(법인): 은행 기업계좌 전계좌조회(519, 대출 구분) → ([{org, date, amount, kind}], 성공 은행, [(은행, 사유)])"""
+    loans, ok, bad = [], [], []
+    for b in banks:
+        j = await _hyphen_post("/in0087000519", dict(st["login"], gubun="03", bankCd=b[1:]))
+        e, msg = _hy_err(j)
+        if e:
+            print(f"[hyphen] 519 {CODEF_BANKS.get(b, b)} 대출 조회 실패: {msg}")
+            bad.append((b, friendly_bank_msg(msg or "조회 실패")))
+            continue
+        ok.append(b)
+        rows = []
+        def walk(v, depth=0):
+            if depth > 5: return
+            if isinstance(v, list):
+                for x in v: walk(x, depth + 1)
+            elif isinstance(v, dict):
+                if any(k in v for k in ("acctNo", "acctNm", "loanNm")):
+                    rows.append(v)
+                else:
+                    for x in v.values(): walk(x, depth + 1)
+        walk(_hy_data(j))
+        if not rows:
+            print(f"[hyphen] 519 응답 구조({CODEF_BANKS.get(b, b)}): {_hy_shape(_hy_data(j))}")
+        for r in rows:
+            amt = next((_doc_num(r.get(k)) for k in ("loanBal", "balance", "bal", "loanAmt", "amt") if _doc_num(r.get(k))), None)
+            if not amt:
+                continue
+            nm = str(r.get("acctNm") or r.get("loanNm") or "대출").strip()
+            dt = _re2.sub(r"\D", "", str(r.get("openDt") or r.get("loanDt") or ""))
+            loans.append({"org": f"{CODEF_BANKS.get(b, b)} · {nm}".strip(" ·"), "date": f"{dt[:4]}.{dt[4:6]}" if len(dt) >= 6 else "",
+                          "amount": abs(amt), "kind": _loan_kind(nm, True)})
+    return loans, ok, bad
 
 
 HY_NPS = ""      # 예전 "/in0089000462" — 사업장 국민연금 월별 납부확인서 — bizNum=현재가입자수 (사업장보험료결정내역 463은 '사이트 개편으로 지원 종료')
@@ -3196,6 +3355,8 @@ def _hometax_cert_params(b: CodefCertBody, user_id: int):
 @app.post("/codef/hometax/cert")
 async def codef_hometax_cert(body: CodefCertBody, user: models.User = Depends(get_current_user)):
     """공동인증서(구 공인인증서)로 홈택스 로그인 → 서류 4종 조회. 인증서·비밀번호는 저장하지 않고 화면에 돌려주지도 않는다."""
+    if _hometax_provider() == "hyphen":
+        return await _hy_cert_start(body, user)
     if not _codef_ready():
         raise HTTPException(status_code=503, detail="본인 인증 연동이 아직 설정되지 않았습니다.")
     params = _hometax_cert_params(body, user.id)
