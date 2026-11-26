@@ -137,7 +137,7 @@ BREVO_API_KEY      = os.getenv("BREVO_API_KEY", "")         # Brevo(구 Sendinbl
 COST_PER_ANALYSIS = 10  # 분석 1회당 차감 크레딧
 # 무료 분석: 구독이 없어도 분석은 할 수 있고, 결과는 일부만 보여준다(예상 한도부터는 구독 시 공개).
 # AI 비용이 드는 만큼 구독 없는 회원은 월 무료 분석 횟수를 둔다.
-FREE_ANALYSES_PER_MONTH = 30
+FREE_ANALYSES_PER_MONTH = 3
 BASIC_ANALYSES_PER_MONTH = 10      # Basic 월 분석 10회 (Pro 무제한)
 
 CREDIT_PACKAGES = {
