@@ -2646,6 +2646,41 @@ def _hy_shape(v, depth=0):
     return type(v).__name__
 
 
+async def _hy_closed_sales(call, rv, chk, prog):
+    """폐업 사업장 사업자번호로 부가세과세표준증명(332) → 폐업 전 매출 신고 있으면 '폐업기업 매출실적' 충족"""
+    cl = rv.get("closed") or {}
+    bn = _re2.sub(r"\D", "", cl.get("business_number") or "")
+    c = _re2.sub(r"\D", "", cl.get("closed") or "")
+    if len(bn) != 10 or len(c) != 8:
+        return
+    o = _re2.sub(r"\D", "", cl.get("opened") or "")
+    start = o[:6] if len(o) >= 6 and int(o[:4]) >= int(c[:4]) - 3 else f"{int(c[:4]) - 3}01"
+    prog("폐업 사업장 매출")
+    try:
+        j = await call("/in0076000332", {"bizNo": bn, "txnrmStrtYm": start, "txnrmEndYm": c[:6], "pdfYn": "Y"})
+        bad, msg = _hy_err(j)
+        part = None if bad else _hy_pdf_part(j)
+        if not part:
+            print(f"[hyphen] 폐업 사업장 332 실패: {msg or _hy_shape(_hy_data(j))}")
+            return
+        d = await _extract_income_parts([part])
+    except Exception as e:
+        print(f"[hyphen] 폐업 사업장 매출 조회 오류: {e!r}")
+        return
+    ys = [y for y in (d.get("years") or []) if isinstance(y, dict) and _doc_num(y.get("vat")) is not None]
+    if not ys:
+        return
+    pos = [y for y in ys if (_doc_num(y.get("vat")) or 0) > 0]
+    if pos:
+        chk["s"] = "ok"
+        chk["d"] = "폐업 사업장 매출 신고 있음 (" + ", ".join(f"{y.get('year')}년 {round(_doc_num(y.get('vat')) / 10000):,}만원" for y in pos[-3:]) + ")"
+    else:
+        chk["s"] = "no"
+        chk["d"] = "폐업 사업장 매출 신고 내역 없음"
+    ss = [x.get("s") for x in rv.get("checks") or []]
+    rv["status"] = "no" if "no" in ss else ("check" if "check" in ss else "ok")
+
+
 def _hy_regnos_264(d):
     """사업자상태조회(주민번호) 응답의 사업자번호(10자리) 전부"""
     vals = list(d.values()) if isinstance(d, dict) else (d if isinstance(d, list) else [])
@@ -2939,6 +2974,11 @@ async def _hy_collect_run(job_id, st, cookie, fill):
                              resCompanyIdentityNo=bn, resClosingDate=cd))
     if rows:
         _safe(_closure_apply, fill, [rows], got)              # 예전 사업장 폐업 이력 → 재창업 요건 검토
+        rv = fill.get("restart_review") or {}
+        chk = next((c for c in rv.get("checks") or [] if c.get("t") == "폐업기업 매출실적"), None)
+        if chk and chk.get("s") == "check" and fill.get("biz_type") != "corp":
+            # 폐업기업 업력 3년 미만(또는 모름) → 폐업 사업장 부가세과세표준증명으로 매출실적 확인 (개인 대표자 로그인일 때만)
+            await _hy_closed_sales(call, rv, chk, prog)
     if len(rrn) == 13 and HY_NPS:        # 국민연금 462·463 모두 하이픈에서 '사이트 개편으로 지원 종료'(LOGIN-000) → 대체 상품 확인 전까지 호출 안 함
         await _hy_pension(job_id, st, rrn, fill, got, failed, prog)
     if st.get("cert") and fill.get("employees") is None:
