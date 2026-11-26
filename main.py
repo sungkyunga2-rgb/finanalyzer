@@ -1645,9 +1645,66 @@ def _ht_round10m(v):
     return int(_math.floor(v / 10000000 + 0.5) * 10000000)
 
 
+def _ht_hope_return(inp, today=None):
+    """희망리턴패키지 재기사업화(소진공, 2026 공고 기준) — 재창업(폐업 후 신규)·업종전환·창업도약 신청 가능 여부
+    s: ok(가능) / cond(조건부) / check(확인 필요) / no(불가). 지원금 사업이라 융자 한도와 별개"""
+    today = today or (_dt.utcnow() + _td(hours=9)).date()
+    if hasattr(today, "date"):
+        today = today.date()
+    ctx = ht_limit_context(inp)
+    bam = ctx["biz_age_months"]
+    ind = _ht_ind_text(inp)
+    biz = _re.sub(r"\D", "", _ht_s(inp.get("business_number")))
+    ar = inp.get("arrears") or {}
+    common = None
+    if biz[3:5] in ("80", "82") and not _re.search(r"협동조합|사회적", _ht_s(inp.get("company_name"))):
+        common = "비영리 사업자는 대상이 아니에요"
+    elif not _ht_small_biz(inp):
+        common = "소상공인(상시근로자 5인 미만, 제조·건설·운수 10인 미만)만 신청할 수 있어요"
+    elif ar.get("status") == "has" or ar.get("local") == "has":
+        common = "국세·지방세 체납을 해소해야 신청할 수 있어요"
+    restricted = bool(_HT_IND["restricted"].search(ind)) if ind else False
+    debt = bool(_ht_s(ar.get("other")))
+    mk = lambda s, note: {"s": s, "note": note}
+    items = []
+    # ❶ 재창업(폐업 후 신규) — 공고 마감일까지 모든 사업자 폐업 상태여야 함
+    if common: r1 = mk("no", common)
+    elif bam is not None and bam < 2: r1 = mk("cond", "영업 60일이 지난 뒤 지금 사업장(다른 사업장 포함)을 모두 폐업하면 신청할 수 있어요")
+    else: r1 = mk("cond", "공고 마감 전까지 지금 사업장(다른 사업장 포함)을 모두 폐업하면 신청할 수 있어요")
+    items.append(dict(r1, key="restart", name="재창업(폐업 후 신규)"))
+    # ❷ 업종전환 — 사업개시 60일 경과 + 협약기간 내 다른 업종으로 업태 변경
+    if common: r2 = mk("no", common)
+    elif bam is not None and bam < 2: r2 = mk("no", "사업 개시 60일이 지나야 신청할 수 있어요")
+    else: r2 = mk("ok", "다른 업종(업태)으로 바꾸는 계획이 있으면 신청할 수 있어요" + (" — 지금 업종은 정책자금 제외 업종이라 전환이 필요해요" if restricted else ""))
+    items.append(dict(r2, key="convert", name="업종전환"))
+    # ❸ 창업도약 — 먼저 폐업(영업 60일 이상) → 재창업, 공고일 기준 재창업 1년 미만, 현재 업종이 융자제외 업종 아님
+    rv = inp.get("restart_review") or {}
+    cl = rv.get("closed") or {}
+    c, o = _ymd(cl.get("closed", "")), _ymd(cl.get("opened", ""))
+    opened = _ymd(_ht_s(inp.get("founded")))
+    if common: r3 = mk("no", common)
+    elif restricted: r3 = mk("no", "지금 업종이 정책자금 제외 업종이에요")
+    elif bam is not None and bam >= 12: r3 = mk("no", "재창업한 지 1년이 지났어요")
+    elif not c:
+        r3 = mk("check", "예전 사업장 폐업 이력(폐업사실증명) 확인이 필요해요")
+    elif o and (c - o).days < 60: r3 = mk("no", "예전 사업장 영업 기간이 60일 미만이에요")
+    elif opened and c > opened: r3 = mk("no", "먼저 폐업한 뒤 재창업한 경우만 해당돼요")
+    else: r3 = mk("ok", "신청 후 매출이 10% 이상 늘어야 사업화가 완료돼요")
+    items.append(dict(r3, key="leap", name="창업도약"))
+    if debt and not common:
+        for it in items:
+            if it["s"] in ("ok", "cond"):
+                it["note"] += " (연체가 있으면 채무조정·회생 인가 등 증빙이 필요해요)"
+    return {"name": "희망리턴패키지 재기사업화", "items": items, "ok": any(it["s"] in ("ok", "cond") for it in items)}
+
+
 def ht_estimate_limit(inp, today=None):
     """예상한도 — 계산은 100만원 단위, 결과 금액은 천만원 단위로 반올림"""
     L = _ht_estimate_limit_core(inp, today)
+    if isinstance(L, dict):
+        hr = _safe(_ht_hope_return, inp, today)
+        if hr:
+            L["hope_return"] = hr
     if isinstance(L, dict):
         for o in [L] + [x for x in (L.get("orgs") or []) if isinstance(x, dict)]:
             if "low" in o and "high" in o:
@@ -7475,6 +7532,8 @@ def _ht_mask_basic(L):
         return L
     L = dict(L)
     L["orgs"] = [{"key": o.get("key"), "name": o.get("name"), "status": o.get("status")} for o in (L.get("orgs") or []) if isinstance(o, dict)]
+    if isinstance(L.get("hope_return"), dict):          # Basic — 가능 여부만
+        L["hope_return"] = dict(L["hope_return"], items=[{"key": i.get("key"), "name": i.get("name"), "s": i.get("s")} for i in L["hope_return"].get("items") or []])
     L["tier"] = "basic"
     return L
 

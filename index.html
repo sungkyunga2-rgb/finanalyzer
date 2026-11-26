@@ -5811,6 +5811,20 @@ function htOrgAmt(o, maxWord) {
 }
 // Pro — 요건에 맞는 자금 이름
 // 자금명 — 여러 개면 한 줄에 하나씩 (<br>로 확실하게 줄바꿈)
+// 희망리턴패키지 재기사업화 (지원금 사업 — 융자 한도와 별개). Basic은 가능 여부만, Pro는 안내 한 줄까지
+function htHopeHtml(L, small) {
+  const H = L && L.hope_return;
+  if (!H || !(H.items || []).length) return "";
+  const lab = { ok: ["가능", "#0F6E56", "#E1F5EE"], cond: ["조건부", "#B8860B", "#FFF6DD"], check: ["확인 필요", "#6b7a8d", "#EEF1F5"], no: ["불가", "#9b9a95", "#F3F2EF"] };
+  const fs = small ? 11 : 13;
+  return `<div style="margin-top:12px;">
+    <div style="font-size:${small ? 11 : 12}px;font-weight:600;color:var(--text2);margin-bottom:6px;">${escapeHtml(H.name)} <span style="font-weight:500;color:var(--text3);">(지원금 · 한도와 별개)</span></div>
+    ${H.items.map(i => { const [t, c, bg] = lab[i.s] || lab.check; return `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;font-size:${fs}px;padding:6px 0;border-bottom:1px solid #f0efeb;">
+      <span><span style="font-weight:600;color:${i.s === "no" ? "#9b9a95" : "#1a1a18"};">${escapeHtml(i.name)}</span>${i.note ? `<span style="display:block;font-size:${fs - 1.5}px;color:#6b7a8d;margin-top:2px;">${escapeHtml(i.note)}</span>` : ""}</span>
+      <span style="flex:none;font-size:${fs - 1.5}px;font-weight:700;color:${c};background:${bg};border-radius:999px;padding:2px 9px;">${t}</span></div>`; }).join("")}
+  </div>`;
+}
+
 function htOrgFundsHtml(o) {
   return o && o.funds && o.funds.length ? [...new Set(o.funds)].map(f => escapeHtml(f)).join("<br>") : "";
 }
@@ -5872,7 +5886,7 @@ function htLimitCard(L) {
   if (!L || !L.available) {
     return `<div class="card" style="border-top:4px solid #185FA5;">
       <div class="card-title">💰 예상 한도</div>
-      <p style="font-size:13px;color:var(--text2);line-height:1.6;">${escapeHtml(L ? L.text : "")}</p></div>`;
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;">${escapeHtml(L ? L.text : "")}</p>${htHopeHtml(L)}</div>`;
   }
   const range = (a, b) => `<span style="white-space:nowrap;">${htKwon(a)}</span> ~ <span style="white-space:nowrap;">${htKwon(b)}</span>`;
   if (L.status === "blocked") {
@@ -5881,7 +5895,7 @@ function htLimitCard(L) {
       <div style="background:#FCEBEB;border-radius:12px;padding:14px 16px;">
         <div style="font-size:22px;font-weight:800;color:#A32D2D;">현재 신청 어려움</div>
         <div style="font-size:13px;color:#4a4a45;margin-top:6px;">${escapeHtml(L.text)}</div>
-      </div></div>`;
+      </div>${htHopeHtml(L)}</div>`;
   }
   if (L.status === "low") {
     return `<div class="card" style="border-top:4px solid #B8860B;">
@@ -5889,7 +5903,7 @@ function htLimitCard(L) {
       <div style="background:#FEF6D8;border-radius:12px;padding:14px 16px;">
         <div style="font-size:20px;font-weight:800;color:#B8860B;">추가 한도 여력 부족</div>
         <div style="font-size:13px;color:#4a4a45;margin-top:6px;">${escapeHtml(L.text)}</div>
-      </div></div>`;
+      </div>${htHopeHtml(L)}</div>`;
   }
   return `<div class="card" style="border-top:4px solid #185FA5;">
     <div class="card-title">💰 예상 한도</div>
@@ -5902,6 +5916,7 @@ function htLimitCard(L) {
         <span style="font-weight:600;color:${o.status === "ok" ? "#1a1a18" : "#9b9a95"};">${escapeHtml(o.name)}${o.status === "ok" && htOrgFunds(o) ? `<span style="display:block;font-size:11.5px;font-weight:500;color:#6b7a8d;margin-top:2px;line-height:1.5;">${htOrgFundsHtml(o)}</span>` : ""}${o.status === "ok" && o.priority ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htJjPriOpen()">정책우선도 ${o.priority.count}/${o.priority.total} ›</button>` : ""}${o.bojeung ? `<button type="button" class="rt-chip none pro" style="margin:4px 0 0;" onclick="htBjOpen()">현재 보증상품 ${o.bojeung.items.length}개 ›</button>` : ""}</span>
         <span style="font-weight:600;color:${o.status === "ok" ? "#185FA5" : "#9b9a95"};white-space:nowrap;">${htOrgAmt(o, true)}</span></div>`).join("")}</div>
       ${htBasicNote(L)}
+      ${htHopeHtml(L)}
     </div>
     ${L.need ? `<div style="margin-top:12px;background:${HT_LEVEL_BG[L.need.level]};border-radius:10px;padding:10px 12px;">
       <div style="font-size:12px;color:var(--text3);">필요자금</div>
@@ -6030,6 +6045,7 @@ function htReportBody(r, input) {
       `<tr><td style="font-weight:600;${g.status === "ok" ? "" : "color:#9b9a95;"}">${e(g.name)}${g.status === "ok" && htOrgFunds(g) ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">${htOrgFundsHtml(g)}</div>` : ""}${g.bojeung ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">현재 보증상품(${e(g.bojeung.at)} 기준): ${e(g.bojeung.items.slice(0, 6).map(x => x.name + (x.limit ? " " + htKwon(x.limit) : "")).join(", "))}${g.bojeung.items.length > 6 ? ` 외 ${g.bojeung.items.length - 6}개` : ""}</div>` : ""}${g.status === "ok" && g.priority ? `<div style="font-size:10px;font-weight:500;color:#6b7a8d;margin-top:2px;">정책우선도 해당 ${g.priority.count}/${g.priority.total}: ${e(g.priority.items.filter(x => x.s === "ok").map(x => x.t).join(", "))}</div>` : ""}</td><td class="val" style="${g.status === "ok" ? "color:#185FA5;" : "color:#9b9a95;"}">${htOrgAmt(g, true)}</td></tr>`).join("")}</tbody></table>`;
     limHTML += htBasicNote(L, true);
   }
+  limHTML += htHopeHtml(L, true);
   if (L.need) limHTML += `<div class="opinion" style="background:${LB[L.need.level]};border-left-color:${LC[L.need.level]};"><div class="opinion-item"><strong>필요자금 ${L.need.min === L.need.max ? htKwon(L.need.max) : htKwon(L.need.min) + " ~ " + htKwon(L.need.max)}</strong> — ${e(L.need.text)}</div></div>`;
   html += sh("예상 한도 · 신청 가능 기관 (Expected Funding)") + limHTML;
 
