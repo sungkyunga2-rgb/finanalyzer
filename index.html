@@ -2065,8 +2065,10 @@ function showPage(name) {
 
 // 오류·확인이 필요한 안내 — 화면 가운데에 띄우고 [확인]을 눌러야 닫힘
 let htDocCapture = null;      // 서류 올리기 진행 창이 떠 있는 동안 알림·토스트를 창 안에 모음
-function alertError(msg) {
-  if (htDocCapture) { htDocCapture.push({ err: true, msg: String(msg || "") }); return; }
+// 안내(성공) 알림 — 가운데 창, 확인을 눌러야 닫힘
+function alertInfo(msg, ic) { alertError(msg, ic || "🎉"); }
+function alertError(msg, ic) {
+  if (htDocCapture && !ic) { htDocCapture.push({ err: true, msg: String(msg || "") }); return; }
   let bg = document.getElementById("faAlert");
   if (!bg) {
     bg = document.createElement("div");
@@ -2081,6 +2083,7 @@ function alertError(msg) {
     bg.__close = close;
   }
   const box = bg.querySelector("#faAlertMsg");
+  bg.querySelector(".fa-alert-ic").textContent = ic || "⚠️";
   const text = String(msg || "오류가 발생했습니다.");
   if (bg.style.display === "flex" && box.textContent && box.textContent !== text) box.textContent += "\n\n" + text;   // 이미 떠 있으면 이어서
   else box.textContent = text;
@@ -8171,7 +8174,7 @@ async function upgradeToPro() {
   try {
     await api("POST", "/subscription/upgrade", { cycle: u.cycle, charge: u.charge });
     userTier = "pro"; updateCreditBadges();
-    toast("Pro로 전환되었어요 🎉 이제 여러 업체를 분석하고 기관별 한도와 자금을 볼 수 있어요.");
+    alertInfo("Pro로 전환되었어요.\n이제 여러 업체를 분석하고 기관별 한도·자금명과 신청 가능 지원금까지 볼 수 있어요.");
     loadSubscription();
   } catch (e) { alertError(e.message); renderUpgradeBox({ plan: "basic", status: "active" }); }
 }
@@ -8358,8 +8361,8 @@ async function finishSubscription(billingKey, planId, cycle) {
     try { localStorage.removeItem("fa_pending_sub"); } catch (e) {}
     userHasSub = true;
     updateCreditBadges();
-    toast("구독이 시작되었습니다 🎉");
     showPage("dashboard");
+    alertInfo("구독이 시작되었습니다.\n지금 바로 원클릭 분석을 이용해 보세요.");
     return true;
   } catch (e) {
     try { localStorage.removeItem("fa_pending_sub"); } catch (err) {}
