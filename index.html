@@ -3689,7 +3689,7 @@ function calcStability(fin, corp, sales) {
   // 개인사업자는 '자본'이 대표자 출자금(인출·입금으로 수시로 바뀜)이라 부채비율이 실제 위험을 잘 못 보여줌 → 매출 대비 부채로 평가
   const personal = corp === false;
   const lr = sales && sales > 0 ? liabilities / sales * 100 : null;
-  const lrClass = lr === null ? "info" : lr >= 30 ? "danger" : lr >= 15 ? "warn" : "safe";
+  const lrClass = lr === null ? "info" : lr >= 100 ? "danger" : lr >= 50 ? "warn" : "safe";   // 재단·소진공이 막는 선 = 기대출 > 매출
   const drClass = capitalEroded ? "danger" : personal ? "info" : (dr === null ? "warn" : dr > 400 ? "danger" : dr > 200 ? "warn" : "safe");
   const iceClass = noInt ? "safe" : (ice === null ? "info" : ice < 1 ? "danger" : ice < 2 ? "warn" : "safe");    // 이자비용을 모르면 '주의'가 아니라 미입력
 
@@ -3848,7 +3848,8 @@ function analyzeHometax(input, opts) {
     if (financial.accDeficit && !financial.capitalEroded) flags.push({ level: "warn", title: "누적 결손", text: `과거 손실이 쌓여 결손금 ${Math.round(-financial.retained / 10000).toLocaleString()}만원이 있습니다.${financial.net !== null && financial.net > 0 ? " 올해는 이익이지만 결손 보전 계획을 설명할 수 있어야 해요." : ""}` });
     if (financial.capitalEroded) { /* 위에서 자본잠식으로 표시 */ }
     else if (financial.personal) {
-      if (financial.lrClass === "danger") flags.push({ level: "warn", title: "매출 대비 부채 과다", text: `부채가 연 매출의 ${financial.lr.toFixed(1)}%로 많은 편입니다.` });
+      if (financial.lrClass === "danger") flags.push({ level: "danger", title: "매출 대비 부채 과다", text: `부채가 연 매출보다 많아(${financial.lr.toFixed(1)}%) 정책자금 신청이 어려울 수 있습니다.` });
+      else if (financial.lrClass === "warn") flags.push({ level: "warn", title: "매출 대비 부채 주의", text: `부채가 연 매출의 ${financial.lr.toFixed(1)}%입니다.` });
     }
     else if (financial.drClass === "danger") flags.push({ level: "danger", title: "부채비율 위험", text: `부채비율 ${financial.dr.toFixed(1)}%로 위험 수준입니다.` });
     else if (financial.drClass === "warn") flags.push({ level: "warn", title: "부채비율 주의", text: `부채비율 ${financial.dr.toFixed(1)}%로 주의 수준입니다.` });
@@ -6059,7 +6060,7 @@ function htReportBody(r, input) {
     const def = (net === null && ret === null) ? ["muted", "미입력"]
       : [(net !== null && net < 0) ? "danger" : (ret !== null && ret < 0) ? "warn" : "safe", [defNow, defAcc].filter(Boolean).join(" · ")];
     const lr = Lb !== null && sales ? Lb / sales * 100 : null;
-    const lrc = lr === null ? "muted" : lr >= 30 ? "danger" : lr >= 15 ? "warn" : "safe";
+    const lrc = lr === null ? "muted" : lr >= 100 ? "danger" : lr >= 50 ? "warn" : "safe";
     const lrt = lr === null ? "미산정" : `${lr.toFixed(1)}% (${lrc === "safe" ? "적정" : lrc === "warn" ? "주의" : "과다"})`;
     const strip = (label, v, color) => `<div style="flex:1;text-align:center;padding:4px 6px;"><div style="font-size:10px;color:#6b7a8d;margin-bottom:4px;">${label}</div><div style="font-size:13px;font-weight:700;color:${color};">${v === null ? '<span style="color:#b8c4cc;font-weight:400;">미입력</span>' : won0(v)}</div></div>`;
     html += sh("재무건전성 진단 (Financial Health Diagnosis)") + `
@@ -6131,7 +6132,7 @@ function htReportBody(r, input) {
   // 재무건전성 체크리스트
   {
     const L0 = r.limit || {};
-    const drOk = f ? (f.capitalEroded ? false : f.personal ? (f.lr !== null ? f.lr < 30 : null) : f.dr !== null ? f.dr <= 400 : null) : (q && has(q.dr) ? (q.dr >= 0 && q.dr <= 400) : null);
+    const drOk = f ? (f.capitalEroded ? false : f.personal ? (f.lr !== null ? f.lr < 100 : null) : f.dr !== null ? f.dr <= 400 : null) : (q && has(q.dr) ? (q.dr >= 0 && q.dr <= 400) : null);
     const drName = f && f.personal ? "매출 대비 부채" : "부채비율";
     const iceOk = f ? (f.noInt ? true : f.ice !== null ? f.ice >= 1 : null) : (q && has(q.icr) ? q.icr >= 1 : null);
     const erosionOk = f ? f.erosionClass !== "danger" : (q && has(q.dr) ? q.dr >= 0 : null);
@@ -6175,8 +6176,8 @@ function htReportBody(r, input) {
     if (F.capitalEroded) { cmp = "취약"; cmpCls = "danger"; }
     else if (F.personal) {
       if (F.lr !== null) {
-        if (F.lr < 10) { cmp = "우수"; cmpCls = "safe"; } else if (F.lr < 15) { cmp = "양호"; cmpCls = "safe"; }
-        else if (F.lr < 30) { cmp = "보통"; cmpCls = "warn"; } else if (F.lr < 50) { cmp = "열위"; cmpCls = "danger"; } else { cmp = "취약"; cmpCls = "danger"; }
+        if (F.lr < 30) { cmp = "우수"; cmpCls = "safe"; } else if (F.lr < 50) { cmp = "양호"; cmpCls = "safe"; }
+        else if (F.lr < 100) { cmp = "보통"; cmpCls = "warn"; } else if (F.lr < 150) { cmp = "열위"; cmpCls = "danger"; } else { cmp = "취약"; cmpCls = "danger"; }
       }
     }
     else if (F.dr !== null) {
