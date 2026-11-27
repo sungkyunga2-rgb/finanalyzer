@@ -1827,8 +1827,11 @@ def _ht_estimate_limit_core(inp, today=None):
     chosen = None
     if in_use:
         chosen = sorted(in_use, key=lambda o: -o["high"])[0]
+        short = {"jaedan": "재단", "kodit": "신보", "kibo": "기보"}.get(chosen["key"], "다른 기관")
         for o in g:
-            if o is not chosen: o["status"] = "blocked"; o["low"] = 0; o["high"] = 0
+            if o is not chosen:
+                o["status"] = "blocked"; o["low"] = 0; o["high"] = 0
+                o["reason"] = f"{short} 보증 이용 중"            # 보증은 중복 이용이 안 돼서 — 화면에 짧게 표시
     orgs.extend(g)
     # 부채비율·차입금 제한 (창업년월이 없으면 업력 예외 없이 = 7년 이상으로 봄)
     dr = ctx["debt_ratio"]
@@ -6432,7 +6435,7 @@ def _ht_mask_basic(L):
     if not isinstance(L, dict):
         return L
     L = dict(L)
-    L["orgs"] = [{"key": o.get("key"), "name": o.get("name"), "status": o.get("status")} for o in (L.get("orgs") or []) if isinstance(o, dict)]
+    L["orgs"] = [{"key": o.get("key"), "name": o.get("name"), "status": o.get("status"), **({"reason": o["reason"]} if o.get("reason") else {})} for o in (L.get("orgs") or []) if isinstance(o, dict)]
     L.pop("hope_return", None)                           # 신청 가능 지원금(희망리턴패키지)은 Pro 전용
     L["tier"] = "basic"
     return L

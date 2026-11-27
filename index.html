@@ -5763,7 +5763,7 @@ function htWatchHtml(input) {
 
 // 기관별 금액 — Basic은 서버가 금액을 빼고 보내므로 "신청 가능"으로
 function htOrgAmt(o, maxWord) {
-  if (o.status !== "ok") return o.status === "blocked" ? "신청 불가" : "추가 한도 없음";
+  if (o.status !== "ok") return o.status === "blocked" ? (o.reason ? `신청 불가 (${escapeHtml(o.reason)})` : "신청 불가") : "추가 한도 없음";
   if (o.high === undefined || o.high === null) return "신청 가능";
   return o.low === o.high ? htKwon(o.high) : (o.low <= 0 && maxWord) ? "최대 " + htKwon(o.high) : htKwon(o.low) + " ~ " + htKwon(o.high);
 }
