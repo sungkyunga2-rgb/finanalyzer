@@ -2510,7 +2510,7 @@ async def _hy_collect_run(job_id, st, cookie, fill):
     failed = []
     now = datetime.utcnow() + timedelta(hours=9)
     biz = _re2.sub(r"\D", "", fill.get("business_number") or st["biz"])
-    phone = st["phone"]
+    phone = st.get("phone") or "01000000000"       # 증명서 신청인 연락처(필수) — 공동인증서 흐름에서 회원 번호가 없을 때 형식만 채움
     state = {"cookie": cookie}
     prog = lambda doing: _job_save(job_id, result={"got": list(got), "failed": list(failed), "doing": doing, "fill": fill})
 
@@ -2601,7 +2601,8 @@ async def _hy_collect_run(job_id, st, cookie, fill):
         fill["arrears"] = {"status": "has"}
         got.append("납세증명서")
     else:
-        failed.append("납세증명서")
+        print(f"[hyphen] 330 납세증명 실패: {msg} (사업자 구분 {fill.get('biz_type') or '-'}, 주민번호 {'있음' if st.get('_rrn') else '없음'})")
+        failed.append("납세증명서(국세 체납)" + (" — 대표자 주민번호를 못 받음" if "주민등록번호가 있어야" in (msg or "") else ""))
     # ③ 표준재무제표증명 (08~22시) — 최근 연도, 없으면 그 전 해 → PDF → AI 인식
     if 8 <= now.hour < 22:
         prog("재무제표")
