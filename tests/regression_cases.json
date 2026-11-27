@@ -1334,6 +1334,39 @@
           }
         }
       }
+    },
+    {
+      "name": "개인사업자 부채비율 3000%대여도 매출 대비 부채가 낮으면 신보·기보 가능 (개인은 부채비율 550% 미적용)",
+      "input": {
+        "biz_type": "personal",
+        "location": "충북",
+        "industry": "제조",
+        "years": [
+          {
+            "year": 2025,
+            "vat": 954173429
+          }
+        ],
+        "employees": 2,
+        "fin": {
+          "assets": 450130729,
+          "liabilities": 435988457,
+          "capital_stock": 14142272,
+          "total_equity": 14142272
+        }
+      },
+      "today": "2026-11-27",
+      "expect": {
+        "status": "ok",
+        "orgs": {
+          "kodit": {
+            "status": "ok"
+          },
+          "kibo": {
+            "status": "ok"
+          }
+        }
+      }
     }
   ],
   "closure": [

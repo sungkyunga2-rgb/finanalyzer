@@ -1857,7 +1857,13 @@ def _ht_estimate_limit_core(inp, today=None):
     jd_recent = _ht_jaedan_recent(inp, ctx["loans"], today or (_dt.utcnow() + _td(hours=9)))
     if jd_recent:
         block("jaedan")
-    if dr is not None and dr > 550:
+    # 개인사업자는 자본이 대표 출자금(인출·입금)이라 부채비율이 실제 체력을 못 보여줌 → 신보·기보도 매출 대비 기대출로 판단
+    _bn = _re.sub(r"\D", "", _ht_s(inp.get("business_number")))
+    personal = inp.get("biz_type") == "personal" or (inp.get("biz_type") != "corp" and not (len(_bn) == 10 and _biz_is_corp(_bn)))
+    if personal:
+        if over_borrow:
+            block("kodit"); block("kibo")
+    elif dr is not None and dr > 550:
         block("kodit"); block("kibo")
     if kodit_drop is not None and kodit_drop <= -40:        # 신보: 전년 대비 매출 40% 이상 감소 → 불가
         block("kodit")
@@ -1865,8 +1871,20 @@ def _ht_estimate_limit_core(inp, today=None):
     #   최대 = 자본 × 기준비율 − 현재 부채
     capped = False
     E, Lb = ctx["equity"], ctx["liabilities"]
+    if personal:                                   # 개인 신보·기보: 대출 후 기대출 합계가 연 매출을 넘지 않는 금액까지
+        for o in orgs:
+            if o["key"] in ("kodit", "kibo") and o["status"] == "ok" and sales:
+                room = max(0, sales - loan_total)
+                if room >= o["high"]:
+                    continue
+                hi = _fund_round(room)
+                capped = True
+                if hi < R["minAmount"]:
+                    o["status"] = "exhausted"; o["low"] = 0; o["high"] = 0
+                    continue
+                o["low"], o["high"] = max(min(o["low"], hi), R["minAmount"]), hi
     if E is not None and Lb is not None and E > 0:
-        lim = {"kodit": 550.0, "kibo": 550.0}
+        lim = {} if personal else {"kodit": 550.0, "kibo": 550.0}
         if mature:
             lim["sojin"] = 700.0
             if not _ht_simple_book(inp, sales) and "협동조합" not in _ht_s(inp.get("company_name")):
